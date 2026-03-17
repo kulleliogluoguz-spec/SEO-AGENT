@@ -22,7 +22,9 @@ from app.api.endpoints import (
     reports,
     sites,
     workspaces,
+    
 )
+from app.api.endpoints.marketing.routes import router as marketing_router
 from app.core.config.settings import get_settings
 from app.core.db.database import check_db_connection
 
@@ -138,6 +140,7 @@ app.include_router(approvals.router, prefix=f"{API_V1}/approvals", tags=["approv
 app.include_router(reports.router, prefix=f"{API_V1}/reports", tags=["reports"])
 app.include_router(connectors.router, prefix=f"{API_V1}/connectors", tags=["connectors"])
 app.include_router(admin.router, prefix=f"{API_V1}/admin", tags=["admin"])
+app.include_router(marketing_router, prefix=API_V1, tags=["marketing"])
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

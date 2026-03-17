@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Backend Tests ──────────────────────────────────────────────────────────
+  backend:
+    name: Backend — Lint + Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aicmo
+          POSTGRES_PASSWORD: aicmo_test
+          POSTGRES_DB: aicmo_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_test@localhost:5432/aicmo_test
+      SECRET_KEY: test-secret-key-32-chars-minimum-x
+      ANTHROPIC_API_KEY: ""
+      DEMO_MODE: "true"
+      AUTONOMY_DEFAULT_LEVEL: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt aiosqlite
+
+      - name: Ruff lint
+        working-directory: apps/api
+        run: ruff check .
+
+      - name: Ruff format check
+        working-directory: apps/api
+        run: ruff format --check .
+
+      - name: Run migrations (test DB)
+        working-directory: apps/api
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_test@localhost:5432/aicmo_test
+
+      - name: Run unit tests
+        working-directory: apps/api
+        run: pytest tests/unit/ -v --tb=short
+
+      - name: Run integration tests
+        working-directory: apps/api
+        run: pytest tests/integration/ -v --tb=short
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: apps/api/coverage.xml
+        continue-on-error: true
+
+  # ─── Frontend Tests ─────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend — Lint + Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: Type check
+        working-directory: apps/web
+        run: npm run typecheck
+
+  # ─── Docker Build Check ─────────────────────────────────────────────────────
+  docker:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t aicmo-api:ci apps/api/
+
+      - name: Build Web image
+        run: docker build -t aicmo-web:ci apps/web/

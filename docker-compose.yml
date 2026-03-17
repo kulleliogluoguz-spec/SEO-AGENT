@@ -1,0 +1,168 @@
+services:
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aicmo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aicmo
+      POSTGRES_PASSWORD: aicmo_dev
+      POSTGRES_DB: aicmo
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicmo -d aicmo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aicmo-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Temporal ────────────────────────────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:1.23
+    container_name: aicmo-temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=aicmo
+      - POSTGRES_PWD=aicmo_dev
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 7233 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ─── Temporal UI ─────────────────────────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: aicmo-temporal-ui
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+
+  # ─── FastAPI Backend ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: aicmo-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_dev@postgres:5432/aicmo
+      REDIS_URL: redis://redis:6379/0
+      TEMPORAL_HOST: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    volumes:
+      - ./storage:/app/storage
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Temporal Worker ─────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: aicmo-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_dev@postgres:5432/aicmo
+      REDIS_URL: redis://redis:6379/0
+      TEMPORAL_HOST: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    volumes:
+      - ./storage:/app/storage
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    command: python worker_main.py
+
+  # ─── Next.js Frontend ────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost"  # same-origin via nginx — no port needed
+    container_name: aicmo-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── Nginx — Single Entry Point ──────────────────────────────────────────────
+  #   http://localhost/           → Frontend (Next.js)
+  #   http://localhost/api/v1/    → Backend API (FastAPI)
+  #   http://localhost/docs       → API Swagger docs
+  #   http://localhost/health     → API health check
+  #   http://localhost/temporal/  → Temporal UI
+  nginx:
+    image: nginx:alpine
+    container_name: aicmo-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+      - temporal-ui
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: aicmo-network

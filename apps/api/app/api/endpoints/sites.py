@@ -23,8 +23,8 @@ router = APIRouter()
 
 @router.post("", response_model=SiteResponse, status_code=status.HTTP_201_CREATED)
 async def onboard_site(
-    workspace_id: uuid.UUID,
     payload: SiteOnboardRequest,
+    workspace_id: uuid.UUID = Query(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Site:

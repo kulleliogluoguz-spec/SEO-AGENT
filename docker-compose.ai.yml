@@ -1,0 +1,83 @@
+# docker-compose.ai.yml
+# AI Subsystem services — use with: docker compose -f docker-compose.yml -f docker-compose.ai.yml up
+#
+# Adds:
+# - Ollama for local open-source model serving
+# - (Optional) vLLM for production GPU serving
+
+services:
+
+  # ─── Ollama — Local Model Serving ─────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aicmo-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ─── Ollama Model Puller — Downloads models on first start ────────
+  ollama-setup:
+    image: curlimages/curl:latest
+    container_name: aicmo-ollama-setup
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling AI models for local development..."
+        # Small fast model for routing/classification (5GB)
+        curl -s http://ollama:11434/api/pull -d '{"name":"qwen3:8b"}' | tail -1
+        echo "✓ qwen3:8b pulled"
+        # Embedding model (275MB)
+        curl -s http://ollama:11434/api/pull -d '{"name":"nomic-embed-text:latest"}' | tail -1
+        echo "✓ nomic-embed-text pulled"
+        # Medium model for tool use (if enough VRAM) — 8GB
+        curl -s http://ollama:11434/api/pull -d '{"name":"qwen3:30b-a3b"}' | tail -1
+        echo "✓ qwen3:30b-a3b pulled"
+        echo "Done! Models ready for local AI development."
+
+  # ─── vLLM — Production GPU Serving (uncomment for production) ─────
+  # vllm:
+  #   image: vllm/vllm-openai:latest
+  #   container_name: aicmo-vllm
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8001:8000"
+  #   command: >
+  #     --model Qwen/Qwen3-235B-A22B-AWQ
+  #     --quantization awq
+  #     --tensor-parallel-size 4
+  #     --max-model-len 32768
+  #     --trust-remote-code
+  #     --enable-auto-tool-choice
+  #     --tool-call-parser hermes
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 4
+  #             capabilities: [gpu]
+  #   volumes:
+  #     - vllm_cache:/root/.cache/huggingface
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:8000/v1/models || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 10
+  #     start_period: 120s
+
+volumes:
+  ollama_data:
+  # vllm_cache:

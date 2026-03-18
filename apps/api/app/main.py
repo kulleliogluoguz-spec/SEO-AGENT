@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.api.endpoints.ai_admin import router as ai_router
 
 from app.api.endpoints import (
     admin,
@@ -141,6 +142,7 @@ app.include_router(reports.router, prefix=f"{API_V1}/reports", tags=["reports"])
 app.include_router(connectors.router, prefix=f"{API_V1}/connectors", tags=["connectors"])
 app.include_router(admin.router, prefix=f"{API_V1}/admin", tags=["admin"])
 app.include_router(marketing_router, prefix=API_V1, tags=["marketing"])
+app.include_router(ai_router, prefix="/api/v1")
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

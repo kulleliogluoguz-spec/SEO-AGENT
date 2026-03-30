@@ -1,0 +1,15 @@
+# docker-compose.cpu.yml — CPU-only override for Ollama
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
+#
+# This removes the GPU reservation from Ollama so it runs on CPU.
+# Suitable for development machines and servers without GPU.
+# Model quality is reduced; use qwen3:8b (default) for best CPU performance.
+
+services:
+  ollama:
+    deploy:
+      resources: {}   # Remove GPU reservation — run on CPU
+    environment:
+      OLLAMA_NUM_PARALLEL: 1
+      OLLAMA_MAX_LOADED_MODELS: 1

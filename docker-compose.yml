@@ -1,0 +1,231 @@
+services:
+  # ─── Ollama — Local LLM Serving ──────────────────────────────────────────────
+  # Default local model server. No external LLM API required.
+  # Models are pulled on first use. See docs/models/local-model-stack.md
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aicmo-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    # GPU support (optional — comment out if no GPU available)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ─── Qdrant — Vector Database ────────────────────────────────────────────────
+  # Semantic search, embedding storage, similarity retrieval.
+  # See docs/architecture/adrs/ADR-006-vector-store-qdrant.md
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    container_name: aicmo-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aicmo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aicmo
+      POSTGRES_PASSWORD: aicmo_dev
+      POSTGRES_DB: aicmo
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicmo -d aicmo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aicmo-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Temporal ────────────────────────────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:1.23
+    container_name: aicmo-temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=aicmo
+      - POSTGRES_PWD=aicmo_dev
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 7233 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ─── Temporal UI ─────────────────────────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: aicmo-temporal-ui
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+
+  # ─── FastAPI Backend ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: aicmo-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_dev@postgres:5432/aicmo
+      REDIS_URL: redis://redis:6379/0
+      TEMPORAL_HOST: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      OLLAMA_BASE_URL: http://ollama:11434
+      QDRANT_URL: http://qdrant:6333
+      LLM_PRIMARY_PROVIDER: ollama
+      LLM_DEFAULT_MODEL: qwen3:8b
+      EMBEDDING_MODEL: nomic-embed-text
+    volumes:
+      - ./storage:/app/storage
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ─── Temporal Worker ─────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: aicmo-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aicmo:aicmo_dev@postgres:5432/aicmo
+      REDIS_URL: redis://redis:6379/0
+      TEMPORAL_HOST: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      OLLAMA_BASE_URL: http://ollama:11434
+      QDRANT_URL: http://qdrant:6333
+      LLM_PRIMARY_PROVIDER: ollama
+      LLM_DEFAULT_MODEL: qwen3:8b
+      EMBEDDING_MODEL: nomic-embed-text
+    volumes:
+      - ./storage:/app/storage
+      - ./apps/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    command: python worker_main.py
+
+  # ─── Next.js Frontend ────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost"  # same-origin via nginx — no port needed
+    container_name: aicmo-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── Nginx — Single Entry Point ──────────────────────────────────────────────
+  #   http://localhost/           → Frontend (Next.js)
+  #   http://localhost/api/v1/    → Backend API (FastAPI)
+  #   http://localhost/docs       → API Swagger docs
+  #   http://localhost/health     → API health check
+  #   http://localhost/temporal/  → Temporal UI
+  nginx:
+    image: nginx:alpine
+    container_name: aicmo-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+      - temporal-ui
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_models:
+  qdrant_data:
+
+networks:
+  default:
+    name: aicmo-network

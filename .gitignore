@@ -1,69 +1,11 @@
-# Python
+node_modules/
+.next/
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-env/
+*.pyc
+.env
+.env.local
 *.egg-info/
 dist/
 build/
-.eggs/
-*.egg
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-*.cover
-
-# Environment
-.env
-.env.local
-.env.*.local
-!.env.example
-
-# Node
-node_modules/
-.next/
-.npm/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Storage
+.DS_Store
 storage/
-*.sqlite3
-*.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.DS_Store
-Thumbs.db
-
-# Docker
-*.log
-
-# Secrets
-*.pem
-*.key
-*.p12
-*.pfx
-service-account*.json
-credentials*.json
-
-# Temporal
-.temporal/
-
-# Test output
-test-results/
-playwright-report/
-
-# Build artifacts
-*.zip

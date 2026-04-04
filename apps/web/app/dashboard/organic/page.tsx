@@ -104,7 +104,7 @@ export default function GrowthHubPage() {
               <input
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
                 placeholder={f.placeholder}
-                value={(profile as Record<string, string>)[f.key]}
+                value={(profile as unknown as Record<string, string>)[f.key]}
                 onChange={e => setProfile(p => ({ ...p, [f.key]: e.target.value }))}
               />
             </div>

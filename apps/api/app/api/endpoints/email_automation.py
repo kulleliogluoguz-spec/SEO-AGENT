@@ -6,15 +6,15 @@ Supports: e-commerce, SaaS, local business, personal brand
 AI generation uses local Ollama qwen3:8b — zero external API cost
 """
 
+import base64
+import json
 import logging
 import os
-import json
-import base64
+
 import httpx
+from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, List
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +61,17 @@ async def ask_ollama(prompt: str) -> str:
                     "stream": False,
                     "options": {"temperature": 0.3, "num_predict": 2048},
                     "think": False,
-                }
+                },
             )
             if resp.status_code == 200:
                 data = resp.json()
                 text = data.get("response", "").strip()
                 if not text:
-                    logger.error("ask_ollama: empty response from model=%s, error=%s", LLM_MODEL, data.get("error"))
+                    logger.error(
+                        "ask_ollama: empty response from model=%s, error=%s",
+                        LLM_MODEL,
+                        data.get("error"),
+                    )
                 return text
             logger.error("ask_ollama: status=%d body=%s", resp.status_code, resp.text[:300])
     except Exception as e:
@@ -89,18 +93,18 @@ def extract_json(text: str) -> dict:
 
 class ContactCreate(BaseModel):
     email: str
-    firstname: Optional[str] = ""
-    lastname: Optional[str] = ""
-    company: Optional[str] = ""
-    business_type: Optional[str] = ""
-    tags: Optional[List[str]] = []
+    firstname: str | None = ""
+    lastname: str | None = ""
+    company: str | None = ""
+    business_type: str | None = ""
+    tags: list[str] | None = []
 
 
 class SequenceRequest(BaseModel):
     name: str
     business_type: str
     sequence_type: str  # welcome | abandoned_cart | re_engagement | nurture | onboarding
-    niche: Optional[str] = ""
+    niche: str | None = ""
 
 
 @router.get("/health")
@@ -116,15 +120,23 @@ async def get_overview():
     contacts_res = await mautic("GET", "contacts?limit=1")
     campaigns_res = await mautic("GET", "campaigns?limit=100")
     emails_res = await mautic("GET", "emails?limit=100")
-    campaigns = list(campaigns_res.get("campaigns", {}).values()) if isinstance(campaigns_res.get("campaigns"), dict) else []
-    emails = list(emails_res.get("emails", {}).values()) if isinstance(emails_res.get("emails"), dict) else []
+    campaigns = (
+        list(campaigns_res.get("campaigns", {}).values())
+        if isinstance(campaigns_res.get("campaigns"), dict)
+        else []
+    )
+    emails = (
+        list(emails_res.get("emails", {}).values())
+        if isinstance(emails_res.get("emails"), dict)
+        else []
+    )
     return {
         "total_contacts": contacts_res.get("total", 0),
         "total_campaigns": len(campaigns),
         "total_emails": len(emails),
         "active_campaigns": len([c for c in campaigns if c.get("isPublished")]),
         "mautic_dashboard": f"{MAUTIC_URL}/s/dashboard",
-        "status": "connected"
+        "status": "connected",
     }
 
 
@@ -134,7 +146,11 @@ async def list_contacts(limit: int = 50, search: str = ""):
     if search:
         endpoint += f"&search={search}"
     result = await mautic("GET", endpoint)
-    contacts = list(result.get("contacts", {}).values()) if isinstance(result.get("contacts"), dict) else []
+    contacts = (
+        list(result.get("contacts", {}).values())
+        if isinstance(result.get("contacts"), dict)
+        else []
+    )
     return {"total": result.get("total", len(contacts)), "contacts": contacts}
 
 
@@ -162,7 +178,7 @@ async def create_contact(contact: ContactCreate):
 @router.post("/sequences/generate")
 async def generate_sequence(req: SequenceRequest):
     """Use Ollama AI to generate a complete email sequence, then create all emails in Mautic."""
-    PROMPTS = {
+    prompts = {
         "welcome": f"""Write a 5-email welcome sequence for a {req.business_type} business in the {req.niche or 'general'} niche.
 Emails sent on days: 0, 1, 3, 7, 14. Personal, value-first tone. Not salesy.
 Respond ONLY with valid JSON:
@@ -207,10 +223,10 @@ Respond ONLY with valid JSON:
   {{"day":3,"subject":"...","preview_text":"...","body":"<p>...</p>","action":"key use case"}},
   {{"day":7,"subject":"...","preview_text":"...","body":"<p>...</p>","action":"advanced feature"}},
   {{"day":14,"subject":"...","preview_text":"...","body":"<p>...</p>","action":"upgrade or refer"}}
-]}}"""
+]}}""",
     }
 
-    prompt = PROMPTS.get(req.sequence_type, PROMPTS["welcome"])
+    prompt = prompts.get(req.sequence_type, prompts["welcome"])
     ai_response = await ask_ollama(prompt)
     sequence_data = extract_json(ai_response)
 
@@ -231,14 +247,16 @@ Respond ONLY with valid JSON:
         }
         result = await mautic("POST", "emails/new", email_data)
         mautic_id = result.get("email", {}).get("id") if "email" in result else None
-        created_emails.append({
-            "position": i + 1,
-            "mautic_id": mautic_id,
-            "subject": email.get("subject"),
-            "delay": f"{delay_unit[:-1]} {delay}",
-            "goal": email.get("goal", email.get("content_type", email.get("action", ""))),
-            "mautic_url": f"{MAUTIC_URL}/s/emails/{mautic_id}/edit" if mautic_id else None,
-        })
+        created_emails.append(
+            {
+                "position": i + 1,
+                "mautic_id": mautic_id,
+                "subject": email.get("subject"),
+                "delay": f"{delay_unit[:-1]} {delay}",
+                "goal": email.get("goal", email.get("content_type", email.get("action", ""))),
+                "mautic_url": f"{MAUTIC_URL}/s/emails/{mautic_id}/edit" if mautic_id else None,
+            }
+        )
 
     return {
         "success": True,
@@ -260,12 +278,22 @@ Respond ONLY with valid JSON:
 @router.get("/campaigns")
 async def list_campaigns():
     result = await mautic("GET", "campaigns")
-    campaigns = list(result.get("campaigns", {}).values()) if isinstance(result.get("campaigns"), dict) else []
+    campaigns = (
+        list(result.get("campaigns", {}).values())
+        if isinstance(result.get("campaigns"), dict)
+        else []
+    )
     return {"campaigns": campaigns, "total": result.get("total", 0)}
 
 
 @router.get("/emails")
 async def list_emails():
     result = await mautic("GET", "emails")
-    emails = list(result.get("emails", {}).values()) if isinstance(result.get("emails"), dict) else []
-    return {"emails": emails, "total": result.get("total", 0), "manage_url": f"{MAUTIC_URL}/s/emails"}
+    emails = (
+        list(result.get("emails", {}).values()) if isinstance(result.get("emails"), dict) else []
+    )
+    return {
+        "emails": emails,
+        "total": result.get("total", 0),
+        "manage_url": f"{MAUTIC_URL}/s/emails",
+    }

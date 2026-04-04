@@ -2,7 +2,9 @@
 Sites endpoints: onboard, list, get, crawl trigger.
 Falls back to file-based demo store when PostgreSQL is unavailable.
 """
+
 import uuid
+from datetime import UTC
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,15 +28,20 @@ _DB_ERR = (Exception,)  # catch-all; narrow if needed
 
 def _is_db_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return any(k in msg for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table"))
+    return any(
+        k in msg
+        for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table")
+    )
 
 
 def _paginate(items: list, page: int, page_size: int) -> PaginatedResponse:
     total = len(items)
     start = (page - 1) * page_size
     return PaginatedResponse(
-        items=items[start: start + page_size],
-        total=total, page=page, page_size=page_size,
+        items=items[start : start + page_size],
+        total=total,
+        page=page,
+        page_size=page_size,
         pages=max(1, -(-total // page_size)),
     )
 
@@ -48,23 +55,34 @@ async def onboard_site(
 ) -> dict:
     """Onboard a new website. Falls back to demo store when DB is unavailable."""
     try:
-        ws = (await db.execute(select(Workspace).where(Workspace.id == workspace_id))).scalar_one_or_none()
+        ws = (
+            await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+        ).scalar_one_or_none()
         if not ws:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
         parsed = urlparse(payload.url)
-        domain = parsed.netloc.lstrip("www.")
+        domain = parsed.netloc.removeprefix("www.")
         if not domain:
             raise HTTPException(status_code=400, detail="Could not parse domain from URL")
 
-        existing = (await db.execute(
-            select(Site).where(Site.workspace_id == workspace_id, Site.domain == domain)
-        )).scalar_one_or_none()
+        existing = (
+            await db.execute(
+                select(Site).where(Site.workspace_id == workspace_id, Site.domain == domain)
+            )
+        ).scalar_one_or_none()
         if existing:
-            raise HTTPException(status_code=409, detail=f"Site '{domain}' already exists in this workspace")
+            raise HTTPException(
+                status_code=409, detail=f"Site '{domain}' already exists in this workspace"
+            )
 
-        site = Site(workspace_id=workspace_id, url=payload.url, domain=domain,
-                    name=payload.name or domain, status=SiteStatus.PENDING)
+        site = Site(
+            workspace_id=workspace_id,
+            url=payload.url,
+            domain=domain,
+            name=payload.name or domain,
+            status=SiteStatus.PENDING,
+        )
         db.add(site)
         await db.flush()
         crawl = Crawl(site_id=site.id, status=CrawlStatus.QUEUED, max_pages=payload.max_pages)
@@ -73,6 +91,7 @@ async def onboard_site(
         await db.refresh(site)
         try:
             from app.services.site_service import SiteService
+
             await SiteService(db).trigger_onboarding_workflow(site.id, crawl.id)
         except Exception:
             pass
@@ -85,6 +104,7 @@ async def onboard_site(
             raise
         # ── Demo fallback ────────────────────────────────────────────────────
         from app.core.store.demo_store import create_site
+
         record = create_site(str(workspace_id), payload.url, payload.name, payload.max_pages)
         return record
 
@@ -101,18 +121,29 @@ async def list_sites(
     try:
         base_q = select(Site).where(Site.workspace_id == workspace_id)
         total = (await db.execute(select(func.count()).select_from(base_q.subquery()))).scalar_one()
-        items = (await db.execute(
-            base_q.order_by(Site.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-        )).scalars().all()
+        items = (
+            (
+                await db.execute(
+                    base_q.order_by(Site.created_at.desc())
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                )
+            )
+            .scalars()
+            .all()
+        )
         return PaginatedResponse(
             items=[SiteResponse.model_validate(s) for s in items],
-            total=total, page=page, page_size=page_size,
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
     except Exception as exc:
         if not _is_db_error(exc):
             raise
         from app.core.store.demo_store import get_sites
+
         items = get_sites(str(workspace_id))
         return _paginate(items, page, page_size)
 
@@ -134,6 +165,7 @@ async def get_site(
         if not _is_db_error(exc):
             raise
         from app.core.store.demo_store import get_site
+
         record = get_site(str(site_id))
         if not record:
             raise HTTPException(status_code=404, detail="Site not found")
@@ -162,7 +194,8 @@ async def trigger_crawl(
         if not _is_db_error(exc):
             raise
         import uuid as _uuid
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         return {
             "id": str(_uuid.uuid4()),
             "site_id": str(site_id),
@@ -173,7 +206,7 @@ async def trigger_crawl(
             "error_message": None,
             "started_at": None,
             "completed_at": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
 
@@ -186,8 +219,10 @@ async def list_site_crawls(
 ) -> list:
     try:
         result = await db.execute(
-            select(Crawl).where(Crawl.site_id == site_id)
-            .order_by(Crawl.created_at.desc()).limit(limit)
+            select(Crawl)
+            .where(Crawl.site_id == site_id)
+            .order_by(Crawl.created_at.desc())
+            .limit(limit)
         )
         return result.scalars().all()
     except Exception as exc:

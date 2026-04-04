@@ -18,8 +18,8 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +27,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TrendCandidate:
     """A candidate trend identified from document analysis."""
+
     title: str
     keywords: list[str]
     document_ids: list[str]
     document_count: int
     volume_7d: int
     volume_prior_7d: int
-    momentum_score: float      # (current - prior) / max(prior, 1) — normalized
+    momentum_score: float  # (current - prior) / max(prior, 1) — normalized
     sentiment_avg: float
     sources: list[str]
-    evidence: list[dict]       # Sample excerpts with source URLs
+    evidence: list[dict]  # Sample excerpts with source URLs
     category: str = "general"
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -52,8 +53,9 @@ class TrendCandidate:
 @dataclass
 class TrendRelevanceScore:
     """Relevance of a trend candidate to a brand profile."""
+
     trend_title: str
-    relevance_score: float     # 0-1
+    relevance_score: float  # 0-1
     matching_keywords: list[str]
     reasoning: str
 
@@ -78,8 +80,8 @@ class TrendDetector:
 
     def detect_trends(
         self,
-        documents: list[dict],      # List of source_document dicts
-        brand_profile: Optional[dict] = None,
+        documents: list[dict],  # List of source_document dicts
+        brand_profile: dict | None = None,
     ) -> list[TrendCandidate]:
         """
         Detect trend candidates from a list of source documents.
@@ -95,20 +97,22 @@ class TrendDetector:
         if not documents:
             return []
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         window_start = now - timedelta(days=self.momentum_window_days)
         prior_window_start = window_start - timedelta(days=self.momentum_window_days)
 
         # Split documents into current vs prior window
         current_docs = [
-            d for d in documents
-            if self._parse_date(d.get("published_at")) and
-               self._parse_date(d.get("published_at")) >= window_start
+            d
+            for d in documents
+            if self._parse_date(d.get("published_at"))
+            and self._parse_date(d.get("published_at")) >= window_start
         ]
         prior_docs = [
-            d for d in documents
-            if self._parse_date(d.get("published_at")) and
-               prior_window_start <= self._parse_date(d.get("published_at")) < window_start
+            d
+            for d in documents
+            if self._parse_date(d.get("published_at"))
+            and prior_window_start <= self._parse_date(d.get("published_at")) < window_start
         ]
 
         # Extract keyword frequencies for each window
@@ -116,9 +120,7 @@ class TrendDetector:
         prior_kw_freq = self._extract_keyword_frequencies(prior_docs)
 
         # Build trend candidates from current keyword clusters
-        candidates = self._build_candidates(
-            current_docs, current_kw_freq, prior_kw_freq
-        )
+        candidates = self._build_candidates(current_docs, current_kw_freq, prior_kw_freq)
 
         # Filter and sort
         candidates = [c for c in candidates if c.document_count >= self.min_document_count]
@@ -157,14 +159,76 @@ class TrendDetector:
 
         # Stop words to filter
         stop_words = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-            "of", "with", "by", "from", "is", "was", "are", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will", "would",
-            "could", "should", "may", "might", "must", "can", "this", "that",
-            "these", "those", "i", "you", "he", "she", "it", "we", "they",
-            "what", "which", "who", "when", "where", "why", "how",
-            "not", "no", "nor", "so", "yet", "both", "either", "neither",
-            "just", "also", "than", "then", "there", "here", "very",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "was",
+            "are",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "your",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "what",
+            "which",
+            "who",
+            "when",
+            "where",
+            "why",
+            "how",
+            "not",
+            "no",
+            "nor",
+            "so",
+            "yet",
+            "both",
+            "either",
+            "neither",
+            "just",
+            "also",
+            "than",
+            "then",
+            "there",
+            "here",
+            "very",
         }
 
         words = text.split()
@@ -180,9 +244,12 @@ class TrendDetector:
         for i in range(len(words) - 1):
             w1, w2 = words[i].strip("-"), words[i + 1].strip("-")
             if (
-                w1 not in stop_words and w2 not in stop_words
-                and len(w1) > 2 and len(w2) > 2
-                and w1.isalpha() and w2.isalpha()
+                w1 not in stop_words
+                and w2 not in stop_words
+                and len(w1) > 2
+                and len(w2) > 2
+                and w1.isalpha()
+                and w2.isalpha()
             ):
                 keywords.append(f"{w1} {w2}")
 
@@ -206,10 +273,10 @@ class TrendDetector:
         for keyword in top_keywords:
             # Find docs containing this keyword
             related_docs = [
-                d for d in current_docs
-                if keyword in self._extract_keywords(
-                    f"{d.get('title', '')} {d.get('raw_text', '')}"
-                )
+                d
+                for d in current_docs
+                if keyword
+                in self._extract_keywords(f"{d.get('title', '')} {d.get('raw_text', '')}")
             ]
 
             if len(related_docs) < self.min_document_count:
@@ -218,8 +285,7 @@ class TrendDetector:
             # Deduplicate: skip if this cluster overlaps significantly with an existing one
             cluster_ids = frozenset(d["id"] for d in related_docs)
             is_duplicate = any(
-                len(cluster_ids & seen) / max(len(cluster_ids), 1) > 0.8
-                for seen in seen_clusters
+                len(cluster_ids & seen) / max(len(cluster_ids), 1) > 0.8 for seen in seen_clusters
             )
             if is_duplicate:
                 continue
@@ -233,8 +299,7 @@ class TrendDetector:
 
             # Gather co-occurring keywords
             all_text = " ".join(
-                f"{d.get('title', '')} {d.get('raw_text', '')[:500]}"
-                for d in related_docs
+                f"{d.get('title', '')} {d.get('raw_text', '')[:500]}" for d in related_docs
             )
             co_keywords = self._extract_keywords(all_text)
             co_freq = Counter(co_keywords).most_common(10)
@@ -245,26 +310,30 @@ class TrendDetector:
             for doc in related_docs[:3]:
                 excerpt = (doc.get("raw_text", "") or "")[:200].strip()
                 if excerpt:
-                    evidence.append({
-                        "title": doc.get("title", ""),
-                        "excerpt": excerpt,
-                        "url": doc.get("source_url", ""),
-                        "source_type": doc.get("source_type", ""),
-                        "published_at": str(doc.get("published_at", "")),
-                    })
+                    evidence.append(
+                        {
+                            "title": doc.get("title", ""),
+                            "excerpt": excerpt,
+                            "url": doc.get("source_url", ""),
+                            "source_type": doc.get("source_type", ""),
+                            "published_at": str(doc.get("published_at", "")),
+                        }
+                    )
 
-            candidates.append(TrendCandidate(
-                title=keyword.title(),
-                keywords=cluster_keywords,
-                document_ids=[d["id"] for d in related_docs],
-                document_count=len(related_docs),
-                volume_7d=current_count,
-                volume_prior_7d=prior_count,
-                momentum_score=round(momentum, 3),
-                sentiment_avg=0.0,  # TODO: add sentiment analysis
-                sources=list({d.get("source_type", "unknown") for d in related_docs}),
-                evidence=evidence,
-            ))
+            candidates.append(
+                TrendCandidate(
+                    title=keyword.title(),
+                    keywords=cluster_keywords,
+                    document_ids=[d["id"] for d in related_docs],
+                    document_count=len(related_docs),
+                    volume_7d=current_count,
+                    volume_prior_7d=prior_count,
+                    momentum_score=round(momentum, 3),
+                    sentiment_avg=0.0,  # TODO: add sentiment analysis
+                    sources=list({d.get("source_type", "unknown") for d in related_docs}),
+                    evidence=evidence,
+                )
+            )
 
         return candidates
 
@@ -283,8 +352,8 @@ class TrendDetector:
         brand_keywords = set()
 
         # Extract brand keywords from profile
-        for field in ["positioning_keywords", "content_topics", "product_features"]:
-            values = brand_profile.get(field, [])
+        for field_name in ["positioning_keywords", "content_topics", "product_features"]:
+            values = brand_profile.get(field_name, [])
             if isinstance(values, list):
                 for v in values:
                     if isinstance(v, str):
@@ -310,19 +379,19 @@ class TrendDetector:
 
         return candidates
 
-    def _parse_date(self, value: Any) -> Optional[datetime]:
+    def _parse_date(self, value: Any) -> datetime | None:
         """Parse a date value to timezone-aware datetime."""
         if value is None:
             return None
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                return value.replace(tzinfo=timezone.utc)
+                return value.replace(tzinfo=UTC)
             return value
         if isinstance(value, str):
             try:
                 dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 return dt
             except ValueError:
                 return None

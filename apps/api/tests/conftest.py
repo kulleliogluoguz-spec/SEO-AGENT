@@ -12,6 +12,7 @@ For tests that need the DB, we use a PostgreSQL-compatible test DB or patch
 the column types. The approach here is to use a separate test-compatible model
 layer that maps JSONB→JSON and UUID→String for SQLite runs.
 """
+
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
@@ -19,13 +20,21 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import JSON, String, text
+from sqlalchemy import JSON, String
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.db.database import Base, get_db
 from app.core.security.auth import create_access_token, hash_password
 from app.main import app
-from app.models.models import MemberRole, Membership, Organization, Site, SiteStatus, User, Workspace
+from app.models.models import (
+    MemberRole,
+    Membership,
+    Organization,
+    Site,
+    SiteStatus,
+    User,
+    Workspace,
+)
 
 # ─── Test Database Configuration ─────────────────────────────────────────────
 
@@ -51,9 +60,10 @@ TestSessionLocal = async_sessionmaker(
 # Replace PostgreSQL-specific types with SQLite-compatible equivalents
 # This is applied once at module load for the test run.
 
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
-from sqlalchemy import event
-from sqlalchemy.engine import Engine
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.dialects.postgresql import JSONB  # noqa: E402
+from sqlalchemy.dialects.postgresql import UUID as PGUUID  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
 
 
 @event.listens_for(Engine, "connect")
@@ -84,6 +94,7 @@ _patch_columns_for_sqlite(Base.metadata)
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Single event loop for the test session."""
@@ -111,6 +122,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """HTTP test client wired to the test SQLite database."""
+
     async def override_get_db():
         yield db_session
 
@@ -147,12 +159,14 @@ async def demo_user(db_session: AsyncSession) -> User:
     db_session.add(org)
     await db_session.flush()
 
-    db_session.add(Membership(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        organization_id=org.id,
-        role=MemberRole.OWNER,
-    ))
+    db_session.add(
+        Membership(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            organization_id=org.id,
+            role=MemberRole.OWNER,
+        )
+    )
 
     workspace = Workspace(
         id=uuid.uuid4(),
@@ -178,7 +192,10 @@ async def auth_headers(demo_user: User) -> dict[str, str]:
 async def demo_site(db_session: AsyncSession, demo_user: User) -> Site:
     """Create a test site attached to the demo workspace."""
     from sqlalchemy import select
-    ws = (await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))).scalar_one()
+
+    ws = (
+        await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))
+    ).scalar_one()
 
     site = Site(
         id=uuid.uuid4(),

@@ -6,13 +6,13 @@ These feed the learning loop: high/low performers inform future content strategy
 
 Structure: storage/content_metrics.json
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "content_metrics.json"
 
@@ -40,9 +40,9 @@ def record_post_metrics(
     channel: str,
     platform_post_id: str,
     metrics: dict,
-    post_text: Optional[str] = None,
-    topic: Optional[str] = None,
-    content_type: Optional[str] = None,
+    post_text: str | None = None,
+    topic: str | None = None,
+    content_type: str | None = None,
 ) -> dict:
     """
     Record a performance snapshot for a published post.
@@ -52,7 +52,7 @@ def record_post_metrics(
       views, plays, profile_visits, link_clicks, bookmarks
     """
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     snapshot = {
         "id": str(uuid.uuid4()),
@@ -84,18 +84,21 @@ def record_post_metrics(
     data["snapshots"].append(snapshot)
 
     # Update per-channel aggregate
-    ch_agg = data["aggregates"].setdefault(channel, {
-        "total_posts": 0,
-        "total_impressions": 0,
-        "total_likes": 0,
-        "total_comments": 0,
-        "total_shares": 0,
-        "total_profile_visits": 0,
-        "total_link_clicks": 0,
-        "avg_engagement_score": 0.0,
-        "best_post_id": None,
-        "best_post_score": 0.0,
-    })
+    ch_agg = data["aggregates"].setdefault(
+        channel,
+        {
+            "total_posts": 0,
+            "total_impressions": 0,
+            "total_likes": 0,
+            "total_comments": 0,
+            "total_shares": 0,
+            "total_profile_visits": 0,
+            "total_link_clicks": 0,
+            "avg_engagement_score": 0.0,
+            "best_post_id": None,
+            "best_post_score": 0.0,
+        },
+    )
     ch_agg["total_posts"] += 1
     ch_agg["total_impressions"] += metrics.get("impressions", 0)
     ch_agg["total_likes"] += metrics.get("likes", 0)
@@ -125,6 +128,7 @@ def _compute_engagement_score(metrics: dict) -> float:
     Uses tanh normalization to handle outliers.
     """
     from math import tanh
+
     likes = metrics.get("likes", 0)
     comments = metrics.get("comments", 0)
     shares = metrics.get("shares", 0)
@@ -141,11 +145,12 @@ def _compute_engagement_score(metrics: dict) -> float:
     return round(score, 4)
 
 
-def get_post_metrics(scheduled_post_id: str, user_id: str) -> Optional[dict]:
+def get_post_metrics(scheduled_post_id: str, user_id: str) -> dict | None:
     """Return the most recent metrics snapshot for a specific post."""
     data = _load()
     matches = [
-        s for s in data["snapshots"]
+        s
+        for s in data["snapshots"]
         if s["scheduled_post_id"] == scheduled_post_id and s["user_id"] == user_id
     ]
     if not matches:
@@ -156,14 +161,11 @@ def get_post_metrics(scheduled_post_id: str, user_id: str) -> Optional[dict]:
 def get_channel_metrics(user_id: str, channel: str, limit: int = 20) -> list[dict]:
     """Return recent metrics snapshots for a channel, newest first."""
     data = _load()
-    matches = [
-        s for s in data["snapshots"]
-        if s["user_id"] == user_id and s["channel"] == channel
-    ]
+    matches = [s for s in data["snapshots"] if s["user_id"] == user_id and s["channel"] == channel]
     return sorted(matches, key=lambda x: x["recorded_at"], reverse=True)[:limit]
 
 
-def get_top_performers(user_id: str, channel: Optional[str] = None, limit: int = 5) -> list[dict]:
+def get_top_performers(user_id: str, channel: str | None = None, limit: int = 5) -> list[dict]:
     """Return top performing posts by engagement score."""
     data = _load()
     matches = [s for s in data["snapshots"] if s["user_id"] == user_id]
@@ -195,10 +197,12 @@ def get_performance_summary(user_id: str) -> dict:
         by_channel[ch]["total_score"] += snap["engagement_score"]
         by_channel[ch]["total_impressions"] += snap["metrics"].get("impressions", 0)
 
-    for ch, stats in by_channel.items():
+    for _ch, stats in by_channel.items():
         stats["avg_score"] = round(stats["total_score"] / stats["posts"], 4)
 
-    best_channel = max(by_channel.items(), key=lambda kv: kv[1]["avg_score"])[0] if by_channel else None
+    best_channel = (
+        max(by_channel.items(), key=lambda kv: kv[1]["avg_score"])[0] if by_channel else None
+    )
 
     return {
         "total_posts_measured": len(user_snapshots),

@@ -25,9 +25,16 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "ANN"]
 ignore = [
     "E501",    # line too long (handled by formatter)
     "B008",    # do not perform function calls in default args (FastAPI pattern)
+    "ANN001",  # missing type annotation for function argument (FastAPI DI pattern)
+    "ANN002",  # missing type annotation for *args
+    "ANN003",  # missing type annotation for **kwargs
     "ANN101",  # missing type annotation for 'self'
     "ANN102",  # missing type annotation for 'cls'
+    "ANN201",  # missing return type annotation for public function
+    "ANN202",  # missing return type annotation for private function
+    "ANN204",  # missing return type annotation for special method
     "ANN401",  # dynamically typed expressions
+    "B904",    # raise from err (pre-existing pattern throughout codebase)
 ]
 
 [tool.ruff.lint.isort]

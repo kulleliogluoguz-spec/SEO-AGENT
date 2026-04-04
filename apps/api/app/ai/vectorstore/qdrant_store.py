@@ -20,7 +20,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +35,18 @@ class CollectionName(str, Enum):
 @dataclass
 class VectorPoint:
     """A single vector point to store in Qdrant."""
-    id: str                          # UUID string
-    vector: list[float]              # Embedding vector
+
+    id: str  # UUID string
+    vector: list[float]  # Embedding vector
     payload: dict[str, Any] = field(default_factory=dict)  # Metadata for filtering
 
 
 @dataclass
 class SearchResult:
     """A single result from a similarity search."""
+
     id: str
-    score: float                     # Cosine similarity score (0-1)
+    score: float  # Cosine similarity score (0-1)
     payload: dict[str, Any] = field(default_factory=dict)
 
 
@@ -70,13 +72,13 @@ class QdrantStore:
         self.api_key = api_key or os.getenv("QDRANT_API_KEY", "")
         self.dimensions = dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
         self._client = None
-        self._available: Optional[bool] = None
+        self._available: bool | None = None
 
     def _get_client(self):
         if self._client is None:
             try:
                 from qdrant_client import QdrantClient
-                from qdrant_client.http.models import Distance, VectorParams
+                from qdrant_client.http.models import Distance, VectorParams  # noqa: F401
 
                 kwargs: dict[str, Any] = {"url": self.url}
                 if self.api_key:
@@ -85,9 +87,7 @@ class QdrantStore:
                 self._client = QdrantClient(**kwargs)
                 logger.info(f"Qdrant client initialized at {self.url}")
             except ImportError:
-                raise RuntimeError(
-                    "qdrant-client is not installed. Run: pip install qdrant-client"
-                )
+                raise RuntimeError("qdrant-client is not installed. Run: pip install qdrant-client")
         return self._client
 
     async def ensure_collections(self) -> None:
@@ -176,10 +176,10 @@ class QdrantStore:
 
             qdrant_filter = None
             if filters:
-                from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+                from qdrant_client.http.models import FieldCondition, Filter, MatchValue
+
                 conditions = [
-                    FieldCondition(key=k, match=MatchValue(value=v))
-                    for k, v in filters.items()
+                    FieldCondition(key=k, match=MatchValue(value=v)) for k, v in filters.items()
                 ]
                 qdrant_filter = Filter(must=conditions)
 
@@ -213,6 +213,7 @@ class QdrantStore:
         try:
             client = self._get_client()
             from qdrant_client.http.models import PointIdsList
+
             client.delete(
                 collection_name=collection_name,
                 points_selector=PointIdsList(points=ids),
@@ -238,8 +239,7 @@ class QdrantStore:
             client = self._get_client()
             collections = client.get_collections().collections
             collection_info = {
-                c.name: client.count(collection_name=c.name, exact=False).count
-                for c in collections
+                c.name: client.count(collection_name=c.name, exact=False).count for c in collections
             }
             return {
                 "status": "healthy",

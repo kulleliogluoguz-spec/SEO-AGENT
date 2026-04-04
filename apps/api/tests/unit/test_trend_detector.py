@@ -1,9 +1,8 @@
 """Unit tests for the Trend Detector."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from app.agents.trends.trend_detector import TrendDetector, TrendCandidate
+from app.agents.trends.trend_detector import TrendDetector
 
 
 def make_doc(
@@ -18,7 +17,7 @@ def make_doc(
         "id": id,
         "title": title,
         "raw_text": text,
-        "published_at": datetime.now(tz=timezone.utc) - timedelta(days=days_ago),
+        "published_at": datetime.now(tz=UTC) - timedelta(days=days_ago),
         "source_type": source_type,
         "source_url": f"https://example.com/{id}",
         "metadata": {},
@@ -34,14 +33,18 @@ class TestTrendDetector:
         assert result == []
 
     def test_single_document_below_threshold(self):
-        docs = [make_doc("1", "AI automation", "AI is transforming automation workflows", days_ago=1)]
+        docs = [
+            make_doc("1", "AI automation", "AI is transforming automation workflows", days_ago=1)
+        ]
         result = self.detector.detect_trends(docs)
         assert result == []  # min_document_count=2
 
     def test_multiple_documents_same_topic(self):
         docs = [
             make_doc("1", "AI automation growth", "AI automation is growing fast", days_ago=1),
-            make_doc("2", "automation trends 2026", "automation tools are trending now", days_ago=2),
+            make_doc(
+                "2", "automation trends 2026", "automation tools are trending now", days_ago=2
+            ),
             make_doc("3", "automation market", "the automation market is expanding", days_ago=3),
         ]
         result = self.detector.detect_trends(docs)
@@ -54,7 +57,9 @@ class TestTrendDetector:
         """Documents from current week should have positive momentum vs prior week."""
         # 5 current week docs
         current = [
-            make_doc(f"curr-{i}", "kubernetes scaling", "kubernetes scaling issues solved", days_ago=i)
+            make_doc(
+                f"curr-{i}", "kubernetes scaling", "kubernetes scaling issues solved", days_ago=i
+            )
             for i in range(5)
         ]
         # 1 prior week doc
@@ -74,7 +79,9 @@ class TestTrendDetector:
             "icp_description": "data scientists and ML engineers",
         }
         docs = [
-            make_doc("1", "Python MLOps pipeline", "Python MLOps pipeline best practices", days_ago=1),
+            make_doc(
+                "1", "Python MLOps pipeline", "Python MLOps pipeline best practices", days_ago=1
+            ),
             make_doc("2", "MLOps deployment", "model deployment with MLOps tools", days_ago=2),
             make_doc("3", "gardening tips", "how to grow tomatoes in your garden", days_ago=1),
             make_doc("4", "garden watering", "watering schedule for garden plants", days_ago=2),
@@ -82,8 +89,14 @@ class TestTrendDetector:
         result = self.detector.detect_trends(docs, brand_profile=brand_profile)
 
         # MLOps trends should have higher relevance than gardening trends
-        mlops_trends = [c for c in result if any("mlops" in kw or "python" in kw or "pipeline" in kw for kw in c.keywords)]
-        garden_trends = [c for c in result if any("garden" in kw or "tomato" in kw for kw in c.keywords)]
+        mlops_trends = [
+            c
+            for c in result
+            if any("mlops" in kw or "python" in kw or "pipeline" in kw for kw in c.keywords)
+        ]
+        garden_trends = [
+            c for c in result if any("garden" in kw or "tomato" in kw for kw in c.keywords)
+        ]
 
         if mlops_trends and garden_trends:
             mlops_relevance = mlops_trends[0].metadata.get("relevance_score", 0)
@@ -125,12 +138,23 @@ class TestTrendDetector:
         docs = []
         # 5 docs about "database optimization" (strong trend)
         for i in range(5):
-            docs.append(make_doc(f"db-{i}", "database optimization", "sql database optimization tips", days_ago=i))
+            docs.append(
+                make_doc(
+                    f"db-{i}", "database optimization", "sql database optimization tips", days_ago=i
+                )
+            )
         # 2 docs about "coffee brewing" (weaker trend)
         for i in range(2):
-            docs.append(make_doc(f"coffee-{i}", "coffee brewing methods", "best coffee brewing methods", days_ago=i))
+            docs.append(
+                make_doc(
+                    f"coffee-{i}",
+                    "coffee brewing methods",
+                    "best coffee brewing methods",
+                    days_ago=i,
+                )
+            )
 
-        result = self.detector.detect_trends(docs, min_document_count=2)
+        result = self.detector.detect_trends(docs)
         if len(result) >= 2:
             # Scores should be non-increasing
             scores = [c.momentum_score * c.document_count for c in result]

@@ -4,8 +4,9 @@ WeeklyReportAgent — Layer 11
 Synthesizes data from all sources into a structured weekly growth report.
 Supports markdown and HTML export.
 """
+
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
 from pydantic import BaseModel
@@ -62,7 +63,7 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
         input_data: WeeklyReportInput,
         context: AgentRunContext,
     ) -> WeeklyReportOutput:
-        now = input_data.period_end or datetime.now(timezone.utc)
+        now = input_data.period_end or datetime.now(UTC)
         period_start = now - timedelta(days=7)
         period_end = now
 
@@ -73,15 +74,19 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
 
         # KPI section
         kpi_text = self._format_kpis(input_data.kpis)
-        sections.append(ReportSection(
-            title="KPI Summary",
-            content=kpi_text,
-            data=input_data.kpis,
-        ))
+        sections.append(
+            ReportSection(
+                title="KPI Summary",
+                content=kpi_text,
+                data=input_data.kpis,
+            )
+        )
 
         # Opportunities
         if input_data.top_opportunities:
-            opp_text = "\n".join(f"- {o.get('title', str(o))}" for o in input_data.top_opportunities[:5])
+            opp_text = "\n".join(
+                f"- {o.get('title', str(o))}" for o in input_data.top_opportunities[:5]
+            )
             sections.append(ReportSection(title="Top Opportunities", content=opp_text))
 
         # Risks
@@ -90,10 +95,12 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
             sections.append(ReportSection(title="Risks & Blockers", content=risk_text))
 
         # Approval queue
-        sections.append(ReportSection(
-            title="Pending Approvals",
-            content=f"{input_data.pending_approvals_count} items awaiting approval.",
-        ))
+        sections.append(
+            ReportSection(
+                title="Pending Approvals",
+                content=f"{input_data.pending_approvals_count} items awaiting approval.",
+            )
+        )
 
         # LLM narrative
         executive_summary = await self._generate_summary(input_data, sections, context)
@@ -126,7 +133,11 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
         for k, v in kpis.items():
             if isinstance(v, dict):
                 delta = v.get("delta", "")
-                delta_str = f" ({'+' if delta > 0 else ''}{delta}%)" if isinstance(delta, (int, float)) else ""
+                delta_str = (
+                    f" ({'+' if delta > 0 else ''}{delta}%)"
+                    if isinstance(delta, int | float)
+                    else ""
+                )
                 lines.append(f"- **{k}**: {v.get('value', 'N/A')}{delta_str}")
             else:
                 lines.append(f"- **{k}**: {v}")
@@ -168,17 +179,21 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
         system = f"Generate a prioritized {days}-day action plan as a JSON array of strings."
         user = f"Top opportunities: {opps}\nPending approvals: {input_data.pending_approvals_count}"
 
-        from pydantic import BaseModel as PBM
-        class ActionList(PBM):
+        from pydantic import BaseModel as _BaseModel
+
+        class ActionList(_BaseModel):
             actions: list[str]
 
         result, _ = await self._call_llm_structured(system, user, ActionList)
         return result.actions[:5] if result else []
 
     def _render_markdown(
-        self, title: str, summary: str,
+        self,
+        title: str,
+        summary: str,
         sections: list[ReportSection],
-        next_7: list[str], next_30: list[str],
+        next_7: list[str],
+        next_30: list[str],
     ) -> str:
         parts = [f"# {title}\n", f"## Executive Summary\n\n{summary}\n"]
         for s in sections:
@@ -189,11 +204,16 @@ class WeeklyReportAgent(LLMAgent[WeeklyReportInput, WeeklyReportOutput]):
             parts.append("## Next 30 Days\n\n" + "\n".join(f"- {a}" for a in next_30) + "\n")
         return "\n".join(parts)
 
-    def _render_html(self, title: str, summary: str,
+    def _render_html(
+        self,
+        title: str,
+        summary: str,
         sections: list[ReportSection],
-        next_7: list[str], next_30: list[str],
+        next_7: list[str],
+        next_30: list[str],
     ) -> str:
         import html as html_lib
+
         content = f"<h1>{html_lib.escape(title)}</h1>"
         content += f"<h2>Executive Summary</h2><p>{html_lib.escape(summary)}</p>"
         for s in sections:

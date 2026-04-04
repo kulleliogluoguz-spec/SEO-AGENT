@@ -5,6 +5,7 @@ Reviews content and proposed actions for compliance violations.
 Checks for: deceptive claims, unverified statistics, misleading comparisons,
 spam patterns, community rule violations, and platform policy violations.
 """
+
 from typing import ClassVar
 
 from pydantic import BaseModel
@@ -37,9 +38,11 @@ class ComplianceOutput(BaseModel):
 
 # Rule-based patterns that always trigger flags
 DECEPTIVE_PATTERNS = [
-    ("guaranteed results", "warning", "Absolute guarantees are often misleading"),
+    ("guaranteed", "warning", "Absolute guarantees are often misleading"),
     ("100% proven", "critical", "Absolute proof claims require strong evidence"),
     ("risk-free", "warning", "No business action is entirely risk-free"),
+    ("zero risk", "warning", "No business action is entirely risk-free"),
+    ("no risk", "warning", "No business action is entirely risk-free"),
     ("#1 in the world", "critical", "Superlative claims require citation"),
     ("scientifically proven", "warning", "Requires specific study citation"),
     ("customers love us", "info", "Testimonial claims need specifics"),
@@ -48,8 +51,13 @@ DECEPTIVE_PATTERNS = [
 
 # Channels that always require human review (never auto-publish)
 HUMAN_REVIEW_REQUIRED_CHANNELS = {
-    "reddit", "hackernews", "twitter", "linkedin",
-    "facebook", "instagram", "producthunt",
+    "reddit",
+    "hackernews",
+    "twitter",
+    "linkedin",
+    "facebook",
+    "instagram",
+    "producthunt",
 }
 
 
@@ -73,36 +81,43 @@ class ComplianceGuardianAgent(LLMAgent[ComplianceInput, ComplianceOutput]):
         # Rule-based checks (fast, no LLM)
         for pattern, severity, description in DECEPTIVE_PATTERNS:
             if pattern.lower() in content_lower:
-                flags.append(ComplianceFlag(
-                    severity=severity,
-                    flag_type="deceptive_language",
-                    description=f"Found potentially deceptive phrase: '{pattern}'",
-                    location=pattern,
-                    recommendation=description,
-                ))
+                flags.append(
+                    ComplianceFlag(
+                        severity=severity,
+                        flag_type="deceptive_language",
+                        description=f"Found potentially deceptive phrase: '{pattern}'",
+                        location=pattern,
+                        recommendation=description,
+                    )
+                )
 
         # Check for unverified statistics
         import re
-        stat_pattern = re.compile(r'\b\d+%|\b\d+x\b|\$\d+[MBK]', re.IGNORECASE)
+
+        stat_pattern = re.compile(r"\b\d+%|\b\d+x\b|\$\d+[MBK]", re.IGNORECASE)
         stats_found = stat_pattern.findall(input_data.content)
         if stats_found:
-            flags.append(ComplianceFlag(
-                severity="info",
-                flag_type="unverified_statistic",
-                description=f"Found {len(stats_found)} numeric claim(s) that require source citation: {', '.join(stats_found[:5])}",
-                recommendation="Ensure all statistics have verifiable sources. Add citation or remove.",
-            ))
+            flags.append(
+                ComplianceFlag(
+                    severity="info",
+                    flag_type="unverified_statistic",
+                    description=f"Found {len(stats_found)} numeric claim(s) that require source citation: {', '.join(stats_found[:5])}",
+                    recommendation="Ensure all statistics have verifiable sources. Add citation or remove.",
+                )
+            )
 
         # Channel-specific rules
         safe_to_auto = True
         if input_data.channel in HUMAN_REVIEW_REQUIRED_CHANNELS:
             safe_to_auto = False
-            flags.append(ComplianceFlag(
-                severity="info",
-                flag_type="channel_requires_review",
-                description=f"Content for '{input_data.channel}' always requires human review before posting.",
-                recommendation="Review content for authenticity, community norms, and platform rules before submitting.",
-            ))
+            flags.append(
+                ComplianceFlag(
+                    severity="info",
+                    flag_type="channel_requires_review",
+                    description=f"Content for '{input_data.channel}' always requires human review before posting.",
+                    recommendation="Review content for authenticity, community norms, and platform rules before submitting.",
+                )
+            )
 
         # LLM-enhanced compliance review
         if self._llm and not context.demo_mode and input_data.content:
@@ -145,16 +160,15 @@ If no issues, return {"flags": []}"""
 
         user = f"Content type: {input_data.content_type}\nChannel: {input_data.channel}\n\nContent:\n{input_data.content[:3000]}"
 
-        from pydantic import BaseModel as PBM
-        class LLMFlags(PBM):
+        from pydantic import BaseModel as _BaseModel
+
+        class LLMFlags(_BaseModel):
             flags: list[ComplianceFlag]
 
         result, _ = await self._call_llm_structured(system, user, LLMFlags)
         return result.flags if result else []
 
-    def _build_summary(
-        self, flags: list[ComplianceFlag], risk_score: float, passed: bool
-    ) -> str:
+    def _build_summary(self, flags: list[ComplianceFlag], risk_score: float, passed: bool) -> str:
         if not flags:
             return "No compliance issues detected. Content appears clean."
         critical = sum(1 for f in flags if f.severity == "critical")

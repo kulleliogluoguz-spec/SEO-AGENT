@@ -15,24 +15,30 @@ Endpoints:
   POST   /api/v1/campaigns/reallocation            — create reallocation decision
   GET    /api/v1/campaigns/audit-log               — full audit trail
 """
-from __future__ import annotations
 
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
 
-from app.api.dependencies.auth import get_current_user
-from app.core.store.campaign_store import (
-    create_campaign_draft, get_campaign_drafts, get_campaign_draft,
-    update_campaign_draft, submit_for_approval, mark_published,
-    create_reallocation_decision, get_reallocation_decisions, get_audit_log,
-)
-from app.core.store.credential_store import get_linked_accounts, get_platform_stage, get_credential
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
 from app.adapters import ADAPTER_REGISTRY
 from app.adapters.base import AdapterCapabilityStage, AdapterCredentials
+from app.api.dependencies.auth import get_current_user
+from app.core.store.campaign_store import (
+    create_campaign_draft,
+    create_reallocation_decision,
+    get_audit_log,
+    get_campaign_draft,
+    get_campaign_drafts,
+    get_reallocation_decisions,
+    mark_published,
+    submit_for_approval,
+    update_campaign_draft,
+)
+from app.core.store.credential_store import get_credential, get_linked_accounts, get_platform_stage
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +47,20 @@ router = APIRouter()
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class CampaignDraftCreate(BaseModel):
     platform: str = Field(..., description="meta | google | tiktok | linkedin | pinterest | snap")
-    account_id: Optional[str] = Field(None, description="Ad account ID. Optional for drafts — required at publish time.")
+    account_id: str | None = Field(
+        None, description="Ad account ID. Optional for drafts — required at publish time."
+    )
     name: str
-    objective: str = Field(..., description="awareness | traffic | engagement | leads | conversions | app_installs | video_views | catalog_sales")
+    objective: str = Field(
+        ...,
+        description="awareness | traffic | engagement | leads | conversions | app_installs | video_views | catalog_sales",
+    )
     daily_budget_usd: float = Field(..., ge=1.0, description="Daily budget in USD")
-    start_date: Optional[str] = Field(None, description="ISO date string YYYY-MM-DD")
-    end_date: Optional[str] = Field(None, description="ISO date string YYYY-MM-DD")
+    start_date: str | None = Field(None, description="ISO date string YYYY-MM-DD")
+    end_date: str | None = Field(None, description="ISO date string YYYY-MM-DD")
     target_audiences: list[dict] = Field(default_factory=list)
     creatives: list[dict] = Field(default_factory=list)
     notes: str = ""
@@ -56,19 +68,21 @@ class CampaignDraftCreate(BaseModel):
 
 
 class CampaignDraftUpdate(BaseModel):
-    name: Optional[str] = None
-    objective: Optional[str] = None
-    daily_budget_usd: Optional[float] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    target_audiences: Optional[list[dict]] = None
-    creatives: Optional[list[dict]] = None
-    notes: Optional[str] = None
+    name: str | None = None
+    objective: str | None = None
+    daily_budget_usd: float | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    target_audiences: list[dict] | None = None
+    creatives: list[dict] | None = None
+    notes: str | None = None
 
 
 class PublishRequest(BaseModel):
     approval_id: str = Field(..., description="Approval record ID that authorized this publish")
-    platform_campaign_id: str = Field(..., description="Campaign ID returned by the platform API after publishing")
+    platform_campaign_id: str = Field(
+        ..., description="Campaign ID returned by the platform API after publishing"
+    )
 
 
 class ReallocationCreate(BaseModel):
@@ -88,8 +102,14 @@ class ReallocationCreate(BaseModel):
 
 VALID_PLATFORMS = {"meta", "google", "tiktok", "linkedin", "pinterest", "snap"}
 VALID_OBJECTIVES = {
-    "awareness", "traffic", "engagement", "leads", "conversions",
-    "app_installs", "video_views", "catalog_sales",
+    "awareness",
+    "traffic",
+    "engagement",
+    "leads",
+    "conversions",
+    "app_installs",
+    "video_views",
+    "catalog_sales",
 }
 
 
@@ -110,7 +130,9 @@ async def create_draft(
         raise HTTPException(400, f"Unsupported platform. Must be one of: {sorted(VALID_PLATFORMS)}")
 
     if payload.objective not in VALID_OBJECTIVES:
-        raise HTTPException(400, f"Unsupported objective. Must be one of: {sorted(VALID_OBJECTIVES)}")
+        raise HTTPException(
+            400, f"Unsupported objective. Must be one of: {sorted(VALID_OBJECTIVES)}"
+        )
 
     # Check platform stage — warn if not connected, but allow draft creation for planning
     stage = get_platform_stage(str(current_user.id), payload.platform)
@@ -148,8 +170,8 @@ async def create_draft(
 
 @router.get("/drafts")
 async def list_drafts(
-    platform: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    platform: str | None = Query(None),
+    status: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user=Depends(get_current_user),
 ) -> dict:
@@ -194,9 +216,12 @@ async def update_draft(
     if not draft or draft["user_id"] != str(current_user.id):
         raise HTTPException(404, "Campaign draft not found.")
     if draft["status"] not in ("draft",):
-        raise HTTPException(409, f"Cannot edit a draft in '{draft['status']}' status. Only 'draft' status drafts can be updated.")
+        raise HTTPException(
+            409,
+            f"Cannot edit a draft in '{draft['status']}' status. Only 'draft' status drafts can be updated.",
+        )
 
-    updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+    updates = dict(payload.model_dump(exclude_none=True).items())
     updated = update_campaign_draft(draft_id, updates)
     return {"draft": updated, "message": "Draft updated."}
 
@@ -250,7 +275,7 @@ async def publish_draft(
         raise HTTPException(
             409,
             f"Draft must be in 'approved' status to publish. Current status: '{draft['status']}'. "
-            "Submit for approval first via POST /campaigns/drafts/{id}/submit."
+            "Submit for approval first via POST /campaigns/drafts/{id}/submit.",
         )
 
     published = mark_published(draft_id, str(current_user.id), payload.platform_campaign_id)
@@ -276,12 +301,14 @@ async def propose_reallocation(
     - Minimum sample size: 100 impressions before reallocation
     - Floor/ceiling enforced by adapter layer
     """
-    budget_change_pct = abs(payload.new_budget_usd - payload.old_budget_usd) / max(payload.old_budget_usd, 1) * 100
+    budget_change_pct = (
+        abs(payload.new_budget_usd - payload.old_budget_usd) / max(payload.old_budget_usd, 1) * 100
+    )
     if budget_change_pct > 50:
         raise HTTPException(
             400,
             f"Budget change of {budget_change_pct:.0f}% exceeds the 50% single-reallocation safety limit. "
-            "Make multiple smaller adjustments with measurement between each step."
+            "Make multiple smaller adjustments with measurement between each step.",
         )
 
     decision = create_reallocation_decision(
@@ -309,7 +336,7 @@ async def propose_reallocation(
 
 @router.get("/reallocation")
 async def list_reallocations(
-    platform: Optional[str] = Query(None),
+    platform: str | None = Query(None),
     current_user=Depends(get_current_user),
 ) -> dict:
     """List budget reallocation decisions."""
@@ -334,9 +361,9 @@ async def audit_log(
 @router.get("/performance/{platform}")
 async def pull_performance(
     platform: str,
-    date_start: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    date_end: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    campaign_ids: Optional[str] = Query(None, description="Comma-separated platform campaign IDs"),
+    date_start: str | None = Query(None, description="YYYY-MM-DD"),
+    date_end: str | None = Query(None, description="YYYY-MM-DD"),
+    campaign_ids: str | None = Query(None, description="Comma-separated platform campaign IDs"),
     current_user=Depends(get_current_user),
 ) -> dict:
     """
@@ -382,6 +409,7 @@ async def pull_performance(
 
     # Build adapter credentials
     import os
+
     credentials = AdapterCredentials(
         platform=platform,
         access_token=cred_data.get("access_token"),
@@ -392,18 +420,20 @@ async def pull_performance(
         account_id=account_id,
     )
 
-    AdapterClass = ADAPTER_REGISTRY.get(platform)
-    if not AdapterClass:
+    adapter_class = ADAPTER_REGISTRY.get(platform)
+    if not adapter_class:
         raise HTTPException(500, f"No adapter registered for {platform}")
 
-    adapter = AdapterClass(credentials, stage=AdapterCapabilityStage.READ_REPORT)
+    adapter = adapter_class(credentials, stage=AdapterCapabilityStage.READ_REPORT)
 
     # Build campaign_ids list
     ids = [c.strip() for c in campaign_ids.split(",")] if campaign_ids else []
 
     # If no specific campaign IDs, pull from all published drafts
     if not ids:
-        all_drafts = get_campaign_drafts(str(current_user.id), platform=platform, status="published")
+        all_drafts = get_campaign_drafts(
+            str(current_user.id), platform=platform, status="published"
+        )
         ids = [d["platform_campaign_id"] for d in all_drafts if d.get("platform_campaign_id")]
 
     if not ids:
@@ -419,25 +449,27 @@ async def pull_performance(
         metrics = adapter.pull_campaign_metrics(ids, start, end)
         serialized = []
         for m in metrics:
-            serialized.append({
-                "campaign_id": m.campaign_id,
-                "platform": m.platform,
-                "date": m.date,
-                "impressions": m.impressions,
-                "clicks": m.clicks,
-                "spend_usd": m.spend_usd,
-                "conversions": m.conversions,
-                "revenue_usd": m.revenue_usd,
-                "cpm_usd": m.cpm_usd,
-                "cpc_usd": m.cpc_usd,
-                "ctr_pct": m.ctr_pct,
-                "roas": m.roas,
-                "cpa_usd": m.cpa_usd,
-                "reach": m.reach,
-                "frequency": m.frequency,
-                "video_views": m.video_views,
-                "video_completion_rate": m.video_completion_rate,
-            })
+            serialized.append(
+                {
+                    "campaign_id": m.campaign_id,
+                    "platform": m.platform,
+                    "date": m.date,
+                    "impressions": m.impressions,
+                    "clicks": m.clicks,
+                    "spend_usd": m.spend_usd,
+                    "conversions": m.conversions,
+                    "revenue_usd": m.revenue_usd,
+                    "cpm_usd": m.cpm_usd,
+                    "cpc_usd": m.cpc_usd,
+                    "ctr_pct": m.ctr_pct,
+                    "roas": m.roas,
+                    "cpa_usd": m.cpa_usd,
+                    "reach": m.reach,
+                    "frequency": m.frequency,
+                    "video_views": m.video_views,
+                    "video_completion_rate": m.video_completion_rate,
+                }
+            )
 
         # Compute aggregates
         total_spend = sum(m.spend_usd for m in metrics)
@@ -459,54 +491,89 @@ async def pull_performance(
                 "total_conversions": total_conversions,
                 "total_revenue_usd": round(total_revenue, 2),
                 "blended_roas": round(total_revenue / total_spend, 3) if total_spend > 0 else 0,
-                "blended_cpa": round(total_spend / total_conversions, 2) if total_conversions > 0 else 0,
-                "overall_ctr": round(total_clicks / total_impressions * 100, 3) if total_impressions > 0 else 0,
+                "blended_cpa": round(total_spend / total_conversions, 2)
+                if total_conversions > 0
+                else 0,
+                "overall_ctr": round(total_clicks / total_impressions * 100, 3)
+                if total_impressions > 0
+                else 0,
             },
             "data_mode": "observed",
             "source": f"{platform}_api",
         }
 
     except NotImplementedError as e:
-        raise HTTPException(501, detail={
-            "message": f"{platform} performance pull is not yet implemented.",
-            "detail": str(e),
-        })
+        raise HTTPException(
+            501,
+            detail={
+                "message": f"{platform} performance pull is not yet implemented.",
+                "detail": str(e),
+            },
+        )
     except Exception as e:
         logger.error("[campaigns] performance pull error platform=%s: %s", platform, e)
-        raise HTTPException(502, detail={
-            "message": f"Error pulling performance from {platform}: {str(e)[:200]}",
-        })
+        raise HTTPException(
+            502,
+            detail={
+                "message": f"Error pulling performance from {platform}: {str(e)[:200]}",
+            },
+        )
 
 
 # ─── Promote My Site Wizard ───────────────────────────────────────────────────
 
+
 class PromoteSiteRequest(BaseModel):
     landing_page_url: str
-    objective: str = "traffic"          # traffic | awareness | leads | conversions
-    platform: str = "meta"              # meta | google | tiktok | linkedin
+    objective: str = "traffic"  # traffic | awareness | leads | conversions
+    platform: str = "meta"  # meta | google | tiktok | linkedin
     daily_budget_usd: float = Field(10.0, ge=1.0)
-    target_audience_description: Optional[str] = None
-    niche: Optional[str] = None
+    target_audience_description: str | None = None
+    niche: str | None = None
 
 
 PROMOTE_SITE_AUDIENCES = {
     "meta": [
-        {"name": "Lookalike — website visitors (1%)", "type": "lookalike", "estimated_size": "500K–1M"},
+        {
+            "name": "Lookalike — website visitors (1%)",
+            "type": "lookalike",
+            "estimated_size": "500K–1M",
+        },
         {"name": "Interest-based — niche relevant", "type": "interest", "estimated_size": "2M–5M"},
-        {"name": "Retargeting — past visitors", "type": "retargeting", "estimated_size": "depends on traffic"},
+        {
+            "name": "Retargeting — past visitors",
+            "type": "retargeting",
+            "estimated_size": "depends on traffic",
+        },
     ],
     "google": [
-        {"name": "Search — branded keywords", "type": "search", "estimated_size": "depends on search volume"},
-        {"name": "Search — competitor keywords", "type": "search", "estimated_size": "depends on search volume"},
+        {
+            "name": "Search — branded keywords",
+            "type": "search",
+            "estimated_size": "depends on search volume",
+        },
+        {
+            "name": "Search — competitor keywords",
+            "type": "search",
+            "estimated_size": "depends on search volume",
+        },
         {"name": "Display — contextual targeting", "type": "display", "estimated_size": "5M–20M"},
     ],
     "tiktok": [
         {"name": "Interest — broad niche", "type": "interest", "estimated_size": "3M–10M"},
-        {"name": "Custom audience — video viewers", "type": "custom", "estimated_size": "depends on views"},
+        {
+            "name": "Custom audience — video viewers",
+            "type": "custom",
+            "estimated_size": "depends on views",
+        },
         {"name": "Broad — TikTok algorithm optimized", "type": "broad", "estimated_size": "20M+"},
     ],
     "linkedin": [
-        {"name": "Job title targeting — decision makers", "type": "job_title", "estimated_size": "500K–2M"},
+        {
+            "name": "Job title targeting — decision makers",
+            "type": "job_title",
+            "estimated_size": "500K–2M",
+        },
         {"name": "Company size — SMB / Enterprise", "type": "company", "estimated_size": "1M–5M"},
         {"name": "Skill-based — niche professionals", "type": "skill", "estimated_size": "500K–3M"},
     ],
@@ -551,7 +618,6 @@ async def promote_site_wizard(
     - estimated_results: expected range based on budget
     - draft_campaign: the created campaign draft (in 'draft' status, no platform call made)
     """
-    import random
 
     if body.platform not in VALID_PLATFORMS:
         body.platform = "meta"
@@ -576,7 +642,9 @@ async def promote_site_wizard(
     }
     if body.objective in ("leads", "conversions"):
         cpl = cpl_estimates.get(body.platform, 10.0)
-        estimated_results["estimated_monthly_leads"] = f"{int(monthly_budget / cpl * 0.5)}–{int(monthly_budget / cpl * 1.5)}"
+        estimated_results["estimated_monthly_leads"] = (
+            f"{int(monthly_budget / cpl * 0.5)}–{int(monthly_budget / cpl * 1.5)}"
+        )
         estimated_results["estimated_cpl_usd"] = cpl
 
     # Create draft campaign
@@ -591,11 +659,13 @@ async def promote_site_wizard(
         start_date=None,
         end_date=None,
         target_audiences=[audiences[0]] if audiences else [],
-        creatives=[{
-            "type": "copy_angle",
-            "headline": angles[0],
-            "destination_url": body.landing_page_url,
-        }],
+        creatives=[
+            {
+                "type": "copy_angle",
+                "headline": angles[0],
+                "destination_url": body.landing_page_url,
+            }
+        ],
         notes=f"Created via Promote My Site wizard. Landing page: {body.landing_page_url}",
         strategy_version="promote_site_v1",
     )
@@ -612,10 +682,9 @@ async def promote_site_wizard(
         },
         "draft_campaign": draft,
         "next_steps": [
-            f"Review your campaign draft in Campaigns",
+            "Review your campaign draft in Campaigns",
             "Pair ad copy with a creative (image or video)",
             f"Connect {body.platform.title()} Ads in Connections to enable publishing",
             "Submit for approval when ready to go live",
         ],
     }
-

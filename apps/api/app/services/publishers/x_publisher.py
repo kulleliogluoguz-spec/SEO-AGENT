@@ -85,7 +85,7 @@ class XPublisher(PublisherService):
 
         url = f"{X_API_BASE}/users/me"
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            async with httpx.AsyncClient(timeout=3.0) as client:
                 resp = await client.get(
                     url,
                     headers={"Authorization": self._auth_header("GET", url, cred)},
@@ -99,7 +99,7 @@ class XPublisher(PublisherService):
                 if resp.status_code == 429:
                     return PublisherStatus.RATE_LIMITED
                 return PublisherStatus.UNAVAILABLE
-        except httpx.RequestError:
+        except (httpx.RequestError, httpx.TimeoutException):
             return PublisherStatus.UNAVAILABLE
 
     async def publish_text_post(

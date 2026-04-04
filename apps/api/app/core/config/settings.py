@@ -136,6 +136,15 @@ class Settings(BaseSettings):
             raise ValueError(f"Autonomy level must be 0-4, got {v}")
         return v
 
+    # ─── Twilio / Call Intelligence ────────────────────────────────────────
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_api_key_sid: str = ""
+    twilio_api_key_secret: str = ""
+    twilio_phone_number: str = ""
+    twilio_twiml_app_sid: str = ""
+    calls_storage_path: str = "./storage/calls"
+
     # ─── Demo Mode ─────────────────────────────────────────────────────────
     demo_mode: bool = False
     demo_user_email: str = "demo@aicmo.os"

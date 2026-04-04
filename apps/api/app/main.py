@@ -42,6 +42,12 @@ from app.api.endpoints.metrics import router as metrics_router
 from app.api.endpoints.oauth_social import router as oauth_social_router
 from app.api.endpoints.ads_launch import router as ads_launch_router
 from app.api.endpoints.growth_dashboard import router as growth_dashboard_router
+from app.api.endpoints.calls import router as calls_router
+from app.api.endpoints.organic_growth import router as organic_router
+from app.api.endpoints.email_automation import router as email_router
+from app.api.endpoints.growth_intelligence import router as growth_intelligence_router
+from app.api.endpoints.workflow_automation import router as workflow_router
+from app.api.endpoints.crm import router as crm_router
 from app.core.config.settings import get_settings
 from app.core.db.database import check_db_connection
 
@@ -315,6 +321,12 @@ app.include_router(metrics_router, prefix=f"{API_V1}", tags=["metrics"])
 app.include_router(oauth_social_router, prefix=f"{API_V1}", tags=["oauth-social"])
 app.include_router(ads_launch_router, prefix=f"{API_V1}", tags=["ads-launch"])
 app.include_router(growth_dashboard_router, prefix=f"{API_V1}", tags=["growth-dashboard"])
+app.include_router(calls_router)
+app.include_router(organic_router, prefix=f"{API_V1}/organic", tags=["organic-growth"])
+app.include_router(email_router)
+app.include_router(growth_intelligence_router)
+app.include_router(workflow_router)
+app.include_router(crm_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

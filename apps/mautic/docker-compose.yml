@@ -1,0 +1,53 @@
+version: '3.7'
+
+services:
+  mautic_db:
+    image: mysql:8.0
+    container_name: mautic_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: mautic_root_pass
+      MYSQL_DATABASE: mautic
+      MYSQL_USER: mautic
+      MYSQL_PASSWORD: mautic_pass
+    volumes:
+      - mautic_db_data:/var/lib/mysql
+    networks:
+      - mautic_net
+
+  mautic:
+    image: mautic/mautic:5-apache
+    container_name: mautic_app
+    restart: unless-stopped
+    ports:
+      - "8181:80"
+    environment:
+      MAUTIC_DB_HOST: mautic_db
+      MAUTIC_DB_PORT: 3306
+      MAUTIC_DB_DATABASE: mautic
+      MAUTIC_DB_USER: mautic
+      MAUTIC_DB_PASSWORD: mautic_pass
+      MAUTIC_ADMIN_EMAIL: admin@aicmo.os
+      MAUTIC_ADMIN_PASSWORD: Admin1234!
+      MAUTIC_ADMIN_FIRSTNAME: Admin
+      MAUTIC_ADMIN_LASTNAME: User
+      MAUTIC_SITE_URL: http://localhost:8181
+      PHP_INI_DATE_TIMEZONE: Europe/Istanbul
+    volumes:
+      - mautic_data:/var/www/html/var
+      - mautic_config:/var/www/html/config
+      - mautic_logs:/var/www/html/var/logs
+    depends_on:
+      - mautic_db
+    networks:
+      - mautic_net
+
+volumes:
+  mautic_db_data:
+  mautic_data:
+  mautic_config:
+  mautic_logs:
+
+networks:
+  mautic_net:
+    driver: bridge

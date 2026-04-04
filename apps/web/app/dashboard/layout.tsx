@@ -9,7 +9,10 @@ import {
   Plug, Settings, Activity, LogOut, TrendingUp,
   ChevronDown, Bell, ShieldCheck, Sparkles, Radio,
   Megaphone, Twitter, Instagram, Brain, ListOrdered,
-  LineChart, Zap, Shield,
+  LineChart, Zap, Shield, Receipt, PieChart,
+  Phone, PhoneCall, Upload, BarChart3,
+  Sprout, Search, Share2, Users, Flame, Mail,
+  Layers,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -41,6 +44,41 @@ const NAV_SECTIONS = [
       { href: '/dashboard/trends',   label: 'Trend Feed',     icon: TrendingUp },
       { href: '/dashboard/learning', label: 'Learning',       icon: Brain },
       { href: '/dashboard/reports',  label: 'Growth Metrics', icon: LineChart },
+    ],
+  },
+  {
+    label: 'Calls',
+    items: [
+      { href: '/dashboard/calls',         label: 'All Calls',      icon: Phone, exact: true },
+      { href: '/dashboard/calls/upload',  label: 'Log Call',       icon: Upload },
+      { href: '/dashboard/calls/reports', label: 'Weekly Report',  icon: BarChart3 },
+    ],
+  },
+  {
+    label: 'Organic Growth',
+    items: [
+      { href: '/dashboard/organic',          label: 'Growth Hub',      icon: Sprout, exact: true },
+      { href: '/dashboard/organic/seo',      label: 'SEO Intelligence', icon: Search },
+      { href: '/dashboard/organic/social',   label: 'Social Strategy',  icon: Share2 },
+      { href: '/dashboard/organic/audience', label: 'Audience Map',     icon: Users },
+      { href: '/dashboard/organic/hooks',    label: 'Viral Hooks',      icon: Flame },
+      { href: '/dashboard/organic/outreach', label: 'Free Outreach',    icon: Mail },
+    ],
+  },
+  {
+    label: 'Email',
+    items: [
+      { href: '/dashboard/email',            label: 'Email Hub',    icon: Mail, exact: true },
+      { href: '/dashboard/email/contacts',   label: 'Contacts',     icon: Users },
+      { href: '/dashboard/email/sequences',  label: 'Sequences',    icon: Layers },
+      { href: '/dashboard/email/campaigns',  label: 'Campaigns',    icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { href: '/dashboard/finance/invoices', label: 'Invoices',    icon: Receipt },
+      { href: '/dashboard/finance/reports',  label: 'Tax Reports', icon: PieChart },
     ],
   },
   {

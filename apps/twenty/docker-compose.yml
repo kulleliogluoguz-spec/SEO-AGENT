@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  twenty-change-vol-ownership:
+    image: ubuntu
+    user: root
+    volumes:
+      - twenty_server_local_data:/home/ubuntu/server-local-data
+      - twenty_docker_data:/home/ubuntu/docker-data
+    command: >
+      bash -c "
+      chown -R 1000:1000 /home/ubuntu/server-local-data
+      && chown -R 1000:1000 /home/ubuntu/docker-data"
+
+  twenty-server:
+    image: twentycrm/twenty:latest
+    container_name: twenty_server
+    restart: unless-stopped
+    volumes:
+      - twenty_server_local_data:/app/packages/twenty-server/.local-storage
+      - twenty_docker_data:/app/docker-data
+    ports:
+      - "3333:3000"
+    environment:
+      PORT: 3000
+      PG_DATABASE_URL: postgres://twenty:twenty@twenty-db:5432/default
+      FRONT_BASE_URL: http://localhost:3333
+      SERVER_URL: http://localhost:3333
+      STORAGE_TYPE: local
+      MESSAGE_QUEUE_TYPE: bull-mq
+      REDIS_URL: redis://twenty-redis:6379
+      SIGN_IN_PREFILLED: true
+      IS_SIGN_UP_DISABLED: false
+      APP_SECRET: a_very_long_random_secret_for_twenty_crm_2024
+    depends_on:
+      twenty-change-vol-ownership:
+        condition: service_completed_successfully
+      twenty-db:
+        condition: service_healthy
+      twenty-redis:
+        condition: service_started
+    networks:
+      - twenty_net
+
+  twenty-db:
+    image: twentycrm/twenty-postgres:latest
+    container_name: twenty_db
+    restart: unless-stopped
+    volumes:
+      - twenty_pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: twenty
+      POSTGRES_PASSWORD: twenty
+    healthcheck:
+      test: pg_isready -U twenty -d default
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - twenty_net
+
+  twenty-redis:
+    image: redis:latest
+    container_name: twenty_redis
+    restart: unless-stopped
+    networks:
+      - twenty_net
+
+volumes:
+  twenty_pg_data:
+  twenty_server_local_data:
+  twenty_docker_data:
+
+networks:
+  twenty_net:
+    driver: bridge

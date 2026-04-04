@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   Twitter, Loader2, AlertCircle, CheckCircle2,
   RefreshCw, Zap, TrendingUp, BarChart, Brain,
@@ -265,25 +265,48 @@ export default function XGrowthPage() {
   const [health, setHealth] = useState<SocialHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [pageError, setPageError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
 
   const load = useCallback(async () => {
-    setLoading(true); setFetchError(null)
+    setLoading(true); setFetchError(null); setPageError(null)
+    let healthErr = false
     try {
-      const [dash, healthRes] = await Promise.all([
-        apiFetch<XDashboard>('/api/v1/growth/dashboard/x').catch(() => null),
-        apiFetch<{ channels: SocialHealth[] }>('/api/v1/connectors/social/health')
-          .then(d => d.channels?.find(c => c.channel === 'x') ?? null)
-          .catch(() => null),
+      const [dash, healthRes] = await Promise.race([
+        Promise.all([
+          apiFetch<XDashboard>('/api/v1/growth/dashboard/x').catch(() => null),
+          apiFetch<{ channels: SocialHealth[] }>('/api/v1/connectors/social/health')
+            .then(d => d.channels?.find(c => c.channel === 'x') ?? null)
+            .catch(() => { healthErr = true; return null as SocialHealth | null }),
+        ]),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 10_000)
+        ),
       ])
-      setData(dash)
-      setHealth(healthRes)
+      if (!mountedRef.current) return
+      if (healthErr) {
+        setPageError('Could not reach the backend API — make sure the server is running on port 8000.')
+      } else {
+        setData(dash)
+        setHealth(healthRes)
+      }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return
-      setFetchError('Failed to load dashboard')
-    } finally { setLoading(false) }
+      if (!mountedRef.current) return
+      if (e instanceof Error && e.message === 'timeout') {
+        setPageError('Request timed out — check that the backend is running on port 8000.')
+      } else if (!(e instanceof ApiError && e.status === 401)) {
+        setPageError('Failed to load dashboard — please try again.')
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    mountedRef.current = true
+    load()
+    return () => { mountedRef.current = false }
+  }, [load])
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -291,6 +314,22 @@ export default function XGrowthPage() {
         <Loader2 className="w-7 h-7 animate-spin text-gray-400 mx-auto mb-3" />
         <p className="text-sm text-gray-400">Loading X dashboard…</p>
       </div>
+    </div>
+  )
+
+  if (pageError) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
+      <XCircle className="w-8 h-8 text-red-400" />
+      <div>
+        <p className="text-sm font-medium text-gray-800">Dashboard unavailable</p>
+        <p className="text-xs text-gray-500 mt-1 max-w-sm">{pageError}</p>
+      </div>
+      <button
+        onClick={load}
+        className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+      >
+        <RefreshCw className="w-3.5 h-3.5" /> Try again
+      </button>
     </div>
   )
 

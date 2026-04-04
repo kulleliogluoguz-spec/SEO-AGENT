@@ -55,7 +55,7 @@ class InstagramPublisher(PublisherService):
             return PublisherStatus.NO_CREDENTIALS
 
         try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
+            async with httpx.AsyncClient(timeout=3.0) as client:
                 resp = await client.get(
                     f"{GRAPH_API_BASE}/me",
                     params={"access_token": token, "fields": "id,name"},
@@ -67,7 +67,7 @@ class InstagramPublisher(PublisherService):
                 if resp.status_code == 403:
                     return PublisherStatus.MISSING_SCOPES
                 return PublisherStatus.UNAVAILABLE
-        except httpx.RequestError:
+        except (httpx.RequestError, httpx.TimeoutException):
             return PublisherStatus.UNAVAILABLE
 
     async def publish_text_post(

@@ -38,12 +38,18 @@ class Base(DeclarativeBase):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+_connect_args = {"timeout": 5} if "asyncpg" in settings.database_url else {}
+
 engine = create_async_engine(
     settings.database_url,
     pool_size=settings.database_pool_size,
     max_overflow=settings.database_max_overflow,
     echo=settings.debug,
     future=True,
+    connect_args=_connect_args,
+    pool_pre_ping=True,
+    pool_timeout=5,       # Don't wait >5s for a pool slot
+    pool_recycle=300,     # Recycle connections every 5 min to prevent stale-socket hangs
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -62,10 +68,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                pass
             raise
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except Exception:
+                pass
 
 
 async def check_db_connection() -> bool:

@@ -173,3 +173,18 @@ async def get_me(
         "created_at": getattr(current_user, "created_at", None) or datetime.now(timezone.utc),
         "workspace_id": workspace_id,
     }
+
+
+@router.get("/connections")
+async def get_connections(current_user=Depends(get_current_user)):
+    """Return list of connected OAuth platforms for the current user."""
+    from app.core.store.credential_store import list_credentials
+    try:
+        creds = list_credentials(str(current_user.id))
+        connections = [
+            {"platform": c["platform"], "connected_at": c.get("created_at")}
+            for c in creds
+        ]
+    except Exception:
+        connections = []
+    return {"connections": connections}

@@ -231,6 +231,41 @@ def _generate_next_actions(
 
 # ─── Full Dashboard ───────────────────────────────────────────────────────────
 
+def _shape_post_perf(snap: dict) -> dict:
+    """Transform a content_metrics snapshot to the PostPerf shape the frontend expects."""
+    m = snap.get("metrics", {})
+    return {
+        "post_id": snap.get("scheduled_post_id") or snap.get("id", ""),
+        "content_type": snap.get("content_type", "text_post"),
+        "topic": snap.get("topic"),
+        "text_preview": (snap.get("post_text") or "")[:200],
+        "impressions": m.get("impressions", 0),
+        "likes": m.get("likes", 0),
+        "comments": m.get("comments", 0),
+        "reposts": m.get("shares", 0),
+        "engagement_score": snap.get("engagement_score", 0.0),
+        "published_at": snap.get("recorded_at"),
+    }
+
+
+def _shape_learning_pattern(p: dict, outcome: str = "promoted") -> dict:
+    """Transform a learning store strategy record to LearningPattern shape."""
+    return {
+        "content_type": p.get("strategy_type", ""),
+        "outcome": outcome,
+        "reason": p.get("note"),
+    }
+
+
+def _shape_next_action(a: dict) -> dict:
+    """Transform internal next-action dict to the NextAction shape the frontend expects."""
+    return {
+        "action": a.get("action", ""),
+        "reason": a.get("description") or a.get("evidence") or "",
+        "priority": a.get("priority", "medium"),
+    }
+
+
 @router.get("/growth/dashboard/{channel}")
 async def get_growth_dashboard(
     channel: Literal["x", "instagram"],
@@ -239,6 +274,7 @@ async def get_growth_dashboard(
     """
     Full dashboard payload for X or Instagram growth page.
     Single endpoint to minimize round trips.
+    Returns a flat structure matching the TypeScript frontend interfaces.
     """
     user_id = str(user.id)
 
@@ -246,11 +282,12 @@ async def get_growth_dashboard(
     follower_history = get_follower_history(user_id, channel, days=30)
     current_followers = get_latest_follower_count(user_id, channel)
     delta_7d = get_follower_delta(user_id, channel, days=7)
+    delta_30d = get_follower_delta(user_id, channel, days=30)
 
     # Post performance
     recent_posts = get_channel_metrics(user_id, channel, limit=20)
-    top_posts = get_top_performers(user_id, channel=channel, limit=5)
-    worst_posts = sorted(recent_posts, key=lambda x: x["engagement_score"])[:3] if len(recent_posts) >= 3 else []
+    top_posts_raw = get_top_performers(user_id, channel=channel, limit=5)
+    worst_posts_raw = sorted(recent_posts, key=lambda x: x["engagement_score"])[:3] if len(recent_posts) >= 3 else []
 
     # Active experiment — auto-create a default if none exists so Generate Posts works
     exp = get_active_experiment(user_id)
@@ -262,7 +299,7 @@ async def get_growth_dashboard(
             posting_mode="review",
         )
         logger.info("[growth_dashboard] auto-created default experiment for user=%s", user_id)
-    niche = exp.get("niche", "general")
+    niche = exp.get("niche", "general") if exp else "general"
 
     # Learning
     learning = get_learning_summary(user_id, niche=niche)
@@ -272,35 +309,40 @@ async def get_growth_dashboard(
     what_next = _generate_next_actions(promoted, suppressed, perf, niche)
 
     return {
-        "channel": channel,
-        "followers": {
-            "current": current_followers,
+        # Follower chart — matches GrowthData interface
+        "follower_chart": {
+            "current_followers": current_followers or 0,
             "delta_7d": delta_7d,
-            "chart": [{"ts": s["ts"], "count": s["follower_count"]} for s in follower_history],
+            "delta_30d": delta_30d,
             "has_data": len(follower_history) > 0,
+            "points": [
+                {"date": s["ts"][:10], "value": s["follower_count"]}
+                for s in follower_history
+            ],
         },
-        "posts": {
-            "total_measured": len(recent_posts),
-            "avg_engagement": (
-                round(sum(p["engagement_score"] for p in recent_posts) / len(recent_posts), 4)
-                if recent_posts else 0.0
-            ),
-            "top": top_posts,
-            "worst": worst_posts,
-        },
-        "learning": {
-            "success_rate": learning.get("success_rate"),
-            "total_measured": learning["total_measured"],
-            "promoted_patterns": promoted[:3],
-            "suppressed_patterns": suppressed[:3],
-        },
-        "next_actions": what_next,
+        # Post lists — matches PostPerf interface
+        "top_posts": [_shape_post_perf(p) for p in top_posts_raw],
+        "worst_posts": [_shape_post_perf(p) for p in worst_posts_raw],
+        # Learning patterns — matches LearningPattern interface
+        "promoted_patterns": [_shape_learning_pattern(p, "promoted") for p in promoted[:3]],
+        "suppressed_patterns": [_shape_learning_pattern(p, "suppressed") for p in suppressed[:3]],
+        # Next actions — matches NextAction interface
+        "next_actions": [_shape_next_action(a) for a in what_next],
+        # Experiment
+        "experiment_id": exp["id"] if exp else None,
         "experiment": {
-            "id": exp["id"] if exp else None,
+            "id": exp["id"],
             "niche": niche,
-            "stage": exp.get("stage") if exp else None,
-            "posts_drafted": exp.get("posts_drafted", 0) if exp else 0,
+            "stage": exp.get("stage"),
+            "posts_drafted": exp.get("posts_drafted", 0),
         } if exp else None,
+        # Summary stats at root level
+        "posts_measured": len(recent_posts),
+        "avg_engagement_rate": (
+            round(sum(p["engagement_score"] for p in recent_posts) / len(recent_posts), 4)
+            if recent_posts else 0.0
+        ),
+        "strategy_success_rate": learning.get("success_rate") or 0.0,
     }
 
 

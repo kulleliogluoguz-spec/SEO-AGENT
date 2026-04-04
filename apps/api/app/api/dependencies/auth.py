@@ -2,6 +2,7 @@
 Shared FastAPI dependencies for authentication and authorization.
 Import get_current_user from here throughout the codebase.
 """
+import asyncio
 import uuid
 
 from fastapi import Depends, HTTPException, status
@@ -67,9 +68,12 @@ async def get_current_user(
         return _DEMO_USER
 
     try:
-        result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+        result = await asyncio.wait_for(
+            db.execute(select(User).where(User.id == uuid.UUID(user_id))),
+            timeout=5.0,
+        )
         user = result.scalar_one_or_none()
-    except Exception:
+    except (asyncio.TimeoutError, Exception):
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if not user or not user.is_active:

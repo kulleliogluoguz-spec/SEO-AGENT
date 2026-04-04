@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { apiFetch } from '@/lib/apiFetch'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { apiFetch, ApiError } from '@/lib/apiFetch'
 import {
   Brain,
   TrendingUp,
@@ -59,26 +59,44 @@ export default function LearningPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [hypotheses, setHypotheses] = useState<Hypothesis[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [tab, setTab] = useState<'overview' | 'strategies' | 'hypotheses' | 'patterns'>('overview')
+  const mountedRef = useRef(true)
 
   const load = useCallback(async () => {
+    setError('')
     try {
-      const [summaryRes, strategiesData, hypothesesData] = await Promise.all([
-        apiFetch<{ summary: LearningSummary }>('/api/v1/learning/summary'),
-        apiFetch<{ items: Strategy[] }>('/api/v1/learning/strategies'),
-        apiFetch<{ items: Hypothesis[] }>('/api/v1/learning/hypotheses'),
+      const [summaryRes, strategiesData, hypothesesData] = await Promise.race([
+        Promise.all([
+          apiFetch<{ summary: LearningSummary }>('/api/v1/learning/summary'),
+          apiFetch<{ items: Strategy[] }>('/api/v1/learning/strategies'),
+          apiFetch<{ items: Hypothesis[] }>('/api/v1/learning/hypotheses'),
+        ]),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 10_000)
+        ),
       ])
+      if (!mountedRef.current) return
       setSummary(summaryRes.summary ?? null)
       setStrategies(strategiesData.items ?? [])
       setHypotheses(hypothesesData.items ?? [])
-    } catch {
-      // keep state
+    } catch (e: unknown) {
+      if (!mountedRef.current) return
+      if (e instanceof Error && e.message === 'timeout') {
+        setError('Request timed out — check that the backend is running on port 8000.')
+      } else if (!(e instanceof ApiError && e.status === 401)) {
+        setError(e instanceof Error ? e.message : 'Failed to load learning data')
+      }
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    mountedRef.current = true
+    load()
+    return () => { mountedRef.current = false }
+  }, [load])
 
   const TABS = [
     { key: 'overview', label: 'Overview' },
@@ -101,7 +119,7 @@ export default function LearningPage() {
           </div>
         </div>
         <button
-          onClick={() => { setLoading(true); load() }}
+          onClick={() => { setLoading(true); setError(''); load() }}
           className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -129,6 +147,21 @@ export default function LearningPage() {
       {loading ? (
         <div className="flex items-center justify-center h-32">
           <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <AlertCircle className="w-8 h-8 text-red-400" />
+          <div>
+            <p className="text-sm font-medium text-gray-800">Failed to load</p>
+            <p className="text-xs text-gray-500 mt-1">{error}</p>
+          </div>
+          <button
+            onClick={() => { setLoading(true); setError(''); load() }}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Try again
+          </button>
         </div>
       ) : (
         <>

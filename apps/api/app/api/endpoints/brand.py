@@ -131,7 +131,9 @@ async def get_profile(current_user=Depends(get_current_user)) -> dict:
 @router.get("/overview")
 async def get_overview(current_user=Depends(get_current_user)) -> dict:
     """Dashboard overview driven by brand profile + niche intelligence."""
-    profile = _get_profile_or_404(str(current_user.id))
+    profile = get_brand_profile(str(current_user.id))
+    if not profile:
+        return {"onboarding_required": True, "brand_name": None, "niche": None, "top_trends": [], "top_recommendations": [], "top_audiences": [], "kpis": {}}
     raw = get_dashboard_overview(profile)
     intel = get_intelligence(profile)
 
@@ -179,7 +181,9 @@ async def get_overview(current_user=Depends(get_current_user)) -> dict:
 @router.get("/trends")
 async def get_trends(current_user=Depends(get_current_user)) -> dict:
     """Niche-specific trend intelligence for the brand."""
-    profile = _get_profile_or_404(str(current_user.id))
+    profile = get_brand_profile(str(current_user.id))
+    if not profile:
+        return {"onboarding_required": True, "trends": [], "brand_name": None, "niche": None}
     intel = get_intelligence(profile)
     return {
         "trends": intel.get("trends", []),

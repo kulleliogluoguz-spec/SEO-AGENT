@@ -79,9 +79,13 @@ async def _check_social_channel(channel: str, user_id: str) -> dict:
         from app.services.publishers import get_publisher
         from app.services.publishers.base import PublisherStatus
         publisher = get_publisher(channel, user_id)
-        status = await publisher.check_status()
+        status = await asyncio.wait_for(publisher.check_status(), timeout=3.0)
         status_val = status.value
         ready = status == PublisherStatus.READY
+    except asyncio.TimeoutError:
+        logger.debug("connector health check timed out for %s", channel)
+        status_val = "unavailable"
+        ready = False
     except ValueError:
         status_val = "not_implemented"
         ready = False

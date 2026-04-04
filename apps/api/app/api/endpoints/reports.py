@@ -11,11 +11,6 @@ from app.schemas.schemas import PaginatedResponse, ReportDetailResponse, ReportR
 router = APIRouter()
 
 
-def _is_db_error(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return any(k in msg for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table"))
-
-
 @router.get("", response_model=PaginatedResponse)
 async def list_reports(
     workspace_id: uuid.UUID,
@@ -34,9 +29,7 @@ async def list_reports(
             total=total, page=page, page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
-    except Exception as exc:
-        if not _is_db_error(exc):
-            raise
+    except Exception:
         from app.core.store.demo_store import get_reports
         items = get_reports(str(workspace_id))
         total = len(items)
@@ -62,9 +55,7 @@ async def get_report(
         return report
     except HTTPException:
         raise
-    except Exception as exc:
-        if not _is_db_error(exc):
-            raise
+    except Exception:
         from app.core.store.demo_store import get_report
         record = get_report(str(report_id))
         if not record:

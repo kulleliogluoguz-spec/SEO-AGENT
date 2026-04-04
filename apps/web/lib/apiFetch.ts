@@ -12,7 +12,7 @@
  *   const result = await apiFetch('/api/v1/ads/launch', { method: 'POST', body: JSON.stringify({...}) })
  */
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 export class ApiError extends Error {
   status: number

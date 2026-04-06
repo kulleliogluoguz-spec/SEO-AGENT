@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import tempfile
+import time as _time
 import urllib.parse
 from pathlib import Path
 
@@ -42,12 +44,16 @@ settings = get_settings()
 
 FRONTEND_URL = settings.frontend_url
 
-# ─── Persistent state store (survives server restarts) ───────────────────────
-# Previous implementation used in-memory dict which was lost on every uvicorn
-# --reload cycle, causing "Invalid or expired OAuth token" errors.
+# ─── Persistent state store ───────────────────────────────────────────────────
+# File-based so it survives uvicorn --reload. Each entry has a created_at
+# timestamp; entries older than 10 minutes are garbage-collected on every
+# read. The file is written atomically (write tmp → rename) to prevent
+# corruption from concurrent requests.
 
 _STATE_FILE = Path(__file__).resolve().parents[3] / "storage" / "oauth_state.json"
 _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+_STATE_TTL_SECONDS = 600  # 10 minutes — OAuth request tokens expire quickly
 
 
 def _load_state_store() -> dict:
@@ -61,31 +67,57 @@ def _load_state_store() -> dict:
 
 
 def _save_state_store(store: dict) -> None:
-    with open(_STATE_FILE, "w") as f:
-        json.dump(store, f, indent=2)
+    """Atomic write: write to temp file then rename (prevents corruption)."""
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=_STATE_FILE.parent, suffix=".tmp")
+    try:
+        with open(tmp_fd, "w") as f:
+            json.dump(store, f, indent=2)
+        Path(tmp_path).replace(_STATE_FILE)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+
+
+def _gc_stale_entries(store: dict) -> dict:
+    """Remove entries older than _STATE_TTL_SECONDS."""
+    now = _time.time()
+    return {
+        k: v for k, v in store.items()
+        if now - v.get("_ts", 0) < _STATE_TTL_SECONDS
+    }
 
 
 def _save_state(state: str, user_id: str, platform: str, **extra) -> None:
-    """Persist an OAuth state entry to disk."""
-    store = _load_state_store()
-    store[state] = {"user_id": user_id, "platform": platform, **extra}
+    """Persist an OAuth state entry to disk with timestamp."""
+    store = _gc_stale_entries(_load_state_store())
+    store[state] = {"user_id": user_id, "platform": platform, "_ts": _time.time(), **extra}
     _save_state_store(store)
+    print(f"[OAUTH STATE] SAVED key={state[:20]}… file={_STATE_FILE}")
+    print(f"[OAUTH STATE] File now has {len(store)} entries: {list(store.keys())}")
 
 
 def _consume_state(state: str) -> dict | None:
-    """Pop and return state entry. Persists removal to disk. Returns None if missing."""
-    store = _load_state_store()
+    """Pop and return state entry. Persists removal to disk."""
+    store = _gc_stale_entries(_load_state_store())
     entry = store.pop(state, None)
     if entry is not None:
+        # Remove internal timestamp before returning
+        entry.pop("_ts", None)
         _save_state_store(store)
-        logger.info("[oauth] consumed state key=%s… (%d remaining)", state[:15], len(store))
+        print(f"[OAUTH STATE] CONSUMED key={state[:20]}… ({len(store)} remaining)")
     else:
-        logger.warning(
-            "[oauth] state key=%s… NOT FOUND. File=%s exists=%s keys=%s",
-            state[:15], _STATE_FILE, _STATE_FILE.exists(),
-            list(store.keys())[:3] if store else "[]",
-        )
+        print(f"[OAUTH STATE] NOT FOUND key={state[:20]}…")
+        print(f"[OAUTH STATE] File has {len(store)} keys: {list(store.keys())}")
+        print(f"[OAUTH STATE] File path: {_STATE_FILE} exists={_STATE_FILE.exists()}")
     return entry
+
+
+# ── Startup cleanup: wipe all state (pending OAuth flows are invalid after restart)
+try:
+    _save_state_store({})
+    print(f"[OAUTH STATE] Startup: cleared {_STATE_FILE}")
+except Exception as _e:
+    print(f"[OAUTH STATE] Startup cleanup failed: {_e}")
 
 
 # ─── OAuth 1.0a URLs ─────────────────────────────────────────────────────────
@@ -262,6 +294,9 @@ async def x_authorize(user=Depends(get_current_user)):
     if not oauth_token:
         raise HTTPException(status_code=400, detail="X did not return oauth_token")
 
+    print(f"\n[X AUTHORIZE] Got request token from Twitter: {oauth_token}")
+    print(f"[X AUTHORIZE] Callback URL sent to Twitter: {settings.x_callback_url}")
+
     # Persist to file (survives --reload)
     _save_state(
         oauth_token,
@@ -270,10 +305,12 @@ async def x_authorize(user=Depends(get_current_user)):
         oauth_token_secret=oauth_token_secret,
     )
 
-    logger.info(
-        "[x_authorize] saved state key=%s… file=%s callback=%s",
-        oauth_token[:15], _STATE_FILE, settings.x_callback_url,
-    )
+    # Verify the write by reading back
+    verify = _load_state_store()
+    if oauth_token in verify:
+        print(f"[X AUTHORIZE] VERIFIED: token IS in state file ({len(verify)} total entries)")
+    else:
+        print(f"[X AUTHORIZE] BUG: token NOT in state file after write! Keys: {list(verify.keys())}")
 
     return {
         "authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}",

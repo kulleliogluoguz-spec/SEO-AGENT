@@ -198,6 +198,43 @@ async def _trend_refresh_loop() -> None:
         await asyncio.sleep(6 * 3600)  # every 6 hours
 
 
+async def _daily_twitter_generation_loop() -> None:
+    """
+    Background job: daily trend-aware tweet generation for all active accounts.
+    Generates 5 tweets + 1 thread per account, incorporating live trends.
+    Runs every 24 hours (first run 2 hours after startup).
+    """
+    await asyncio.sleep(2 * 3600)  # Wait 2 hours after startup
+    while True:
+        try:
+            from app.api.endpoints.twitter_engine import run_daily_auto_generation
+
+            results = await run_daily_auto_generation()
+            logger.info("daily_twitter_generation.complete", results=results)
+        except Exception as e:
+            logger.error("daily_twitter_generation.error", error=str(e))
+        await asyncio.sleep(24 * 3600)  # every 24 hours
+
+
+async def _twitter_auto_post_loop() -> None:
+    """
+    Background job: post approved tweets from the Twitter Engine queue.
+    Runs every 3 hours. Posts up to 5 approved tweets per run, spaced apart.
+    Respects X Basic tier limit (~17 tweets/day).
+    """
+    await asyncio.sleep(1800)  # 30 min after startup
+    while True:
+        try:
+            from app.api.endpoints.twitter_engine import run_auto_post_approved
+
+            results = await run_auto_post_approved()
+            if results.get("posted", 0) > 0:
+                logger.info("twitter_auto_post.complete", results=results)
+        except Exception as e:
+            logger.error("twitter_auto_post.error", error=str(e))
+        await asyncio.sleep(3 * 3600)  # every 3 hours
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle hooks."""
@@ -208,6 +245,8 @@ async def lifespan(app: FastAPI):
     publish_task = asyncio.create_task(_publish_sweep_loop())
     metrics_task = asyncio.create_task(_metrics_ingestion_loop())
     ads_opt_task = asyncio.create_task(_ads_optimization_loop())
+    asyncio.create_task(_daily_twitter_generation_loop())
+    asyncio.create_task(_twitter_auto_post_loop())
 
     yield
 

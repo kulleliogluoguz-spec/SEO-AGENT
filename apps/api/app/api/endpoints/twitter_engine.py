@@ -72,6 +72,9 @@ def _init_db():
             access_token TEXT NOT NULL,
             access_token_secret TEXT NOT NULL,
             followers INTEGER DEFAULT 0,
+            niche TEXT DEFAULT 'general',
+            target_audience TEXT DEFAULT 'general audience',
+            auto_generate INTEGER DEFAULT 1,
             connected_at TEXT DEFAULT CURRENT_TIMESTAMP,
             is_active INTEGER DEFAULT 1
         )
@@ -82,16 +85,23 @@ def _init_db():
 
 _init_db()
 
-# Ensure account_id column exists on older DBs
-try:
-    _conn = sqlite3.connect(DB_PATH)
-    _conn.execute("SELECT account_id FROM tweet_queue LIMIT 1")
-    _conn.close()
-except sqlite3.OperationalError:
-    _conn = sqlite3.connect(DB_PATH)
-    _conn.execute("ALTER TABLE tweet_queue ADD COLUMN account_id INTEGER")
-    _conn.commit()
-    _conn.close()
+# Auto-migrate: add missing columns to existing DBs
+_MIGRATIONS = [
+    ("tweet_queue", "account_id", "ALTER TABLE tweet_queue ADD COLUMN account_id INTEGER"),
+    ("twitter_accounts", "niche", "ALTER TABLE twitter_accounts ADD COLUMN niche TEXT DEFAULT 'general'"),
+    ("twitter_accounts", "target_audience", "ALTER TABLE twitter_accounts ADD COLUMN target_audience TEXT DEFAULT 'general audience'"),
+    ("twitter_accounts", "auto_generate", "ALTER TABLE twitter_accounts ADD COLUMN auto_generate INTEGER DEFAULT 1"),
+]
+for _tbl, _col, _sql in _MIGRATIONS:
+    try:
+        _c = sqlite3.connect(DB_PATH)
+        _c.execute(f"SELECT {_col} FROM {_tbl} LIMIT 1")
+        _c.close()
+    except sqlite3.OperationalError:
+        _c = sqlite3.connect(DB_PATH)
+        _c.execute(_sql)
+        _c.commit()
+        _c.close()
 
 
 def _db(sql: str, params: tuple = (), *, fetch: bool = True):
@@ -265,6 +275,14 @@ class ConnectAccountRequest(BaseModel):
     access_token: str
     access_token_secret: str
     workspace_id: str = "default"
+    niche: str = "general"
+    target_audience: str = "general audience"
+
+
+class UpdateAccountRequest(BaseModel):
+    niche: str | None = None
+    target_audience: str | None = None
+    auto_generate: bool | None = None
 
 
 # ─── Account Management ──────────────────────────────────────────────────────
@@ -314,12 +332,12 @@ async def connect_account(req: ConnectAccountRequest):
     account_id = _db(
         """INSERT INTO twitter_accounts
            (workspace_id, twitter_user_id, username, display_name,
-            access_token, access_token_secret, followers, connected_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            access_token, access_token_secret, followers, niche, target_audience, connected_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             req.workspace_id, info["twitter_user_id"], info["username"],
             info["display_name"], req.access_token, req.access_token_secret,
-            info["followers"], datetime.now().isoformat(),
+            info["followers"], req.niche, req.target_audience, datetime.now().isoformat(),
         ),
         fetch=False,
     )
@@ -369,6 +387,29 @@ async def verify_account_endpoint(account_id: int):
         fetch=False,
     )
     return {"valid": True, "account": {**info, "id": account_id}}
+
+
+@router.put("/accounts/{account_id}")
+async def update_account(account_id: int, req: UpdateAccountRequest):
+    """Update account settings (niche, audience, auto-generate flag)."""
+    rows = _db("SELECT id FROM twitter_accounts WHERE id=? AND is_active=1", (account_id,))
+    if not rows:
+        raise HTTPException(404, "Account not found")
+    updates = []
+    params: list = []
+    if req.niche is not None:
+        updates.append("niche=?")
+        params.append(req.niche)
+    if req.target_audience is not None:
+        updates.append("target_audience=?")
+        params.append(req.target_audience)
+    if req.auto_generate is not None:
+        updates.append("auto_generate=?")
+        params.append(1 if req.auto_generate else 0)
+    if updates:
+        params.append(account_id)
+        _db(f"UPDATE twitter_accounts SET {', '.join(updates)} WHERE id=?", tuple(params), fetch=False)
+    return {"updated": True, "id": account_id}
 
 
 # ─── Health & Stats ───────────────────────────────────────────────────────────
@@ -830,7 +871,22 @@ async def get_posted_tweets(limit: int = 20):
     return {"posted": len(items), "items": items}
 
 
-# ─── Auto-Generate ────────────────────────────────────────────────────────────
+# ─── Trend-Aware Auto-Generate ────────────────────────────────────────────────
+
+
+def _get_top_trends(niche: str, limit: int = 5) -> list[str]:
+    """Fetch cached trend signals for a niche from the trend store."""
+    try:
+        from app.core.store.trend_store import get_signals
+
+        signals = get_signals(niche)
+        if signals:
+            sorted_signals = sorted(signals, key=lambda s: s.get("momentum_score", 0), reverse=True)
+            return [s.get("headline") or s.get("title", "") for s in sorted_signals[:limit] if s.get("headline") or s.get("title")]
+    except Exception as e:
+        logger.debug("[auto-gen] trend fetch failed: %s", e)
+    return []
+
 
 @router.post("/auto-generate")
 async def auto_generate_daily(
@@ -838,21 +894,178 @@ async def auto_generate_daily(
     target_audience: str = "entrepreneurs",
     count: int = 5,
     account_id: int | None = None,
+    auto_approve: bool = False,
 ):
-    """Generate daily content batch. Call via scheduler or cron."""
-    req = GenerateRequest(
-        niche=niche,
-        target_audience=target_audience,
-        count=count,
-        include_threads=True,
-        account_id=account_id,
-    )
-    result = await generate_tweets(req)
+    """Generate a daily content batch incorporating live trends.
+
+    If auto_approve=True, tweets go straight to 'approved' status
+    (for autonomy level >= semi_auto).
+    """
+    trends = _get_top_trends(niche)
+    trend_block = ""
+    if trends:
+        trend_list = "\n".join(f"  - {t}" for t in trends[:5])
+        trend_block = f"""
+
+Current trending topics in your niche (incorporate 2-3 of these):
+{trend_list}
+Write tweets that ride these trends with a unique angle or hot take."""
+
+    pillars = ["education", "opinion", "behind_scenes", "engagement"]
+
+    prompt = f"""You are a viral Twitter/X content creator. Generate {count} tweets for a {niche} account targeting {target_audience}.
+
+Content mix: {', '.join(pillars)}
+{trend_block}
+
+Rules:
+- Each tweet MUST be under 280 characters
+- Use proven viral hooks: numbers, questions, contrarian takes, "hot take:", "unpopular opinion:"
+- No hashtags in tweet body (max 1-2 at end if truly relevant)
+- Conversational, human tone — not corporate
+- Make people want to reply, retweet, or follow
+- Also generate 1 thread (5 connected tweets)
+
+Respond ONLY with valid JSON (no markdown, no explanation):
+{{
+    "tweets": [
+        {{
+            "content": "the tweet text (max 280 chars)",
+            "hook_type": "question|stat|hot_take|story|tip|contrarian",
+            "pillar": "education|opinion|engagement|behind_scenes",
+            "ai_score": 85,
+            "best_time": "9am|12pm|6pm|8pm"
+        }}
+    ],
+    "thread": {{
+        "hook": "First tweet that hooks readers",
+        "tweets": ["1/ Hook...", "2/ ...", "3/ ...", "4/ ...", "5/ CTA..."],
+        "topic": "thread topic",
+        "ai_score": 90
+    }}
+}}"""
+
+    response = await _ask_ollama(prompt)
+    data = _extract_json(response)
+
+    if not data:
+        return {
+            "error": "Generation failed — is Ollama running?",
+            "hint": f"Run: ollama serve && ollama pull {OLLAMA_MODEL}",
+            "auto_generated": False,
+            "generated": 0,
+            "items": [],
+        }
+
+    initial_status = "approved" if auto_approve else "pending"
+    added = []
+
+    for tweet in data.get("tweets", []):
+        content = tweet.get("content", "").strip()
+        if not content or len(content) > 280:
+            continue
+        tweet_id = _db(
+            """INSERT INTO tweet_queue
+               (content, tweet_type, niche, hook_type, pillar, ai_score, best_time, account_id, status)
+               VALUES (?, 'single', ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                content, niche, tweet.get("hook_type", ""), tweet.get("pillar", ""),
+                tweet.get("ai_score", 70), tweet.get("best_time", ""), account_id, initial_status,
+            ),
+            fetch=False,
+        )
+        added.append({"id": tweet_id, "type": "single", "content": content, "status": initial_status})
+
+    thread = data.get("thread")
+    if thread:
+        thread_tweets = thread.get("tweets", [])
+        hook = thread.get("hook", thread_tweets[0] if thread_tweets else "")
+        if hook:
+            thread_id = _db(
+                """INSERT INTO tweet_queue
+                   (content, tweet_type, thread_tweets, niche, hook_type, pillar, ai_score, account_id, status)
+                   VALUES (?, 'thread', ?, ?, 'thread', 'education', ?, ?, ?)""",
+                (hook, json.dumps(thread_tweets), niche, thread.get("ai_score", 85), account_id, initial_status),
+                fetch=False,
+            )
+            added.append({"id": thread_id, "type": "thread", "content": hook, "status": initial_status})
+
     return {
         "auto_generated": True,
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "result": result,
+        "generated": len(added),
+        "trends_used": trends[:5] if trends else [],
+        "auto_approved": auto_approve,
+        "items": added,
     }
+
+
+async def run_daily_auto_generation() -> dict:
+    """Called by the background scheduler. Generates content for all active accounts."""
+    accounts = _db("SELECT * FROM twitter_accounts WHERE is_active=1")
+    if not accounts:
+        logger.info("[daily-gen] no active accounts, skipping")
+        return {"skipped": True, "reason": "no active accounts"}
+
+    results = {}
+    for acct in accounts:
+        niche = acct.get("niche") or "general"
+        audience = acct.get("target_audience") or "general audience"
+        account_id = acct["id"]
+
+        # Check daily post limit — don't generate if already at limit
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_count = _db(
+            "SELECT COUNT(*) as c FROM tweet_queue WHERE account_id=? AND created_at >= ? AND status != 'rejected'",
+            (account_id, today),
+        )[0]["c"]
+        if today_count >= 10:
+            logger.info("[daily-gen] account=%s already has %d items today, skipping", acct["username"], today_count)
+            results[acct["username"]] = {"skipped": True, "reason": f"already {today_count} items today"}
+            continue
+
+        try:
+            result = await auto_generate_daily(
+                niche=niche,
+                target_audience=audience,
+                count=5,
+                account_id=account_id,
+                auto_approve=False,  # Always draft for now; user approves
+            )
+            results[acct["username"]] = {
+                "generated": result.get("generated", 0),
+                "trends_used": result.get("trends_used", []),
+            }
+            logger.info(
+                "[daily-gen] account=@%s generated=%d trends=%d",
+                acct["username"], result.get("generated", 0), len(result.get("trends_used", [])),
+            )
+        except Exception as e:
+            logger.error("[daily-gen] account=@%s failed: %s", acct["username"], e)
+            results[acct["username"]] = {"error": str(e)}
+
+    return results
+
+
+async def run_auto_post_approved() -> dict:
+    """Post all approved tweets that haven't been posted yet. Called by background scheduler."""
+    approved = _db("SELECT * FROM tweet_queue WHERE status='approved' ORDER BY ai_score DESC LIMIT 17")
+    if not approved:
+        return {"posted": 0}
+
+    posted = 0
+    for item in approved:
+        try:
+            await _post_tweet(item["id"], item.get("account_id"))
+            posted += 1
+            # Respect rate limits — space posts 2 minutes apart
+            import asyncio
+            await asyncio.sleep(120)
+        except Exception as e:
+            logger.error("[auto-post] tweet %d failed: %s", item["id"], e)
+            break
+
+    return {"posted": posted}
 
 
 # ─── Strategy Generator ──────────────────────────────────────────────────────

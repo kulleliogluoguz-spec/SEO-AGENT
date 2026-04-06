@@ -131,7 +131,8 @@ function SocialCard({
       console.log('[handleOAuth] Got authorization_url:', data.authorization_url)
 
       if (data.authorization_url) {
-        window.location.href = data.authorization_url
+        // replace() prevents old Twitter URLs from staying in browser history
+        window.location.replace(data.authorization_url)
       } else {
         setOauthError('No authorization URL returned from server')
         setOauthLoading(false)
@@ -382,7 +383,7 @@ function AdAccountCard({
     try {
       const endpoint = platform === 'google_ads' ? '/api/v1/auth/google/authorize' : '/api/v1/auth/meta/authorize?scope=ads'
       const data = await apiFetch<{ authorization_url: string }>(endpoint)
-      if (data.authorization_url) window.location.href = data.authorization_url
+      if (data.authorization_url) window.location.replace(data.authorization_url)
     } catch (e) {
       setConnectError(e instanceof Error ? e.message : 'Connection failed — check server .env credentials')
       setLoading(false)

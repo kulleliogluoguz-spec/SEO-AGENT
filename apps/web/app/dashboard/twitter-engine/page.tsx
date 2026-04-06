@@ -181,7 +181,7 @@ export default function TwitterHubPage() {
       }
       const data = await res.json()
       console.log('[TwitterHub] Got URL:', data.authorization_url)
-      if (data.authorization_url) window.location.href = data.authorization_url
+      if (data.authorization_url) window.location.replace(data.authorization_url)
       else { setConnectError('No authorization URL returned'); setOauthLoading(false) }
     } catch (e) {
       console.error('[TwitterHub] Failed:', e)

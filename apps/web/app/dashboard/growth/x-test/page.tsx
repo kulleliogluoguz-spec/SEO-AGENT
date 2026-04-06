@@ -171,7 +171,7 @@ function ConnectPanel() {
       }
       const data = await res.json()
       console.log('[X ConnectPanel] Got URL:', data.authorization_url)
-      if (data.authorization_url) window.location.href = data.authorization_url
+      if (data.authorization_url) window.location.replace(data.authorization_url)
       else { setError('No authorization URL returned'); setLoading(false) }
     } catch (e) {
       console.error('[X ConnectPanel] Failed:', e)

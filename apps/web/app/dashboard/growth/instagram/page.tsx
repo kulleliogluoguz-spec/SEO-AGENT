@@ -130,7 +130,7 @@ function ConnectPanel() {
     setLoading(true)
     try {
       const data = await apiFetch<{ authorization_url: string }>('/api/v1/auth/meta/authorize?scope=all')
-      if (data.authorization_url) window.location.href = data.authorization_url
+      if (data.authorization_url) window.location.replace(data.authorization_url)
     } catch { setLoading(false) }
   }
   return (

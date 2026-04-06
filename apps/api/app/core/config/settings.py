@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     # X / Twitter — OAuth 2.0 PKCE (create app at developer.twitter.com)
     x_api_key: str = ""
     x_api_secret: str = ""
-    x_callback_url: str = "http://localhost:3001/auth/callback/x"
+    x_callback_url: str = "http://127.0.0.1:8000/api/v1/auth/x/callback"
     # Legacy OAuth 2.0 fields (unused — kept so existing .env files don't error)
     x_client_id: str = ""
     x_client_secret: str = ""

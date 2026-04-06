@@ -2,6 +2,7 @@
 Shared FastAPI dependencies for authentication and authorization.
 Import get_current_user from here throughout the codebase.
 """
+
 import asyncio
 import uuid
 
@@ -13,15 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.database import get_db
 from app.core.security.auth import decode_token
-from app.models.models import Membership, MemberRole, User
+from app.models.models import MemberRole, Membership, User
 
 security = HTTPBearer()
 
 # Demo user — returned when DB is unavailable and the demo JWT is presented
 DEMO_USER_ID = "00000000-0000-0000-0001-000000000001"
 
+
 class _DemoUser:
     """Lightweight stand-in for the real User ORM object when DB is unavailable."""
+
     id = uuid.UUID(DEMO_USER_ID)
     email = "demo@aicmo.os"
     full_name = "Demo User"
@@ -34,6 +37,7 @@ class _DemoUser:
 
     def __repr__(self):
         return f"<DemoUser {self.email}>"
+
 
 _DEMO_USER = _DemoUser()
 
@@ -56,10 +60,17 @@ async def get_current_user(
         user_id: str = payload.get("sub", "")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
-    except JWTError:
+    except JWTError as e:
+        err_str = str(e).lower()
+        if "expired" in err_str:
+            detail = "Token expired. Please log in again."
+        elif "signature" in err_str or "verification" in err_str:
+            detail = "Token signature invalid (server SECRET_KEY may have changed). Please log in again."
+        else:
+            detail = f"Invalid token: {e}"
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail=detail,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -73,7 +84,7 @@ async def get_current_user(
             timeout=5.0,
         )
         user = result.scalar_one_or_none()
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         raise HTTPException(status_code=503, detail="Database unavailable")
 
     if not user or not user.is_active:
@@ -118,6 +129,7 @@ def require_superuser(user: User = Depends(get_current_user)) -> User:
     if not user.is_superuser:
         raise HTTPException(status_code=403, detail="Superuser required")
     return user
+
 
 async def require_workspace_access(user, workspace_id: str, db) -> None:
     """Stub: in production this checks workspace membership."""

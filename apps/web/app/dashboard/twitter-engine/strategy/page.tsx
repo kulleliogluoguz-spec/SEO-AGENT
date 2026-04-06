@@ -85,11 +85,41 @@ export default function StrategyPage() {
     }
   }
 
-  function handleApplyStrategy() {
+  const [applying, setApplying] = useState(false)
+  const [applyMsg, setApplyMsg] = useState<string | null>(null)
+
+  async function handleApplyStrategy() {
+    setApplying(true)
+    setApplyMsg(null)
+
+    // Save to localStorage for generate form auto-fill
     localStorage.setItem('twitter_strategy', JSON.stringify({
       niche: niche.trim(),
       audience: audience.trim(),
     }))
+
+    // Save to the first connected Twitter account via API
+    try {
+      const accounts = await apiFetch<{ accounts: Array<{ id: number }>, count: number }>('/api/v1/twitter/accounts')
+      if (accounts.count > 0) {
+        await apiFetch(`/api/v1/twitter/accounts/${accounts.accounts[0].id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            niche: niche.trim(),
+            target_audience: audience.trim(),
+            auto_generate: true,
+          }),
+        })
+        setApplyMsg('Strategy applied to your X account!')
+      } else {
+        setApplyMsg('Strategy saved locally. Connect an X account to apply it.')
+      }
+    } catch {
+      setApplyMsg('Strategy saved locally (API update failed).')
+    } finally {
+      setApplying(false)
+      setTimeout(() => setApplyMsg(null), 4000)
+    }
   }
 
   return (
@@ -339,14 +369,20 @@ export default function StrategyPage() {
           )}
 
           {/* Apply Strategy Button */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={handleApplyStrategy}
-              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors"
+              disabled={applying}
+              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
             >
-              <CheckCircle2 size={14} /> Apply Strategy
+              {applying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              {applying ? 'Applying...' : 'Apply Strategy'}
             </button>
-            <span className="text-xs text-gray-400">Saves niche & audience so content generation auto-fills</span>
+            {applyMsg ? (
+              <span className="text-xs text-emerald-600 font-medium">{applyMsg}</span>
+            ) : (
+              <span className="text-xs text-gray-400">Saves niche & audience to your X account settings</span>
+            )}
           </div>
 
         </div>

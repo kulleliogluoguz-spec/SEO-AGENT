@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
-import tempfile
+import sqlite3
 import time as _time
 import urllib.parse
 from pathlib import Path
@@ -44,80 +44,71 @@ settings = get_settings()
 
 FRONTEND_URL = settings.frontend_url
 
-# ─── Persistent state store ───────────────────────────────────────────────────
-# File-based so it survives uvicorn --reload. Each entry has a created_at
-# timestamp; entries older than 10 minutes are garbage-collected on every
-# read. The file is written atomically (write tmp → rename) to prevent
-# corruption from concurrent requests.
+# ─── OAuth state store (SQLite) ───────────────────────────────────────────────
+# Stores OAuth request token secrets in SQLite so they survive uvicorn --reload.
+# Uses the same DB as the twitter engine (apps/api/storage/twitter_queue.db).
+# Entries auto-expire after 10 minutes via created_at check.
+# NO startup cleanup — pending flows from before a reload remain valid.
 
-_STATE_FILE = Path(__file__).resolve().parents[3] / "storage" / "oauth_state.json"
-_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+_STATE_DB = Path(__file__).resolve().parents[3] / "storage" / "twitter_queue.db"
+_STATE_DB.parent.mkdir(parents=True, exist_ok=True)
+_STATE_TTL_SECONDS = 600  # 10 minutes
 
-_STATE_TTL_SECONDS = 600  # 10 minutes — OAuth request tokens expire quickly
-
-
-def _load_state_store() -> dict:
-    if not _STATE_FILE.exists():
-        return {}
-    try:
-        with open(_STATE_FILE) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _save_state_store(store: dict) -> None:
-    """Atomic write: write to temp file then rename (prevents corruption)."""
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=_STATE_FILE.parent, suffix=".tmp")
-    try:
-        with open(tmp_fd, "w") as f:
-            json.dump(store, f, indent=2)
-        Path(tmp_path).replace(_STATE_FILE)
-    except Exception:
-        Path(tmp_path).unlink(missing_ok=True)
-        raise
-
-
-def _gc_stale_entries(store: dict) -> dict:
-    """Remove entries older than _STATE_TTL_SECONDS."""
-    now = _time.time()
-    return {
-        k: v for k, v in store.items()
-        if now - v.get("_ts", 0) < _STATE_TTL_SECONDS
-    }
+# Create table if needed (safe to call on every import)
+_c = sqlite3.connect(_STATE_DB)
+_c.execute("""
+    CREATE TABLE IF NOT EXISTS oauth_state (
+        oauth_token TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        created_at REAL NOT NULL
+    )
+""")
+_c.commit()
+_c.close()
 
 
 def _save_state(state: str, user_id: str, platform: str, **extra) -> None:
-    """Persist an OAuth state entry to disk with timestamp."""
-    store = _gc_stale_entries(_load_state_store())
-    store[state] = {"user_id": user_id, "platform": platform, "_ts": _time.time(), **extra}
-    _save_state_store(store)
-    print(f"[OAUTH STATE] SAVED key={state[:20]}… file={_STATE_FILE}")
-    print(f"[OAUTH STATE] File now has {len(store)} entries: {list(store.keys())}")
+    """Save OAuth state to SQLite."""
+    data = json.dumps({"user_id": user_id, "platform": platform, **extra})
+    conn = sqlite3.connect(_STATE_DB)
+    # GC: remove expired entries
+    conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+    conn.execute(
+        "INSERT OR REPLACE INTO oauth_state (oauth_token, data, created_at) VALUES (?, ?, ?)",
+        (state, data, _time.time()),
+    )
+    conn.commit()
+    # Verify
+    row = conn.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (state,)).fetchone()
+    total = conn.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
+    conn.close()
+    found = row is not None
+    print(f"[OAUTH STATE] SAVED key={state[:20]}… db={_STATE_DB.name} verified={found} total={total}")
 
 
 def _consume_state(state: str) -> dict | None:
-    """Pop and return state entry. Persists removal to disk."""
-    store = _gc_stale_entries(_load_state_store())
-    entry = store.pop(state, None)
-    if entry is not None:
-        # Remove internal timestamp before returning
-        entry.pop("_ts", None)
-        _save_state_store(store)
-        print(f"[OAUTH STATE] CONSUMED key={state[:20]}… ({len(store)} remaining)")
-    else:
-        print(f"[OAUTH STATE] NOT FOUND key={state[:20]}…")
-        print(f"[OAUTH STATE] File has {len(store)} keys: {list(store.keys())}")
-        print(f"[OAUTH STATE] File path: {_STATE_FILE} exists={_STATE_FILE.exists()}")
-    return entry
+    """Read and delete OAuth state from SQLite. Returns None if not found or expired."""
+    conn = sqlite3.connect(_STATE_DB)
+    # GC stale entries
+    conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+    row = conn.execute("SELECT data FROM oauth_state WHERE oauth_token=?", (state,)).fetchone()
+    if row:
+        conn.execute("DELETE FROM oauth_state WHERE oauth_token=?", (state,))
+        conn.commit()
+        remaining = conn.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
+        conn.close()
+        print(f"[OAUTH STATE] CONSUMED key={state[:20]}… ({remaining} remaining)")
+        return json.loads(row[0])
+
+    # Not found — log what IS in the table for debugging
+    all_keys = [r[0] for r in conn.execute("SELECT oauth_token FROM oauth_state").fetchall()]
+    conn.close()
+    print(f"[OAUTH STATE] NOT FOUND key={state[:20]}…")
+    print(f"[OAUTH STATE] DB has {len(all_keys)} keys: {[k[:20] for k in all_keys]}")
+    return None
 
 
-# ── Startup cleanup: wipe all state (pending OAuth flows are invalid after restart)
-try:
-    _save_state_store({})
-    print(f"[OAUTH STATE] Startup: cleared {_STATE_FILE}")
-except Exception as _e:
-    print(f"[OAUTH STATE] Startup cleanup failed: {_e}")
+print(f"[OAUTH STATE] Using SQLite: {_STATE_DB}")
 
 
 # ─── OAuth 1.0a URLs ─────────────────────────────────────────────────────────
@@ -305,12 +296,15 @@ async def x_authorize(user=Depends(get_current_user)):
         oauth_token_secret=oauth_token_secret,
     )
 
-    # Verify the write by reading back
-    verify = _load_state_store()
-    if oauth_token in verify:
-        print(f"[X AUTHORIZE] VERIFIED: token IS in state file ({len(verify)} total entries)")
+    # Verify the write by reading back from SQLite
+    _vc = sqlite3.connect(_STATE_DB)
+    _vr = _vc.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (oauth_token,)).fetchone()
+    _vt = _vc.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
+    _vc.close()
+    if _vr:
+        print(f"[X AUTHORIZE] VERIFIED: token IS in DB ({_vt} total entries)")
     else:
-        print(f"[X AUTHORIZE] BUG: token NOT in state file after write! Keys: {list(verify.keys())}")
+        print("[X AUTHORIZE] BUG: token NOT in DB after write!")
 
     return {
         "authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}",
@@ -343,16 +337,16 @@ async def x_callback_get(
     print(f"[X CALLBACK] oauth_token={oauth_token}")
     print(f"[X CALLBACK] oauth_verifier={oauth_verifier}")
     print(f"[X CALLBACK] denied={denied}")
-    print(f"[X CALLBACK] State file: {_STATE_FILE}")
-    print(f"[X CALLBACK] State file exists: {_STATE_FILE.exists()}")
-    if _STATE_FILE.exists():
-        import json as _json
-        try:
-            _contents = _json.load(open(_STATE_FILE))
-            print(f"[X CALLBACK] State file keys: {list(_contents.keys())}")
-            print(f"[X CALLBACK] Token in state: {oauth_token in _contents if oauth_token else 'N/A'}")
-        except Exception as _e:
-            print(f"[X CALLBACK] State file read error: {_e}")
+    print(f"[X CALLBACK] State DB: {_STATE_DB}")
+    try:
+        _dc = sqlite3.connect(_STATE_DB)
+        _dk = [r[0][:20] for r in _dc.execute("SELECT oauth_token FROM oauth_state").fetchall()]
+        _df = _dc.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (oauth_token,)).fetchone() if oauth_token else None
+        _dc.close()
+        print(f"[X CALLBACK] DB keys: {_dk}")
+        print(f"[X CALLBACK] Token in DB: {_df is not None}")
+    except Exception as _e:
+        print(f"[X CALLBACK] DB read error: {_e}")
     print(f"{'='*60}\n")
 
     # User denied authorization
@@ -368,7 +362,6 @@ async def x_callback_get(
     state_data = _consume_state(oauth_token)
     if not state_data:
         print(f"[X CALLBACK] STATE NOT FOUND for token={oauth_token}")
-        print(f"[X CALLBACK] This means the token was not in {_STATE_FILE}")
         return _redirect_with_error(
             "x",
             "OAuth session expired. Please click 'Connect X Account' again to restart.",

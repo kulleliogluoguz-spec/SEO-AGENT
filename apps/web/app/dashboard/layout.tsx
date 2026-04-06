@@ -12,7 +12,7 @@ import {
   LineChart, Zap, Shield, Receipt, PieChart,
   Phone, PhoneCall, Upload, BarChart3,
   Sprout, Search, Share2, Users, Flame, Mail,
-  Layers,
+  Layers, Map, CheckCircle2, Send,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -20,6 +20,15 @@ const NAV_SECTIONS = [
     label: '',
     items: [
       { href: '/dashboard', label: 'Overview', icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    label: 'Twitter Engine',
+    items: [
+      { href: '/dashboard/twitter-engine',          label: 'Twitter Hub',     icon: Twitter, exact: true },
+      { href: '/dashboard/twitter-engine/queue',    label: 'Content Queue',   icon: ListOrdered },
+      { href: '/dashboard/twitter-engine/posted',   label: 'Posted Tweets',   icon: CheckCircle2 },
+      { href: '/dashboard/twitter-engine/strategy', label: 'Strategy',        icon: Map },
     ],
   },
   {

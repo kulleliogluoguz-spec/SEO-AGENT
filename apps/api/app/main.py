@@ -1,6 +1,7 @@
 """
 AI CMO OS — FastAPI Application Entry Point.
 """
+
 import asyncio
 import time
 import uuid
@@ -11,7 +12,6 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.api.endpoints.ai_admin import router as ai_router
 
 from app.api.endpoints import (
     admin,
@@ -24,30 +24,31 @@ from app.api.endpoints import (
     reports,
     sites,
     workspaces,
-    
 )
-from app.api.endpoints.marketing.routes import router as marketing_router
-from app.api.endpoints.geo import router as geo_router
-from app.api.endpoints.trends import router as trends_router
-from app.api.endpoints.brand import router as brand_router
 from app.api.endpoints.ads_connectors import router as ads_connectors_router
-from app.api.endpoints.learning import router as learning_router
-from app.api.endpoints.campaigns import router as campaigns_router
-from app.api.endpoints.optimization import router as optimization_router
+from app.api.endpoints.ads_launch import router as ads_launch_router
+from app.api.endpoints.ai_admin import router as ai_router
 from app.api.endpoints.autonomy import router as autonomy_router
+from app.api.endpoints.brand import router as brand_router
+from app.api.endpoints.calls import router as calls_router
+from app.api.endpoints.campaigns import router as campaigns_router
 from app.api.endpoints.content_queue import router as content_queue_router
-from app.api.endpoints.publishing import router as publishing_router
+from app.api.endpoints.crm import router as crm_router
+from app.api.endpoints.email_automation import router as email_router
+from app.api.endpoints.geo import router as geo_router
+from app.api.endpoints.growth_dashboard import router as growth_dashboard_router
 from app.api.endpoints.growth_experiments import router as growth_experiments_router
+from app.api.endpoints.growth_intelligence import router as growth_intelligence_router
+from app.api.endpoints.learning import router as learning_router
+from app.api.endpoints.marketing.routes import router as marketing_router
 from app.api.endpoints.metrics import router as metrics_router
 from app.api.endpoints.oauth_social import router as oauth_social_router
-from app.api.endpoints.ads_launch import router as ads_launch_router
-from app.api.endpoints.growth_dashboard import router as growth_dashboard_router
-from app.api.endpoints.calls import router as calls_router
+from app.api.endpoints.optimization import router as optimization_router
 from app.api.endpoints.organic_growth import router as organic_router
-from app.api.endpoints.email_automation import router as email_router
-from app.api.endpoints.growth_intelligence import router as growth_intelligence_router
+from app.api.endpoints.publishing import router as publishing_router
+from app.api.endpoints.trends import router as trends_router
+from app.api.endpoints.twitter_engine import router as twitter_engine_router
 from app.api.endpoints.workflow_automation import router as workflow_router
-from app.api.endpoints.crm import router as crm_router
 from app.core.config.settings import get_settings
 from app.core.db.database import check_db_connection
 
@@ -61,8 +62,12 @@ async def _publish_sweep_loop() -> None:
     Runs every 5 minutes. Routes each post to the correct channel publisher.
     Falls back to informative failure if channel has no credentials configured.
     """
-    from app.core.store.content_queue_store import get_due_scheduled_posts, mark_post_published, mark_post_failed
     from app.core.store.autonomy_store import check_publish_allowed
+    from app.core.store.content_queue_store import (
+        get_due_scheduled_posts,
+        mark_post_failed,
+        mark_post_published,
+    )
     from app.services.publishers import get_publisher
 
     await asyncio.sleep(30)  # wait for startup
@@ -80,7 +85,12 @@ async def _publish_sweep_loop() -> None:
                 allowed, reason = check_publish_allowed(user_id, channel)
                 if not allowed:
                     mark_post_failed(post["id"], reason)
-                    logger.info("publish_sweep.blocked_by_policy", post_id=post["id"], channel=channel, reason=reason)
+                    logger.info(
+                        "publish_sweep.blocked_by_policy",
+                        post_id=post["id"],
+                        channel=channel,
+                        reason=reason,
+                    )
                     continue
 
                 try:
@@ -88,20 +98,35 @@ async def _publish_sweep_loop() -> None:
                     result = await publisher.publish_text_post(text)
                     if result.success:
                         mark_post_published(post["id"], result.post_id or "")
-                        logger.info("publish_sweep.published", post_id=post["id"], channel=channel, platform_id=result.post_id)
+                        logger.info(
+                            "publish_sweep.published",
+                            post_id=post["id"],
+                            channel=channel,
+                            platform_id=result.post_id,
+                        )
                     else:
                         mark_post_failed(post["id"], result.error or "Unknown publisher error")
-                        logger.warning("publish_sweep.failed", post_id=post["id"], channel=channel, error=result.error)
+                        logger.warning(
+                            "publish_sweep.failed",
+                            post_id=post["id"],
+                            channel=channel,
+                            error=result.error,
+                        )
                 except ValueError:
                     mark_post_failed(
                         post["id"],
                         f"No publisher available for channel '{channel}'. "
-                        "Connect the channel in Connections to enable auto-publish."
+                        "Connect the channel in Connections to enable auto-publish.",
                     )
                     logger.info("publish_sweep.no_publisher", post_id=post["id"], channel=channel)
                 except Exception as e:
                     mark_post_failed(post["id"], f"Publisher error: {e}")
-                    logger.error("publish_sweep.publisher_error", post_id=post["id"], channel=channel, error=str(e))
+                    logger.error(
+                        "publish_sweep.publisher_error",
+                        post_id=post["id"],
+                        channel=channel,
+                        error=str(e),
+                    )
         except Exception as e:
             logger.error("publish_sweep.error", error=str(e))
         await asyncio.sleep(300)  # every 5 minutes
@@ -115,9 +140,10 @@ async def _metrics_ingestion_loop() -> None:
     Errors are swallowed — metrics are best-effort.
     """
     from app.services.growth.metrics_ingestion import (
-        run_post_metrics_ingestion,
         run_follower_count_ingestion,
+        run_post_metrics_ingestion,
     )
+
     # Stagger startup so server is fully ready
     await asyncio.sleep(120)
     loop_count = 0
@@ -142,6 +168,7 @@ async def _ads_optimization_loop() -> None:
     Analyzes all active ad campaigns and creates optimization recommendations.
     """
     from app.services.growth.ads_optimizer import run_ads_optimization
+
     # Start 3 hours after server starts (let ads accumulate data first)
     await asyncio.sleep(3 * 3600)
     while True:
@@ -247,6 +274,7 @@ async def request_id_and_logging(request: Request, call_next):
 
 # ─── Error Handlers ───────────────────────────────────────────────────────────
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     """Convert Pydantic validation errors to consistent error format."""
@@ -268,7 +296,10 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 async def value_error_handler(request: Request, exc: ValueError):
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"error": "Bad request", "details": [{"code": "invalid_value", "message": str(exc)}]},
+        content={
+            "error": "Bad request",
+            "details": [{"code": "invalid_value", "message": str(exc)}],
+        },
     )
 
 
@@ -276,7 +307,10 @@ async def value_error_handler(request: Request, exc: ValueError):
 async def permission_error_handler(request: Request, exc: PermissionError):
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,
-        content={"error": "Permission denied", "details": [{"code": "forbidden", "message": str(exc)}]},
+        content={
+            "error": "Permission denied",
+            "details": [{"code": "forbidden", "message": str(exc)}],
+        },
     )
 
 
@@ -298,7 +332,9 @@ app.include_router(auth.router, prefix=f"{API_V1}/auth", tags=["auth"])
 app.include_router(workspaces.router, prefix=f"{API_V1}/workspaces", tags=["workspaces"])
 app.include_router(sites.router, prefix=f"{API_V1}/sites", tags=["sites"])
 app.include_router(crawls.router, prefix=f"{API_V1}/crawls", tags=["crawls"])
-app.include_router(recommendations.router, prefix=f"{API_V1}/recommendations", tags=["recommendations"])
+app.include_router(
+    recommendations.router, prefix=f"{API_V1}/recommendations", tags=["recommendations"]
+)
 app.include_router(content.router, prefix=f"{API_V1}/content", tags=["content"])
 app.include_router(approvals.router, prefix=f"{API_V1}/approvals", tags=["approvals"])
 app.include_router(reports.router, prefix=f"{API_V1}/reports", tags=["reports"])
@@ -309,7 +345,9 @@ app.include_router(ai_router, prefix="/api/v1")
 app.include_router(geo_router, prefix=f"{API_V1}", tags=["GEO"])
 app.include_router(trends_router, prefix=f"{API_V1}", tags=["Trends"])
 app.include_router(brand_router, prefix=f"{API_V1}/brand", tags=["brand"])
-app.include_router(ads_connectors_router, prefix=f"{API_V1}/ads-connectors", tags=["ads-connectors"])
+app.include_router(
+    ads_connectors_router, prefix=f"{API_V1}/ads-connectors", tags=["ads-connectors"]
+)
 app.include_router(learning_router, prefix=f"{API_V1}/learning", tags=["learning"])
 app.include_router(campaigns_router, prefix=f"{API_V1}/campaigns", tags=["campaigns"])
 app.include_router(optimization_router, prefix=f"{API_V1}/optimization", tags=["optimization"])
@@ -327,9 +365,11 @@ app.include_router(email_router)
 app.include_router(growth_intelligence_router)
 app.include_router(workflow_router)
 app.include_router(crm_router)
+app.include_router(twitter_engine_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────
+
 
 @app.get("/health", tags=["system"], summary="Liveness probe")
 async def health():
@@ -341,12 +381,17 @@ async def health():
 async def readiness():
     """Readiness check: verifies database, Ollama, and Qdrant connectivity."""
     import httpx
+
     db_ok = await check_db_connection()
 
     # Check Ollama
     ollama_ok = False
     try:
-        ollama_url = settings.ollama_base_url if hasattr(settings, "ollama_base_url") else "http://localhost:11434"
+        ollama_url = (
+            settings.ollama_base_url
+            if hasattr(settings, "ollama_base_url")
+            else "http://localhost:11434"
+        )
         async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get(f"{ollama_url}/api/tags")
             ollama_ok = r.status_code == 200
@@ -356,7 +401,9 @@ async def readiness():
     # Check Qdrant
     qdrant_ok = False
     try:
-        qdrant_url = settings.qdrant_url if hasattr(settings, "qdrant_url") else "http://localhost:6333"
+        qdrant_url = (
+            settings.qdrant_url if hasattr(settings, "qdrant_url") else "http://localhost:6333"
+        )
         async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get(f"{qdrant_url}/readyz")
             qdrant_ok = r.status_code == 200

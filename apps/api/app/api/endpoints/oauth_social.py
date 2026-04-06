@@ -78,13 +78,14 @@ def _consume_state(state: str) -> dict | None:
     entry = store.pop(state, None)
     if entry is not None:
         _save_state_store(store)
+        logger.info("[oauth] consumed state key=%s… (%d remaining)", state[:15], len(store))
+    else:
+        logger.warning(
+            "[oauth] state key=%s… NOT FOUND. File=%s exists=%s keys=%s",
+            state[:15], _STATE_FILE, _STATE_FILE.exists(),
+            list(store.keys())[:3] if store else "[]",
+        )
     return entry
-
-
-def _get_state(state: str) -> dict | None:
-    """Peek at a state entry without consuming it."""
-    store = _load_state_store()
-    return store.get(state)
 
 
 # ─── OAuth 1.0a URLs ─────────────────────────────────────────────────────────
@@ -269,6 +270,11 @@ async def x_authorize(user=Depends(get_current_user)):
         oauth_token_secret=oauth_token_secret,
     )
 
+    logger.info(
+        "[x_authorize] saved state key=%s… file=%s callback=%s",
+        oauth_token[:15], _STATE_FILE, settings.x_callback_url,
+    )
+
     return {
         "authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}",
         "oauth_token": oauth_token,
@@ -299,11 +305,12 @@ async def x_callback_get(
         return _redirect_with_error("x", "Missing OAuth parameters. Please try connecting again.")
 
     # Look up state
+    logger.info("[x_callback] incoming oauth_token=%s… file=%s", oauth_token[:15], _STATE_FILE)
     state_data = _consume_state(oauth_token)
     if not state_data:
         return _redirect_with_error(
             "x",
-            "OAuth session expired. This usually happens if the server restarted. Please try connecting again.",
+            "OAuth session expired. Please click 'Connect X Account' again to restart.",
         )
 
     user_id = state_data["user_id"]

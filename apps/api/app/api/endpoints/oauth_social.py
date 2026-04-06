@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 
-FRONTEND_URL = "http://localhost:3000"
+FRONTEND_URL = settings.frontend_url
 
 # ─── Persistent state store (survives server restarts) ───────────────────────
 # Previous implementation used in-memory dict which was lost on every uvicorn

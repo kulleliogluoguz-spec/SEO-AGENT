@@ -2,16 +2,18 @@
 Application settings loaded from environment variables.
 Uses pydantic-settings for validation and type safety.
 """
+
 from enum import IntEnum
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AutonomyLevel(IntEnum):
     """Autonomy levels for agent execution."""
+
     ANALYSIS_ONLY = 0
     DRAFT_ONLY = 1
     APPROVAL_REQUIRED = 2
@@ -47,18 +49,18 @@ class Settings(BaseSettings):
     # ─── Local AI (PRIMARY) ────────────────────────────────────────────────
     # Default provider is Ollama — no external LLM API required.
     # See docs/models/local-model-stack.md
-    llm_primary_provider: str = "ollama"      # "ollama" | "vllm" | "anthropic"
+    llm_primary_provider: str = "ollama"  # "ollama" | "vllm" | "anthropic"
     ollama_base_url: str = "http://localhost:11434"
     vllm_base_url: str = "http://localhost:8001/v1"
     vllm_api_key: str = "EMPTY"
-    llm_default_model: str = "qwen3:8b"       # CPU-compatible default
+    llm_default_model: str = "qwen3:8b"  # CPU-compatible default
     llm_fast_model: str = "qwen3:8b"
     llm_reasoning_model: str = "qwen3:8b"
     llm_max_tokens: int = 4096
     llm_temperature: float = 0.3
 
     # ─── Embedding ─────────────────────────────────────────────────────────
-    embedding_provider: str = "ollama"         # "ollama" | "sentence-transformers"
+    embedding_provider: str = "ollama"  # "ollama" | "sentence-transformers"
     embedding_model: str = "nomic-embed-text"
     embedding_dimensions: int = 768
 
@@ -99,6 +101,9 @@ class Settings(BaseSettings):
     storage_s3_bucket: str = ""
     storage_s3_region: str = "us-east-1"
 
+    # ─── Frontend ─────────────────────────────────────────────────────────
+    frontend_url: str = "http://localhost:3001"
+
     # ─── Social OAuth ──────────────────────────────────────────────────────
     # X / Twitter — OAuth 2.0 PKCE (create app at developer.twitter.com)
     x_api_key: str = ""
@@ -111,12 +116,12 @@ class Settings(BaseSettings):
     # Meta — Facebook Login (create app at developers.facebook.com)
     meta_app_id: str = ""
     meta_app_secret: str = ""
-    meta_callback_url: str = "http://localhost:3000/auth/callback/meta"
+    meta_callback_url: str = "http://localhost:3001/auth/callback/meta"
 
     # Google OAuth — for Google Ads (create at console.cloud.google.com)
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_callback_url: str = "http://localhost:3000/auth/callback/google"
+    google_callback_url: str = "http://localhost:3001/auth/callback/google"
     google_ads_developer_token: str = ""
 
     # ─── Connectors ────────────────────────────────────────────────────────

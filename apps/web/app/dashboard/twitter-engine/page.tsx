@@ -157,37 +157,13 @@ export default function TwitterHubPage() {
     }
   }, [])
 
-  async function handleOAuthConnect() {
+  function handleOAuthConnect() {
     setOauthLoading(true)
     setConnectError(null)
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const jwt = localStorage.getItem('access_token') || ''
-
-    console.log('[TwitterHub] Calling authorize, JWT present:', !!jwt)
-
-    try {
-      const res = await fetch(`${apiBase}/api/v1/auth/x/authorize`, {
-        headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-      })
-      console.log('[TwitterHub] Response:', res.status)
-      if (!res.ok) {
-        const body = await res.text()
-        console.error('[TwitterHub] Error:', res.status, body)
-        setConnectError(res.status === 401 || res.status === 403
-          ? 'Session expired. Please log out and log back in.'
-          : `Error ${res.status}: ${body.slice(0, 100)}`)
-        setOauthLoading(false)
-        return
-      }
-      const data = await res.json()
-      console.log('[TwitterHub] Got URL:', data.authorization_url)
-      if (data.authorization_url) window.location.replace(data.authorization_url)
-      else { setConnectError('No authorization URL returned'); setOauthLoading(false) }
-    } catch (e) {
-      console.error('[TwitterHub] Failed:', e)
-      setConnectError(e instanceof Error ? e.message : 'Connection failed — is the backend running?')
-      setOauthLoading(false)
-    }
+    if (!jwt) { setConnectError('Not logged in. Please log in first.'); setOauthLoading(false); return }
+    window.location.replace(`${apiBase}/api/v1/auth/x/authorize?token=${encodeURIComponent(jwt)}`)
   }
 
   async function handleSaveSetup() {

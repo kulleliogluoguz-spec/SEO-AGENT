@@ -126,12 +126,12 @@ function PostCard({ post, rank }: { post: PostPerf; rank?: number }) {
 
 function ConnectPanel() {
   const [loading, setLoading] = useState(false)
-  async function handleConnect() {
+  function handleConnect() {
     setLoading(true)
-    try {
-      const data = await apiFetch<{ authorization_url: string }>('/api/v1/auth/meta/authorize?scope=all')
-      if (data.authorization_url) window.location.replace(data.authorization_url)
-    } catch { setLoading(false) }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''
+    if (!jwt) { setLoading(false); return }
+    window.location.replace(`${apiBase}/api/v1/auth/meta/authorize?scope=all&token=${encodeURIComponent(jwt)}`)
   }
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-6 text-center max-w-lg mx-auto">

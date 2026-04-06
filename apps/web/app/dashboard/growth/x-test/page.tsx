@@ -149,35 +149,13 @@ function PriorityDot({ priority }: { priority: string }) {
 function ConnectPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  async function handleConnect() {
+  function handleConnect() {
     setLoading(true)
     setError(null)
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
     const jwt = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''
-
-    console.log('[X ConnectPanel] Calling authorize, JWT present:', !!jwt)
-
-    try {
-      const res = await fetch(`${apiBase}/api/v1/auth/x/authorize`, {
-        headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-      })
-      console.log('[X ConnectPanel] Response:', res.status)
-      if (!res.ok) {
-        const body = await res.text()
-        console.error('[X ConnectPanel] Error:', res.status, body)
-        setError(res.status === 401 || res.status === 403 ? 'Session expired. Please log out and log back in.' : `Error ${res.status}`)
-        setLoading(false)
-        return
-      }
-      const data = await res.json()
-      console.log('[X ConnectPanel] Got URL:', data.authorization_url)
-      if (data.authorization_url) window.location.replace(data.authorization_url)
-      else { setError('No authorization URL returned'); setLoading(false) }
-    } catch (e) {
-      console.error('[X ConnectPanel] Failed:', e)
-      setError(e instanceof Error ? e.message : 'Connection failed')
-      setLoading(false)
-    }
+    if (!jwt) { setError('Not logged in. Please log in first.'); setLoading(false); return }
+    window.location.replace(`${apiBase}/api/v1/auth/x/authorize?token=${encodeURIComponent(jwt)}`)
   }
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-6 text-center max-w-lg mx-auto">

@@ -252,16 +252,43 @@ async def _x_verify_credentials(access_token: str, access_token_secret: str) -> 
 
 
 @router.get("/auth/x/authorize")
-async def x_authorize(user=Depends(get_current_user)):
+async def x_authorize(
+    request: Request,
+    token: str = Query(None),
+):
     """
-    Step 1: Obtain OAuth 1.0a request token and return Twitter authorization URL.
-    Frontend redirects the user to authorization_url.
+    Step 1: Obtain OAuth 1.0a request token, save state, redirect to Twitter.
+
+    Accepts JWT via ?token= query param (browser direct navigation) or
+    Authorization: Bearer header (API calls).
     """
+    from app.api.dependencies.auth import DEMO_USER_ID, _DemoUser
+    from app.core.security.auth import decode_token as _decode
+
+    # Resolve user from query param or header
+    jwt_str = token or ""
+    if not jwt_str:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            jwt_str = auth_header[7:]
+
+    if not jwt_str:
+        return _redirect_with_error("x", "Not authenticated. Please log in first.")
+
+    try:
+        payload = _decode(jwt_str)
+        user_id = payload.get("sub", "")
+    except Exception as e:
+        print(f"[X AUTHORIZE] JWT invalid: {e}")
+        return _redirect_with_error("x", "Session expired. Please log in again.")
+
+    class _User:
+        def __init__(self, uid: str):
+            self.id = uid
+    user = _DemoUser() if user_id == DEMO_USER_ID else _User(user_id)
+
     if not settings.x_api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="X OAuth not configured. Add X_API_KEY and X_API_SECRET to your .env file.",
-        )
+        return _redirect_with_error("x", "X OAuth not configured. Add X_API_KEY to .env.")
 
     auth_header = _oauth1_auth_header(
         method="POST",
@@ -271,27 +298,28 @@ async def x_authorize(user=Depends(get_current_user)):
         additional_oauth_params={"oauth_callback": settings.x_callback_url},
     )
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            X_REQUEST_TOKEN_URL,
-            headers={"Authorization": auth_header},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                X_REQUEST_TOKEN_URL,
+                headers={"Authorization": auth_header},
+            )
+    except Exception as e:
+        print(f"[X AUTHORIZE] Twitter API error: {e}")
+        return _redirect_with_error("x", "Could not reach Twitter API. Please try again.")
 
     if resp.status_code != 200:
-        logger.error("[x_authorize] request_token failed %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=400, detail=f"X request_token failed: {resp.text[:300]}")
+        print(f"[X AUTHORIZE] request_token failed {resp.status_code}: {resp.text[:200]}")
+        return _redirect_with_error("x", f"Twitter error: {resp.text[:150]}")
 
     token_resp = dict(urllib.parse.parse_qsl(resp.text))
     oauth_token = token_resp.get("oauth_token", "")
     oauth_token_secret = token_resp.get("oauth_token_secret", "")
 
     if not oauth_token:
-        raise HTTPException(status_code=400, detail="X did not return oauth_token")
+        return _redirect_with_error("x", "Twitter did not return a request token.")
 
-    print(f"\n[X AUTHORIZE] Got request token from Twitter: {oauth_token}")
-    print(f"[X AUTHORIZE] Callback URL sent to Twitter: {settings.x_callback_url}")
-
-    # Persist to file (survives --reload)
+    # Save state to SQLite (survives --reload)
     _save_state(
         oauth_token,
         user_id=str(user.id),
@@ -299,20 +327,12 @@ async def x_authorize(user=Depends(get_current_user)):
         oauth_token_secret=oauth_token_secret,
     )
 
-    # Verify the write by reading back from SQLite
-    _vc = sqlite3.connect(_STATE_DB)
-    _vr = _vc.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (oauth_token,)).fetchone()
-    _vt = _vc.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
-    _vc.close()
-    if _vr:
-        print(f"[X AUTHORIZE] VERIFIED: token IS in DB ({_vt} total entries)")
-    else:
-        print("[X AUTHORIZE] BUG: token NOT in DB after write!")
+    authorization_url = f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}"
+    print(f"[X AUTHORIZE] Redirecting to Twitter: {authorization_url}")
 
-    return {
-        "authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}",
-        "oauth_token": oauth_token,
-    }
+    # Direct redirect — the browser goes straight to Twitter
+    # No intermediate step, no opportunity for URL mismatch
+    return RedirectResponse(url=authorization_url, status_code=302)
 
 
 class XCallbackBody(BaseModel):

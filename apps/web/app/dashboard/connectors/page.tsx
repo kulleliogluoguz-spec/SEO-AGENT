@@ -94,54 +94,25 @@ function SocialCard({
     ? 'bg-black'
     : 'bg-gradient-to-br from-pink-500 to-purple-600'
 
-  async function handleOAuth() {
+  function handleOAuth() {
     setOauthLoading(true)
     setOauthError(null)
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-    const endpoint = isIG ? '/api/v1/auth/meta/authorize?scope=all' : '/api/v1/auth/x/authorize'
-    const fullUrl = `${apiBase}${endpoint}`
     const jwt = localStorage.getItem('access_token') || ''
 
-    console.log('[handleOAuth] Calling:', fullUrl, 'JWT present:', !!jwt)
-
-    try {
-      const res = await fetch(fullUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-        },
-      })
-
-      console.log('[handleOAuth] Response status:', res.status)
-
-      if (!res.ok) {
-        const body = await res.text()
-        console.error('[handleOAuth] Error response:', res.status, body)
-        if (res.status === 401 || res.status === 403) {
-          setOauthError(`Auth failed (${res.status}). Please log out and log back in.`)
-        } else {
-          setOauthError(`Server error ${res.status}: ${body.slice(0, 200)}`)
-        }
-        setOauthLoading(false)
-        return
-      }
-
-      const data = await res.json()
-      console.log('[handleOAuth] Got authorization_url:', data.authorization_url)
-
-      if (data.authorization_url) {
-        // replace() prevents old Twitter URLs from staying in browser history
-        window.location.replace(data.authorization_url)
-      } else {
-        setOauthError('No authorization URL returned from server')
-        setOauthLoading(false)
-      }
-    } catch (e) {
-      console.error('[handleOAuth] Network error:', e)
-      setOauthError(`Network error: ${e instanceof Error ? e.message : 'check if backend is running on port 8000'}`)
+    if (!jwt) {
+      setOauthError('Not logged in. Please log in first.')
       setOauthLoading(false)
+      return
     }
+
+    // Direct navigation — backend redirects to Twitter immediately.
+    // No fetch, no intermediate step, no stale URL possible.
+    const endpoint = isIG
+      ? `/api/v1/auth/meta/authorize?scope=all&token=${encodeURIComponent(jwt)}`
+      : `/api/v1/auth/x/authorize?token=${encodeURIComponent(jwt)}`
+    console.log('[handleOAuth] Navigating to:', `${apiBase}${endpoint.split('?')[0]}`)
+    window.location.replace(`${apiBase}${endpoint}`)
   }
 
   async function handleSave() {
@@ -377,17 +348,14 @@ function AdAccountCard({
   const [connectError, setConnectError] = useState<string | null>(null)
   const unlocks = UNLOCKS[platform] ?? []
 
-  async function handleConnect() {
+  function handleConnect() {
     setLoading(true)
     setConnectError(null)
-    try {
-      const endpoint = platform === 'google_ads' ? '/api/v1/auth/google/authorize' : '/api/v1/auth/meta/authorize?scope=ads'
-      const data = await apiFetch<{ authorization_url: string }>(endpoint)
-      if (data.authorization_url) window.location.replace(data.authorization_url)
-    } catch (e) {
-      setConnectError(e instanceof Error ? e.message : 'Connection failed — check server .env credentials')
-      setLoading(false)
-    }
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const jwt = localStorage.getItem('access_token') || ''
+    if (!jwt) { setConnectError('Not logged in.'); setLoading(false); return }
+    const endpoint = platform === 'google_ads' ? '/api/v1/auth/google/authorize' : '/api/v1/auth/meta/authorize?scope=ads'
+    window.location.replace(`${apiBase}${endpoint}${endpoint.includes('?') ? '&' : '?'}token=${encodeURIComponent(jwt)}`)
   }
 
   return (

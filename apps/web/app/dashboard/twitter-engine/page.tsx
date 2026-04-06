@@ -232,7 +232,13 @@ export default function TwitterHubPage() {
     </div>
   )
 
-  const hasAccounts = (accounts?.count ?? 0) > 0 || (health?.status === 'connected')
+  // Derive connected status from accounts list (primary) + health (fallback)
+  const connectedAccounts = accounts?.accounts ?? []
+  const isConnected = connectedAccounts.length > 0 || health?.status === 'connected'
+  const primaryAccount = connectedAccounts[0] ?? null
+  const statusText = isConnected
+    ? (primaryAccount ? `@${primaryAccount.username} connected (${primaryAccount.followers.toLocaleString()} followers)` : (health?.message ?? 'Connected'))
+    : 'No accounts connected'
   const q = stats?.queue
 
   return (
@@ -247,10 +253,10 @@ export default function TwitterHubPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-900">Twitter Growth Engine</h1>
             <p className="text-xs text-gray-500 flex items-center gap-1.5">
-              {hasAccounts ? (
-                <><CheckCircle2 size={10} className="text-emerald-500" /> {health?.message}</>
+              {isConnected ? (
+                <><CheckCircle2 size={10} className="text-emerald-500" /> {statusText}</>
               ) : (
-                <><AlertCircle size={10} className="text-amber-500" /> {health?.message || 'No accounts connected'}</>
+                <><AlertCircle size={10} className="text-amber-500" /> {statusText}</>
               )}
             </p>
           </div>
@@ -275,9 +281,9 @@ export default function TwitterHubPage() {
         </div>
 
         {/* Account cards */}
-        {accounts && accounts.accounts.length > 0 ? (
+        {connectedAccounts.length > 0 ? (
           <div className="space-y-2">
-            {accounts.accounts.map(acct => {
+            {connectedAccounts.map(acct => {
               const isSelected = selectedAccountId === acct.id
               return (
                 <div
@@ -466,14 +472,14 @@ export default function TwitterHubPage() {
             />
             Include thread
           </label>
-          {accounts && accounts.accounts.length > 1 && (
+          {connectedAccounts.length > 1 && (
             <select
               className="px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
               value={selectedAccountId ?? ''}
               onChange={e => setSelectedAccountId(e.target.value ? Number(e.target.value) : null)}
             >
               <option value="">Default account</option>
-              {accounts.accounts.map(a => (
+              {connectedAccounts.map(a => (
                 <option key={a.id} value={a.id}>@{a.username}</option>
               ))}
             </select>
@@ -556,7 +562,7 @@ export default function TwitterHubPage() {
               </button>
               <button
                 onClick={() => handleManualTweet(true)}
-                disabled={posting || !manualText.trim() || !hasAccounts}
+                disabled={posting || !manualText.trim() || !isConnected}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40"
               >
                 {posting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}

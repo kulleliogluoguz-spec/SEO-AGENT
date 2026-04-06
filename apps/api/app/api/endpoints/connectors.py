@@ -7,14 +7,15 @@ GET  /connectors/social/health/{channel} — single channel health check
 GET  /connectors/capabilities            — what each connection enables
 GET  /connectors/summary                 — compact summary for overview
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
 from app.api.dependencies.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,12 @@ CHANNEL_CAPABILITIES = {
         "supports_media_posts": True,
         "supports_threads": False,
         "supports_ads": False,
-        "required_scopes": ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"],
+        "required_scopes": [
+            "instagram_basic",
+            "instagram_content_publish",
+            "pages_show_list",
+            "pages_read_engagement",
+        ],
         "post_limit_note": "25 posts/day",
         "setup_url": "/dashboard/connectors",
         "note": "Image or Reel required — text-only not supported.",
@@ -78,14 +84,24 @@ async def _check_social_channel(channel: str, user_id: str) -> dict:
     try:
         from app.services.publishers import get_publisher
         from app.services.publishers.base import PublisherStatus
+
         publisher = get_publisher(channel, user_id)
-        status = await asyncio.wait_for(publisher.check_status(), timeout=3.0)
+        status = await asyncio.wait_for(publisher.check_status(), timeout=5.0)
         status_val = status.value
         ready = status == PublisherStatus.READY
-    except asyncio.TimeoutError:
+    except TimeoutError:
+        # Timeout means the API is slow, not that credentials are missing.
+        # Check if the publisher has credentials before marking as unavailable.
         logger.debug("connector health check timed out for %s", channel)
-        status_val = "unavailable"
-        ready = False
+        try:
+            from app.services.publishers import get_publisher as gp
+
+            pub = gp(channel, user_id)
+            has_cred = pub._load_credentials() is not None
+        except Exception:
+            has_cred = False
+        status_val = "ready" if has_cred else "unavailable"
+        ready = has_cred
     except ValueError:
         status_val = "not_implemented"
         ready = False
@@ -101,9 +117,8 @@ async def _check_social_channel(channel: str, user_id: str) -> dict:
         "status": status_val,
         "ready": ready,
         "message": STATUS_MESSAGES.get(status_val, status_val),
-        "publish_enabled": ready and (
-            caps.get("supports_text_posts", False) or caps.get("supports_media_posts", False)
-        ),
+        "publish_enabled": ready
+        and (caps.get("supports_text_posts", False) or caps.get("supports_media_posts", False)),
         "capabilities": {
             "text_posts": caps.get("supports_text_posts", False),
             "media_posts": caps.get("supports_media_posts", False),
@@ -119,6 +134,7 @@ async def _check_social_channel(channel: str, user_id: str) -> dict:
 def _check_data_source(source: str, user_id: str) -> dict:
     try:
         from app.core.store.credential_store import get_credential
+
         cred = get_credential(user_id, source)
         if cred:
             return {"source": source, "status": "configured", "ready": True}
@@ -128,6 +144,7 @@ def _check_data_source(source: str, user_id: str) -> dict:
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @router.get("/status")
 async def connectors_status(current_user=Depends(get_current_user)):
@@ -144,9 +161,7 @@ async def connectors_status(current_user=Depends(get_current_user)):
     return {
         "social": valid_social,
         "data_sources": data_results,
-        "connectors": [
-            {"name": r["source"], "status": r["status"]} for r in data_results
-        ],
+        "connectors": [{"name": r["source"], "status": r["status"]} for r in data_results],
     }
 
 
@@ -239,7 +254,11 @@ async def save_connector_credentials(
     )
 
     # Store extra fields without the primary token
-    extra = {k: v for k, v in body.fields.items() if k not in ("api_key", "webhook_url", "client_secret", "credentials", "access_token")}
+    extra = {
+        k: v
+        for k, v in body.fields.items()
+        if k not in ("api_key", "webhook_url", "client_secret", "credentials", "access_token")
+    }
 
     record = store_credential(
         user_id=str(current_user.id),

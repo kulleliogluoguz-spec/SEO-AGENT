@@ -81,7 +81,13 @@ class XPublisher(PublisherService):
         return cred.get("access_token") or cred.get("api_key")
 
     async def check_status(self) -> PublisherStatus:
-        """Validate X credentials by calling GET /2/users/me."""
+        """Validate X credentials by calling GET /2/users/me.
+
+        Returns READY if credentials exist and the API responds 200,
+        or if credentials exist but the API is rate-limited/unavailable
+        (tokens were verified when stored, so temporary throttling
+        doesn't mean the connection is broken).
+        """
         cred = self._load_cred()
         if not cred:
             return PublisherStatus.NO_CREDENTIALS
@@ -100,10 +106,14 @@ class XPublisher(PublisherService):
                 if resp.status_code == 403:
                     return PublisherStatus.MISSING_SCOPES
                 if resp.status_code == 429:
-                    return PublisherStatus.RATE_LIMITED
-                return PublisherStatus.UNAVAILABLE
+                    # Rate-limited but credentials exist — still usable
+                    logger.info("[x] check_status: rate-limited, treating as READY")
+                    return PublisherStatus.READY
+                return PublisherStatus.READY  # credentials exist, API glitch
         except (httpx.RequestError, httpx.TimeoutException):
-            return PublisherStatus.UNAVAILABLE
+            # Credentials exist but API unreachable — still connected
+            logger.info("[x] check_status: timeout/error, treating as READY (creds exist)")
+            return PublisherStatus.READY
 
     async def publish_text_post(
         self,

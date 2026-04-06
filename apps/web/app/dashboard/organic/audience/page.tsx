@@ -106,10 +106,10 @@ export default function AudienceMapPage() {
       {intel && (
         <div className="space-y-5">
           {/* ICP Profiles */}
-          {intel.icp_profiles.length > 0 && (
+          {(intel.icp_profiles?.length ?? 0) > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="flex border-b border-slate-100">
-                {intel.icp_profiles.map((p, i) => (
+                {(intel.icp_profiles ?? []).map((p, i) => (
                   <button key={i} onClick={() => setActivePersona(i)}
                     className={`px-4 py-3 text-xs font-medium transition-colors ${
                       activePersona === i
@@ -120,7 +120,7 @@ export default function AudienceMapPage() {
                   </button>
                 ))}
               </div>
-              {intel.icp_profiles[activePersona] && (() => {
+              {intel.icp_profiles?.[activePersona] && (() => {
                 const p = intel.icp_profiles[activePersona]
                 return (
                   <div className="p-5 grid grid-cols-2 gap-5">
@@ -132,7 +132,7 @@ export default function AudienceMapPage() {
                       <div>
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Psychographics</p>
                         <ul className="space-y-1">
-                          {p.psychographics.map((item, i) => (
+                          {(p.psychographics ?? []).map((item, i) => (
                             <li key={i} className="text-xs text-slate-600 flex gap-2"><span className="text-indigo-400">•</span>{item}</li>
                           ))}
                         </ul>
@@ -140,7 +140,7 @@ export default function AudienceMapPage() {
                       <div>
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Pain Points</p>
                         <ul className="space-y-1">
-                          {p.pain_points.map((item, i) => (
+                          {(p.pain_points ?? []).map((item, i) => (
                             <li key={i} className="text-xs text-slate-600 flex gap-2"><span className="text-red-400">!</span>{item}</li>
                           ))}
                         </ul>
@@ -150,7 +150,7 @@ export default function AudienceMapPage() {
                       <div>
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Goals</p>
                         <ul className="space-y-1">
-                          {p.goals.map((item, i) => (
+                          {(p.goals ?? []).map((item, i) => (
                             <li key={i} className="text-xs text-slate-600 flex gap-2"><span className="text-emerald-400">→</span>{item}</li>
                           ))}
                         </ul>
@@ -158,7 +158,7 @@ export default function AudienceMapPage() {
                       <div>
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Where They Hang Out</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {p.where_they_hang_out.map((place, i) => (
+                          {(p.where_they_hang_out ?? []).map((place, i) => (
                             <span key={i} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-lg border border-indigo-200">{place}</span>
                           ))}
                         </div>
@@ -166,7 +166,7 @@ export default function AudienceMapPage() {
                       <div>
                         <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Buying Triggers</p>
                         <ul className="space-y-1">
-                          {p.buying_triggers.map((item, i) => (
+                          {(p.buying_triggers ?? []).map((item, i) => (
                             <li key={i} className="text-xs text-slate-600 flex gap-2"><span className="text-amber-400">⚡</span>{item}</li>
                           ))}
                         </ul>
@@ -183,7 +183,7 @@ export default function AudienceMapPage() {
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Free Targeting Methods</h3>
               <ul className="space-y-2">
-                {intel.free_targeting_methods.map((m, i) => (
+                {(intel.free_targeting_methods ?? []).map((m, i) => (
                   <li key={i} className="text-xs text-slate-600 flex gap-2 items-start">
                     <span className="text-emerald-500 mt-0.5">✓</span>{m}
                   </li>
@@ -193,7 +193,7 @@ export default function AudienceMapPage() {
             <div className="bg-white rounded-xl border border-slate-200 p-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Communities to Join</h3>
               <ul className="space-y-2">
-                {intel.communities_to_join.map((c, i) => (
+                {(intel.communities_to_join ?? []).map((c, i) => (
                   <li key={i} className="text-xs text-slate-600 flex gap-2 items-start">
                     <span className="text-indigo-400">→</span>{c}
                   </li>
@@ -203,13 +203,13 @@ export default function AudienceMapPage() {
           </div>
 
           {/* Outreach Templates */}
-          {intel.outreach_templates.length > 0 && (
+          {(intel.outreach_templates?.length ?? 0) > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Mail size={14} className="text-slate-500" />
                 <h3 className="text-sm font-semibold text-slate-700">Outreach Templates</h3>
               </div>
-              {intel.outreach_templates.map((tmpl, i) => (
+              {(intel.outreach_templates ?? []).map((tmpl, i) => (
                 <div key={i} className="border border-slate-100 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="px-2.5 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-lg capitalize">{tmpl.channel}</span>
@@ -220,11 +220,11 @@ export default function AudienceMapPage() {
                     </button>
                   </div>
                   <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed bg-slate-50 rounded-lg p-3">{tmpl.template}</pre>
-                  {tmpl.personalization_tips.length > 0 && (
+                  {(tmpl.personalization_tips?.length ?? 0) > 0 && (
                     <div>
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Personalization Tips</p>
                       <ul className="space-y-0.5">
-                        {tmpl.personalization_tips.map((tip, j) => (
+                        {(tmpl.personalization_tips ?? []).map((tip, j) => (
                           <li key={j} className="text-xs text-slate-500 flex gap-1.5"><span className="text-amber-400">•</span>{tip}</li>
                         ))}
                       </ul>

@@ -37,6 +37,9 @@ interface AccountsResponse {
     followers: number
     connected_at: string
     is_active: number
+    niche?: string
+    target_audience?: string
+    auto_generate?: number
   }>
   count: number
 }
@@ -87,6 +90,12 @@ export default function TwitterHubPage() {
   const [manualText, setManualText] = useState('')
   const [posting, setPosting] = useState(false)
 
+  // Account setup
+  const [editNiche, setEditNiche] = useState('')
+  const [editAudience, setEditAudience] = useState('')
+  const [editAutoGen, setEditAutoGen] = useState(true)
+  const [savingSetup, setSavingSetup] = useState(false)
+
   // Connect account form
   const [showConnect, setShowConnect] = useState(false)
   const [connectToken, setConnectToken] = useState('')
@@ -120,6 +129,19 @@ export default function TwitterHubPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Sync setup fields when selected account changes
+  useEffect(() => {
+    const acct = accounts?.accounts.find(a => a.id === selectedAccountId)
+    if (acct) {
+      setEditNiche(acct.niche || 'general')
+      setEditAudience(acct.target_audience || 'general audience')
+      setEditAutoGen(acct.auto_generate !== 0)
+      // Also populate generate form
+      if (acct.niche && acct.niche !== 'general') setNiche(acct.niche)
+      if (acct.target_audience && acct.target_audience !== 'general audience') setAudience(acct.target_audience)
+    }
+  }, [selectedAccountId, accounts])
+
   // Load saved niche/audience from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('twitter_strategy')
@@ -131,6 +153,26 @@ export default function TwitterHubPage() {
       } catch { /* ignore */ }
     }
   }, [])
+
+  async function handleSaveSetup() {
+    if (!selectedAccountId) return
+    setSavingSetup(true)
+    try {
+      await apiFetch(`/api/v1/twitter/accounts/${selectedAccountId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          niche: editNiche.trim() || 'general',
+          target_audience: editAudience.trim() || 'general audience',
+          auto_generate: editAutoGen,
+        }),
+      })
+      // Also update generate form
+      setNiche(editNiche.trim())
+      setAudience(editAudience.trim())
+      load(false)
+    } catch { /* ignore */ }
+    finally { setSavingSetup(false) }
+  }
 
   async function handleConnect() {
     if (!connectToken.trim() || !connectSecret.trim()) return
@@ -341,6 +383,54 @@ export default function TwitterHubPage() {
           </div>
         ) : (
           <p className="text-xs text-gray-400 text-center py-4">No accounts connected. Click &quot;Connect Account&quot; to get started.</p>
+        )}
+
+        {/* Account Setup — niche, audience, auto-generate */}
+        {selectedAccountId && connectedAccounts.length > 0 && (
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-2 mb-3">
+              <Zap size={12} className="text-blue-500" /> Account Growth Settings
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-medium text-slate-600 mb-1">Niche</label>
+                <input
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  placeholder="e.g. AI tools, SaaS, crypto trading"
+                  value={editNiche}
+                  onChange={e => setEditNiche(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-slate-600 mb-1">Target Audience</label>
+                <input
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  placeholder="e.g. startup founders, indie hackers"
+                  value={editAudience}
+                  onChange={e => setEditAudience(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editAutoGen}
+                  onChange={e => setEditAutoGen(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Auto-generate daily tweets using trends
+              </label>
+              <button
+                onClick={handleSaveSetup}
+                disabled={savingSetup}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
+              >
+                {savingSetup ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                {savingSetup ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Connect form */}

@@ -536,12 +536,25 @@ export default function ConnectionsPage() {
     if (showRefresh) setRefreshing(true)
     setSocialError(null)
     try {
-      const [healthData, connectionsData] = await Promise.all([
+      const [healthData, connectionsData, twitterAccounts] = await Promise.all([
         apiFetch<{ channels: SocialHealth[] }>('/api/v1/connectors/social/health', { timeoutMs: 8000 }),
         apiFetch<{ connections: { platform: string }[] }>('/api/v1/auth/connections').catch(() => ({ connections: [] })),
+        apiFetch<{ accounts: Array<{ username: string }>, count: number }>('/api/v1/twitter/accounts').catch(() => ({ accounts: [], count: 0 })),
       ])
-      setSocialChannels(healthData.channels ?? [])
-      setConnectedPlatforms(new Set(connectionsData.connections.map(c => c.platform)))
+
+      // Merge: if twitter_accounts DB says connected, override health check
+      const channels = healthData.channels ?? []
+      if (twitterAccounts.count > 0) {
+        const xIdx = channels.findIndex(c => c.channel === 'x')
+        if (xIdx >= 0 && !channels[xIdx].ready) {
+          channels[xIdx] = { ...channels[xIdx], ready: true, status: 'ready', message: `@${twitterAccounts.accounts[0]?.username} connected` }
+        }
+      }
+
+      setSocialChannels(channels)
+      const platforms = new Set(connectionsData.connections.map(c => c.platform))
+      if (twitterAccounts.count > 0) platforms.add('x')
+      setConnectedPlatforms(platforms)
     } catch (e) {
       setSocialError(e instanceof Error ? e.message : 'Could not reach service')
     } finally {

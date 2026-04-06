@@ -34,7 +34,7 @@ const NAV_SECTIONS = [
   {
     label: 'Grow',
     items: [
-      { href: '/dashboard/growth/x-test',    label: 'Grow X Account',   icon: Twitter },
+      { href: '/dashboard/twitter-engine',    label: 'Grow X Account',   icon: Twitter },
       { href: '/dashboard/growth/instagram', label: 'Grow Instagram',    icon: Instagram },
       { href: '/dashboard/promote',          label: 'Promote My Site',   icon: Megaphone },
     ],

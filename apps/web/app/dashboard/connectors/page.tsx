@@ -27,10 +27,15 @@ interface SocialHealth {
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ ready, status }: { ready: boolean; status: string }) {
+function StatusBadge({ ready, status, hasCredential }: { ready: boolean; status: string; hasCredential?: boolean }) {
   if (ready) return (
     <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
       <CheckCircle2 size={11} /> Connected
+    </span>
+  )
+  if (hasCredential) return (
+    <span className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full">
+      <CheckCircle2 size={11} /> Token stored
     </span>
   )
   if (status === 'invalid_credentials') return (
@@ -66,9 +71,11 @@ const UNLOCKS: Record<string, string[]> = {
 function SocialCard({
   channel,
   onRefresh,
+  hasCredential,
 }: {
   channel: SocialHealth
   onRefresh: () => void
+  hasCredential?: boolean
 }) {
   const [showSetup, setShowSetup] = useState(false)
   const [token, setToken] = useState('')
@@ -149,7 +156,7 @@ function SocialCard({
               )}
             </div>
           </div>
-          <StatusBadge ready={channel.ready} status={channel.status} />
+          <StatusBadge ready={channel.ready} status={channel.status} hasCredential={hasCredential} />
         </div>
 
         {/* Status message */}
@@ -185,7 +192,7 @@ function SocialCard({
         )}
 
         {/* Connect CTA */}
-        {!channel.ready && (isX || isIG) && (
+        {!channel.ready && !hasCredential && (isX || isIG) && (
           <button
             onClick={handleOAuth}
             disabled={oauthLoading}
@@ -197,6 +204,33 @@ function SocialCard({
             {oauthLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
             {oauthLoading ? 'Redirecting…' : isX ? 'Connect X Account' : 'Connect Instagram'}
           </button>
+        )}
+
+        {/* Token stored but API check failed */}
+        {!channel.ready && hasCredential && (isX || isIG) && (
+          <div className="mb-3 space-y-2">
+            <div className="flex items-start gap-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+              <CheckCircle2 size={11} className="text-blue-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">
+                OAuth token is stored. The live API check may have failed due to rate limiting (X free tier allows 1 check per 15 min) or a brief timeout. Your account should work for posting.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={onRefresh}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <RefreshCw size={11} /> Recheck now
+              </button>
+              <button
+                onClick={handleOAuth}
+                disabled={oauthLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-200 bg-amber-50 rounded-lg text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+              >
+                <RefreshCw size={11} /> Reconnect
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Re-connect if expired */}
@@ -564,15 +598,18 @@ export default function ConnectionsPage() {
         <div className="flex items-center gap-3 mb-4">
           <h2 className="text-sm font-bold text-gray-900">Social Accounts</h2>
           <div className="flex-1 h-px bg-gray-100" />
-          {!socialLoading && (
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              socialChannels.filter(c => c.ready).length > 0
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-gray-100 text-gray-500'
-            }`}>
-              {socialChannels.filter(c => c.ready).length}/{socialChannels.length} connected
-            </span>
-          )}
+          {!socialLoading && (() => {
+            const liveReady = socialChannels.filter(c => c.ready).length
+            const credCount = ['x', 'instagram'].filter(p => connectedPlatforms.has(p) || (p === 'instagram' && connectedPlatforms.has('meta'))).length
+            const displayCount = Math.max(liveReady, credCount)
+            return (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                displayCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {displayCount}/{socialChannels.length || 2} connected
+              </span>
+            )
+          })()}
         </div>
 
         {socialLoading ? (
@@ -591,17 +628,19 @@ export default function ConnectionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {xChannel
-              ? <SocialCard channel={xChannel} onRefresh={() => loadSocial(true)} />
+              ? <SocialCard channel={xChannel} onRefresh={() => loadSocial(true)} hasCredential={connectedPlatforms.has('x')} />
               : <SocialCard
                   channel={{ channel: 'x', label: 'X / Twitter', status: 'no_credentials', ready: false, message: 'Connect your X account to start publishing and tracking growth.', publish_enabled: false, capabilities: { text_posts: false, media_posts: false, threads: false } }}
                   onRefresh={() => loadSocial(true)}
+                  hasCredential={connectedPlatforms.has('x')}
                 />
             }
             {igChannel
-              ? <SocialCard channel={igChannel} onRefresh={() => loadSocial(true)} />
+              ? <SocialCard channel={igChannel} onRefresh={() => loadSocial(true)} hasCredential={connectedPlatforms.has('instagram') || connectedPlatforms.has('meta')} />
               : <SocialCard
                   channel={{ channel: 'instagram', label: 'Instagram', status: 'no_credentials', ready: false, message: 'Connect your Instagram Business or Creator account to start publishing.', publish_enabled: false, capabilities: { text_posts: false, media_posts: false, threads: false } }}
                   onRefresh={() => loadSocial(true)}
+                  hasCredential={connectedPlatforms.has('instagram') || connectedPlatforms.has('meta')}
                 />
             }
           </div>

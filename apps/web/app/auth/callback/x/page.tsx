@@ -17,30 +17,50 @@ function XCallback() {
     if (called.current) return;
     called.current = true;
 
-    const code = params.get('code');
-    const state = params.get('state');
+    // OAuth 1.0a callback params from Twitter
+    const oauthToken = params.get('oauth_token');
+    const oauthVerifier = params.get('oauth_verifier');
+    const denied = params.get('denied');
     const error = params.get('error');
 
-    if (error || !code || !state) {
+    if (denied) {
       setStatus('error');
-      setMessage(error === 'access_denied' ? 'Authorization was cancelled.' : 'Missing OAuth parameters.');
+      setMessage('Authorization was cancelled.');
+      return;
+    }
+
+    if (error) {
+      setStatus('error');
+      setMessage(error === 'access_denied' ? 'Authorization was cancelled.' : decodeURIComponent(error));
+      return;
+    }
+
+    if (!oauthToken || !oauthVerifier) {
+      setStatus('error');
+      setMessage('Missing OAuth parameters. Please try connecting again from Connections.');
       return;
     }
 
     (async () => {
       try {
+        const token = localStorage.getItem('access_token') ?? '';
         const res = await fetch('/api/v1/auth/x/callback', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ code, state }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            oauth_token: oauthToken,
+            oauth_verifier: oauthVerifier,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'OAuth exchange failed');
 
         setStatus('success');
-        setMessage(`Connected as @${data.username || 'your account'}. Redirecting...`);
-        setTimeout(() => router.replace('/dashboard/connectors'), 1800);
+        setMessage(`Connected as @${data.username || 'your account'}${data.followers ? ` (${data.followers.toLocaleString()} followers)` : ''}. Redirecting...`);
+        setTimeout(() => router.replace('/dashboard/connectors?connected=x'), 1800);
       } catch (err: unknown) {
         setStatus('error');
         setMessage(err instanceof Error ? err.message : 'Connection failed. Please try again.');
@@ -62,9 +82,14 @@ function XCallback() {
         <p className="text-sm text-gray-300 text-center">{message}</p>
 
         {status === 'error' && (
-          <button onClick={() => router.replace('/dashboard/connectors')} className="text-xs text-sky-400 underline">
-            Back to Connections
-          </button>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={() => router.replace('/dashboard/connectors')}
+              className="text-xs text-sky-400 underline"
+            >
+              Back to Connections
+            </button>
+          </div>
         )}
       </div>
     </div>

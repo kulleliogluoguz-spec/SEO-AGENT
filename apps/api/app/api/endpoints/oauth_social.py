@@ -3,43 +3,25 @@ Social OAuth Flows — X (OAuth 1.0a), Meta (Instagram + Ads), Google (Ads)
 
 GET  /api/v1/auth/x/authorize             — get X OAuth 1.0a request token + auth URL
 GET  /api/v1/auth/x/callback              — exchange oauth_token+verifier, redirect to frontend
+POST /api/v1/auth/x/callback              — JSON API exchange (used by frontend callback page)
 GET  /api/v1/auth/meta/authorize          — generate Meta/Facebook OAuth URL
 GET  /api/v1/auth/meta/callback           — exchange code, get long-lived token + ad accounts
 GET  /api/v1/auth/google/authorize        — generate Google OAuth URL (Ads scope)
 POST /api/v1/auth/google/callback         — exchange code, store, fetch ad accounts
 GET  /api/v1/auth/connections             — list all connected platforms for current user
 DELETE /api/v1/auth/connections/{platform} — revoke a connection
-
-Design:
-  All flows return { authorization_url, state } to the caller.
-  The frontend redirects the user to authorization_url.
-  After authorization, the platform redirects to the callback URL (in .env).
-  The frontend callback page sends { code, state } to POST /callback.
-  Backend exchanges code for tokens and stores them in credential_store.
-
-X OAuth 2.0 PKCE:
-  https://developer.twitter.com/en/docs/authentication/oauth-2-0/authorization-code
-  Scopes: tweet.write tweet.read users.read offline.access
-
-Meta (Facebook Login):
-  https://developers.facebook.com/docs/facebook-login
-  Scopes vary: instagram_business_basic, instagram_business_content_publish, instagram_business_manage_insights, ads_management, ads_read
-
-Google OAuth:
-  https://developers.google.com/identity/protocols/oauth2/web-server
-  Scopes: https://www.googleapis.com/auth/adwords
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
 import secrets
 import urllib.parse
-from typing import Optional
+from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -47,25 +29,70 @@ from app.api.dependencies.auth import get_current_user
 from app.core.config.settings import get_settings
 from app.core.security.oauth1 import build_auth_header as _oauth1_build_header
 from app.core.store.credential_store import (
-    store_credential,
-    get_credential,
     delete_credential,
-    list_credentials,
-    link_account,
     get_linked_accounts,
+    link_account,
+    list_credentials,
+    store_credential,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 
-# ─── In-memory PKCE/state store (persisted to file in production) ─────────────
-# Maps state → { code_verifier, user_id, platform }
-_oauth_state_store: dict[str, dict] = {}
+FRONTEND_URL = "http://localhost:3000"
+
+# ─── Persistent state store (survives server restarts) ───────────────────────
+# Previous implementation used in-memory dict which was lost on every uvicorn
+# --reload cycle, causing "Invalid or expired OAuth token" errors.
+
+_STATE_FILE = Path(__file__).resolve().parents[3] / "storage" / "oauth_state.json"
+_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _load_state_store() -> dict:
+    if not _STATE_FILE.exists():
+        return {}
+    try:
+        with open(_STATE_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_state_store(store: dict) -> None:
+    with open(_STATE_FILE, "w") as f:
+        json.dump(store, f, indent=2)
+
+
+def _save_state(state: str, user_id: str, platform: str, **extra) -> None:
+    """Persist an OAuth state entry to disk."""
+    store = _load_state_store()
+    store[state] = {"user_id": user_id, "platform": platform, **extra}
+    _save_state_store(store)
+
+
+def _consume_state(state: str) -> dict | None:
+    """Pop and return state entry. Persists removal to disk. Returns None if missing."""
+    store = _load_state_store()
+    entry = store.pop(state, None)
+    if entry is not None:
+        _save_state_store(store)
+    return entry
+
+
+def _get_state(state: str) -> dict | None:
+    """Peek at a state entry without consuming it."""
+    store = _load_state_store()
+    return store.get(state)
+
+
+# ─── OAuth 1.0a URLs ─────────────────────────────────────────────────────────
 
 X_REQUEST_TOKEN_URL = "https://api.twitter.com/oauth/request_token"
 X_AUTHORIZE_URL = "https://api.twitter.com/oauth/authorize"
 X_ACCESS_TOKEN_URL = "https://api.twitter.com/oauth/access_token"
+X_VERIFY_URL = "https://api.twitter.com/2/users/me"
 
 META_AUTH_URL = "https://www.facebook.com/v20.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v20.0/oauth/access_token"
@@ -80,6 +107,7 @@ GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _oauth1_auth_header(
     method: str,
     url: str,
@@ -87,7 +115,7 @@ def _oauth1_auth_header(
     consumer_secret: str,
     token: str = "",
     token_secret: str = "",
-    additional_oauth_params: Optional[dict] = None,
+    additional_oauth_params: dict | None = None,
 ) -> str:
     return _oauth1_build_header(
         method=method,
@@ -100,20 +128,88 @@ def _oauth1_auth_header(
     )
 
 
-def _save_state(state: str, user_id: str, platform: str, code_verifier: Optional[str] = None) -> None:
-    _oauth_state_store[state] = {
-        "user_id": user_id,
-        "platform": platform,
-        "code_verifier": code_verifier,
+def _redirect_with_error(platform: str, error: str) -> RedirectResponse:
+    """Redirect to frontend connectors page with error message in query param."""
+    encoded = urllib.parse.quote(error)
+    return RedirectResponse(
+        url=f"{FRONTEND_URL}/dashboard/connectors?error={encoded}&platform={platform}",
+        status_code=302,
+    )
+
+
+async def _x_exchange_tokens(oauth_token: str, oauth_verifier: str, oauth_token_secret: str) -> dict:
+    """Exchange OAuth 1.0a request token + verifier for access tokens.
+    Returns dict with tokens + user info on success, or error string."""
+    auth_header = _oauth1_auth_header(
+        method="POST",
+        url=X_ACCESS_TOKEN_URL,
+        consumer_key=settings.x_api_key,
+        consumer_secret=settings.x_api_secret,
+        token=oauth_token,
+        token_secret=oauth_token_secret,
+        additional_oauth_params={"oauth_verifier": oauth_verifier},
+    )
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            X_ACCESS_TOKEN_URL,
+            headers={"Authorization": auth_header},
+        )
+
+    if resp.status_code != 200:
+        logger.error("[x] access_token exchange failed %s: %s", resp.status_code, resp.text[:300])
+        return {"error": f"X token exchange failed ({resp.status_code}). Please try again."}
+
+    token_data = dict(urllib.parse.parse_qsl(resp.text))
+    access_token = token_data.get("oauth_token", "")
+    access_token_secret = token_data.get("oauth_token_secret", "")
+    x_user_id = token_data.get("user_id", "")
+    x_username = token_data.get("screen_name", "")
+
+    if not access_token:
+        return {"error": "X did not return access tokens. Check app permissions (Read+Write)."}
+
+    return {
+        "access_token": access_token,
+        "access_token_secret": access_token_secret,
+        "x_user_id": x_user_id,
+        "x_username": x_username,
     }
 
 
-def _consume_state(state: str) -> Optional[dict]:
-    """Return and remove state entry. Returns None if not found."""
-    return _oauth_state_store.pop(state, None)
+async def _x_verify_credentials(access_token: str, access_token_secret: str) -> dict | None:
+    """Verify tokens by calling GET /2/users/me. Returns user info or None."""
+    auth_header = _oauth1_auth_header(
+        method="GET",
+        url=X_VERIFY_URL,
+        consumer_key=settings.x_api_key,
+        consumer_secret=settings.x_api_secret,
+        token=access_token,
+        token_secret=access_token_secret,
+    )
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                X_VERIFY_URL,
+                headers={"Authorization": auth_header},
+                params={"user.fields": "public_metrics,name"},
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", {})
+                metrics = data.get("public_metrics", {})
+                return {
+                    "username": data.get("username", ""),
+                    "display_name": data.get("name", ""),
+                    "x_user_id": data.get("id", ""),
+                    "followers": metrics.get("followers_count", 0),
+                }
+    except Exception as e:
+        logger.debug("[x] verify_credentials failed: %s", e)
+    return None
 
 
 # ─── X / Twitter OAuth 1.0a ──────────────────────────────────────────────────
+
 
 @router.get("/auth/x/authorize")
 async def x_authorize(user=Depends(get_current_user)):
@@ -152,93 +248,228 @@ async def x_authorize(user=Depends(get_current_user)):
     if not oauth_token:
         raise HTTPException(status_code=400, detail="X did not return oauth_token")
 
-    _oauth_state_store[oauth_token] = {
-        "user_id": str(user.id),
-        "platform": "x",
-        "oauth_token_secret": oauth_token_secret,
+    # Persist to file (survives --reload)
+    _save_state(
+        oauth_token,
+        user_id=str(user.id),
+        platform="x",
+        oauth_token_secret=oauth_token_secret,
+    )
+
+    return {
+        "authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}",
+        "oauth_token": oauth_token,
     }
 
-    return {"authorization_url": f"{X_AUTHORIZE_URL}?oauth_token={oauth_token}", "oauth_token": oauth_token}
 
-
-class OAuthCallbackBody(BaseModel):
-    code: str
-    state: str
+class XCallbackBody(BaseModel):
+    oauth_token: str
+    oauth_verifier: str
 
 
 @router.get("/auth/x/callback")
-async def x_callback(
-    oauth_token: str = Query(...),
-    oauth_verifier: str = Query(...),
+async def x_callback_get(
+    oauth_token: str = Query(None),
+    oauth_verifier: str = Query(None),
+    denied: str = Query(None),
 ):
     """
-    Step 2: Exchange oauth_token + oauth_verifier for access tokens (OAuth 1.0a).
-    Twitter redirects the browser here after the user authorizes the app.
-    Stores tokens then redirects the browser to the frontend connectors page.
+    Step 2 (GET): Twitter redirects the browser here after authorization.
+    Exchanges tokens, stores credentials, redirects to frontend.
+    All errors redirect to frontend with ?error= instead of returning JSON.
     """
-    state_data = _oauth_state_store.pop(oauth_token, None)
+    # User denied authorization
+    if denied:
+        return _redirect_with_error("x", "Authorization was denied.")
+
+    if not oauth_token or not oauth_verifier:
+        return _redirect_with_error("x", "Missing OAuth parameters. Please try connecting again.")
+
+    # Look up state
+    state_data = _consume_state(oauth_token)
     if not state_data:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth token. Restart the connection flow.")
-
-    user_id = state_data["user_id"]
-    oauth_token_secret = state_data["oauth_token_secret"]
-
-    auth_header = _oauth1_auth_header(
-        method="POST",
-        url=X_ACCESS_TOKEN_URL,
-        consumer_key=settings.x_api_key,
-        consumer_secret=settings.x_api_secret,
-        token=oauth_token,
-        token_secret=oauth_token_secret,
-        additional_oauth_params={"oauth_verifier": oauth_verifier},
-    )
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            X_ACCESS_TOKEN_URL,
-            headers={"Authorization": auth_header},
+        return _redirect_with_error(
+            "x",
+            "OAuth session expired. This usually happens if the server restarted. Please try connecting again.",
         )
 
-    if resp.status_code != 200:
-        logger.error("[x_callback] access_token exchange failed %s: %s", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=400, detail=f"X access_token exchange failed: {resp.text[:300]}")
+    user_id = state_data["user_id"]
+    oauth_token_secret = state_data.get("oauth_token_secret", "")
 
-    token_data = dict(urllib.parse.parse_qsl(resp.text))
-    access_token = token_data.get("oauth_token", "")
-    access_token_secret = token_data.get("oauth_token_secret", "")
-    x_user_id = token_data.get("user_id", "")
-    x_username = token_data.get("screen_name", "")
+    # Exchange for access tokens
+    result = await _x_exchange_tokens(oauth_token, oauth_verifier, oauth_token_secret)
+    if "error" in result:
+        return _redirect_with_error("x", result["error"])
+
+    # Verify the new tokens actually work
+    verified = await _x_verify_credentials(result["access_token"], result["access_token_secret"])
+
+    username = verified["username"] if verified else result.get("x_username", "")
+    x_user_id = verified["x_user_id"] if verified else result.get("x_user_id", "")
+
+    # Store credentials
+    store_credential(
+        user_id=user_id,
+        platform="x",
+        access_token=result["access_token"],
+        refresh_token=result["access_token_secret"],
+        scope="tweet.read tweet.write users.read",
+        extra={
+            "x_user_id": x_user_id,
+            "x_username": username,
+            "token_type": "oauth1",
+            "followers": verified.get("followers", 0) if verified else 0,
+        },
+    )
+
+    # Also save to twitter_accounts table for multi-account support
+    try:
+        from app.api.endpoints.twitter_engine import _db as tw_db
+
+        existing = tw_db(
+            "SELECT id FROM twitter_accounts WHERE twitter_user_id=? AND is_active=1",
+            (x_user_id,),
+        )
+        if existing:
+            tw_db(
+                """UPDATE twitter_accounts
+                   SET access_token=?, access_token_secret=?, username=?,
+                       display_name=?, followers=?, connected_at=?
+                   WHERE id=?""",
+                (
+                    result["access_token"],
+                    result["access_token_secret"],
+                    username,
+                    verified.get("display_name", "") if verified else "",
+                    verified.get("followers", 0) if verified else 0,
+                    __import__("datetime").datetime.now().isoformat(),
+                    existing[0]["id"],
+                ),
+                fetch=False,
+            )
+        else:
+            tw_db(
+                """INSERT INTO twitter_accounts
+                   (workspace_id, twitter_user_id, username, display_name,
+                    access_token, access_token_secret, followers, connected_at)
+                   VALUES ('default', ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    x_user_id,
+                    username,
+                    verified.get("display_name", "") if verified else "",
+                    result["access_token"],
+                    result["access_token_secret"],
+                    verified.get("followers", 0) if verified else 0,
+                    __import__("datetime").datetime.now().isoformat(),
+                ),
+                fetch=False,
+            )
+    except Exception as e:
+        logger.debug("[x_callback] twitter_accounts sync skipped: %s", e)
+
+    logger.info("[x_callback] stored tokens for user=%s @%s", user_id, username)
+
+    return RedirectResponse(
+        url=f"{FRONTEND_URL}/dashboard/connectors?connected=x&username={urllib.parse.quote(username)}",
+        status_code=302,
+    )
+
+
+@router.post("/auth/x/callback")
+async def x_callback_post(request: Request):
+    """
+    Step 2 (POST): Frontend callback page sends tokens via JSON.
+    Handles both OAuth 1.0a params (oauth_token, oauth_verifier)
+    and any legacy OAuth 2.0 params (code, state).
+    Returns JSON with username for the frontend to display.
+    """
+    body = await request.json()
+
+    oauth_token = body.get("oauth_token") or body.get("code", "")
+    oauth_verifier = body.get("oauth_verifier") or body.get("state", "")
+
+    if not oauth_token or not oauth_verifier:
+        raise HTTPException(400, "Missing oauth_token and oauth_verifier.")
+
+    state_data = _consume_state(oauth_token)
+    if not state_data:
+        raise HTTPException(
+            400,
+            "OAuth session expired. This happens if the server restarted during login. "
+            "Please go back to Connections and try again.",
+        )
+
+    user_id = state_data["user_id"]
+    oauth_token_secret = state_data.get("oauth_token_secret", "")
+
+    result = await _x_exchange_tokens(oauth_token, oauth_verifier, oauth_token_secret)
+    if "error" in result:
+        raise HTTPException(400, result["error"])
+
+    verified = await _x_verify_credentials(result["access_token"], result["access_token_secret"])
+    username = verified["username"] if verified else result.get("x_username", "")
+    x_user_id = verified["x_user_id"] if verified else result.get("x_user_id", "")
 
     store_credential(
         user_id=user_id,
         platform="x",
-        access_token=access_token,
-        refresh_token=access_token_secret,  # token_secret stored in refresh_token slot
+        access_token=result["access_token"],
+        refresh_token=result["access_token_secret"],
         scope="tweet.read tweet.write users.read",
         extra={
             "x_user_id": x_user_id,
-            "x_username": x_username,
+            "x_username": username,
             "token_type": "oauth1",
+            "followers": verified.get("followers", 0) if verified else 0,
         },
     )
 
-    logger.info("[x_callback] stored OAuth 1.0a tokens for user=%s x_username=@%s", user_id, x_username)
-    return RedirectResponse(url="http://localhost:3000/dashboard/connectors?connected=x", status_code=302)
+    # Sync to twitter_accounts
+    try:
+        from app.api.endpoints.twitter_engine import _db as tw_db
+
+        existing = tw_db(
+            "SELECT id FROM twitter_accounts WHERE twitter_user_id=? AND is_active=1",
+            (x_user_id,),
+        )
+        if not existing:
+            tw_db(
+                """INSERT INTO twitter_accounts
+                   (workspace_id, twitter_user_id, username, display_name,
+                    access_token, access_token_secret, followers, connected_at)
+                   VALUES ('default', ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    x_user_id,
+                    username,
+                    verified.get("display_name", "") if verified else "",
+                    result["access_token"],
+                    result["access_token_secret"],
+                    verified.get("followers", 0) if verified else 0,
+                    __import__("datetime").datetime.now().isoformat(),
+                ),
+                fetch=False,
+            )
+    except Exception as e:
+        logger.debug("[x_callback_post] twitter_accounts sync skipped: %s", e)
+
+    logger.info("[x_callback] POST: stored tokens for user=%s @%s", user_id, username)
+
+    return {
+        "connected": True,
+        "username": username,
+        "x_user_id": x_user_id,
+        "followers": verified.get("followers", 0) if verified else 0,
+    }
 
 
 # ─── Meta (Instagram + Meta Ads) OAuth ───────────────────────────────────────
 
+
 @router.get("/auth/meta/authorize")
 async def meta_authorize(
-    scope: str = "instagram",  # "instagram" | "ads" | "all"
+    scope: str = "instagram",
     user=Depends(get_current_user),
 ):
-    """
-    Generate Meta/Facebook OAuth URL.
-    scope="instagram" → Instagram publishing permissions
-    scope="ads"       → Meta Ads management permissions
-    scope="all"       → Both
-    """
     if not settings.meta_app_id:
         raise HTTPException(
             status_code=400,
@@ -271,16 +502,10 @@ async def meta_callback(
     code: str = Query(...),
     state: str = Query(...),
 ):
-    """
-    Exchange Meta code for long-lived token. Stores credential and fetches ad accounts.
-    Meta redirects here via GET with ?code=...&state=...
-    User identity is resolved from the state store.
-    """
     state_data = _consume_state(state)
     if not state_data:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+        return _redirect_with_error("meta", "OAuth session expired. Please try connecting again.")
 
-    # Step 1: Exchange code for short-lived token
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.get(
             META_TOKEN_URL,
@@ -293,12 +518,11 @@ async def meta_callback(
         )
 
     if resp.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"Meta token exchange failed: {resp.text[:300]}")
+        return _redirect_with_error("meta", f"Meta token exchange failed: {resp.text[:200]}")
 
     short_lived = resp.json()
     short_token = short_lived.get("access_token", "")
 
-    # Step 2: Exchange for long-lived token (60 days)
     async with httpx.AsyncClient(timeout=15.0) as client:
         ll_resp = await client.get(
             META_LONG_LIVED_URL,
@@ -310,55 +534,61 @@ async def meta_callback(
             },
         )
 
-    long_lived_token = short_token  # fallback
-    expires_in = 5184000  # 60 days default
+    long_lived_token = short_token
+    expires_in = 5184000
     if ll_resp.status_code == 200:
         ll_data = ll_resp.json()
         long_lived_token = ll_data.get("access_token", short_token)
         expires_in = ll_data.get("expires_in", expires_in)
 
-    # Step 3: Fetch user's Facebook pages (needed for Instagram Business API)
     pages = []
     instagram_accounts = []
     ad_accounts = []
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # Get linked Instagram business accounts
         ig_resp = await client.get(
             "https://graph.facebook.com/v20.0/me/accounts",
-            params={"access_token": long_lived_token, "fields": "id,name,instagram_business_account"},
+            params={
+                "access_token": long_lived_token,
+                "fields": "id,name,instagram_business_account",
+            },
         )
         if ig_resp.status_code == 200:
             for page in ig_resp.json().get("data", []):
                 pages.append({"page_id": page.get("id"), "page_name": page.get("name")})
                 ig_biz = page.get("instagram_business_account")
                 if ig_biz:
-                    instagram_accounts.append({
-                        "instagram_account_id": ig_biz["id"],
-                        "page_id": page["id"],
-                        "page_name": page["name"],
-                    })
+                    instagram_accounts.append(
+                        {
+                            "instagram_account_id": ig_biz["id"],
+                            "page_id": page["id"],
+                            "page_name": page["name"],
+                        }
+                    )
 
-        # Get ad accounts if ads scope was requested
         platform = state_data.get("platform", "meta_instagram")
         if "ads" in platform:
             ads_resp = await client.get(
                 "https://graph.facebook.com/v20.0/me/adaccounts",
-                params={"access_token": long_lived_token, "fields": "id,name,currency,account_status"},
+                params={
+                    "access_token": long_lived_token,
+                    "fields": "id,name,currency,account_status",
+                },
             )
             if ads_resp.status_code == 200:
                 for acc in ads_resp.json().get("data", []):
-                    if acc.get("account_status") == 1:  # 1 = ACTIVE
-                        ad_accounts.append({
-                            "account_id": acc["id"],
-                            "account_name": acc.get("name", ""),
-                            "currency": acc.get("currency", "USD"),
-                        })
+                    if acc.get("account_status") == 1:
+                        ad_accounts.append(
+                            {
+                                "account_id": acc["id"],
+                                "account_name": acc.get("name", ""),
+                                "currency": acc.get("currency", "USD"),
+                            }
+                        )
 
     user_id = state_data["user_id"]
 
-    # Store credential
-    record = store_credential(
+    store_credential(
         user_id=user_id,
         platform="meta",
         access_token=long_lived_token,
@@ -371,22 +601,20 @@ async def meta_callback(
         },
     )
 
-    # Always store as "instagram" — the publisher checks this key for connection status.
-    # If a linked Instagram Business account was found, include its ID; otherwise the
-    # long-lived Meta token is still valid and check_status() (/me) will return READY.
     store_credential(
         user_id=user_id,
         platform="instagram",
         access_token=long_lived_token,
         scope=META_INSTAGRAM_SCOPES,
         extra={
-            "instagram_account_id": instagram_accounts[0]["instagram_account_id"] if instagram_accounts else "",
+            "instagram_account_id": instagram_accounts[0]["instagram_account_id"]
+            if instagram_accounts
+            else "",
             "page_id": instagram_accounts[0]["page_id"] if instagram_accounts else "",
             "instagram_accounts": instagram_accounts,
         },
     )
 
-    # Link ad accounts
     for acc in ad_accounts:
         link_account(
             user_id=user_id,
@@ -396,15 +624,25 @@ async def meta_callback(
             currency=acc.get("currency", "USD"),
         )
 
-    logger.info("[meta_callback] stored tokens for user=%s pages=%d ig_accounts=%d", user_id, len(pages), len(instagram_accounts))
-    return RedirectResponse(url="http://localhost:3000/dashboard/connectors?connected=meta", status_code=302)
+    logger.info(
+        "[meta_callback] stored tokens for user=%s pages=%d ig_accounts=%d",
+        user_id, len(pages), len(instagram_accounts),
+    )
+    return RedirectResponse(
+        url=f"{FRONTEND_URL}/dashboard/connectors?connected=meta", status_code=302,
+    )
 
 
 # ─── Google OAuth (for Google Ads) ───────────────────────────────────────────
 
+
+class OAuthCallbackBody(BaseModel):
+    code: str
+    state: str
+
+
 @router.get("/auth/google/authorize")
 async def google_authorize(user=Depends(get_current_user)):
-    """Generate Google OAuth URL for Google Ads access."""
     if not settings.google_client_id:
         raise HTTPException(
             status_code=400,
@@ -429,12 +667,10 @@ async def google_authorize(user=Depends(get_current_user)):
 
 @router.post("/auth/google/callback")
 async def google_callback(body: OAuthCallbackBody, user=Depends(get_current_user)):
-    """Exchange Google code for tokens, fetch accessible ad accounts."""
     state_data = _consume_state(body.state)
     if not state_data or state_data["user_id"] != str(user.id):
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
 
-    # Exchange code for tokens
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             GOOGLE_TOKEN_URL,
@@ -448,14 +684,15 @@ async def google_callback(body: OAuthCallbackBody, user=Depends(get_current_user
         )
 
     if resp.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"Google token exchange failed: {resp.text[:300]}")
+        raise HTTPException(
+            status_code=400, detail=f"Google token exchange failed: {resp.text[:300]}"
+        )
 
     token_data = resp.json()
     access_token = token_data["access_token"]
     refresh_token = token_data.get("refresh_token", "")
     expires_in = token_data.get("expires_in", 3600)
 
-    # Fetch accessible customer accounts via Google Ads API
     ad_accounts = []
     if settings.google_ads_developer_token:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -502,9 +739,9 @@ async def google_callback(body: OAuthCallbackBody, user=Depends(get_current_user
 
 # ─── Connection management ────────────────────────────────────────────────────
 
+
 @router.get("/auth/connections")
 async def list_connections(user=Depends(get_current_user)):
-    """List all connected platforms with their status."""
     credentials = list_credentials(str(user.id))
     linked = get_linked_accounts(str(user.id))
 
@@ -529,13 +766,11 @@ async def list_connections(user=Depends(get_current_user)):
 
 @router.delete("/auth/connections/{platform}")
 async def disconnect_platform(platform: str, user=Depends(get_current_user)):
-    """Revoke and delete stored credentials for a platform."""
     deleted = delete_credential(str(user.id), platform)
     if not deleted:
-        raise HTTPException(status_code=404, detail=f"No connection found for platform '{platform}'")
-
-    # Also remove instagram alias if disconnecting meta
+        raise HTTPException(
+            status_code=404, detail=f"No connection found for platform '{platform}'"
+        )
     if platform == "meta":
         delete_credential(str(user.id), "instagram")
-
     return {"disconnected": True, "platform": platform}

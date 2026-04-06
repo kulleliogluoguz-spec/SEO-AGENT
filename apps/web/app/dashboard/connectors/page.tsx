@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Twitter, Instagram, Megaphone, BarChart2, Search,
   CheckCircle2, AlertCircle, XCircle, Loader2,
@@ -479,11 +480,23 @@ function AnalyticsCard({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ConnectionsPage() {
+  const searchParams = useSearchParams()
   const [socialChannels, setSocialChannels] = useState<SocialHealth[]>([])
   const [socialLoading, setSocialLoading] = useState(true)
   const [socialError, setSocialError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<string>>(new Set())
+
+  // OAuth redirect feedback from ?connected= or ?error=
+  const oauthConnected = searchParams?.get('connected') ?? null
+  const oauthUsername = searchParams?.get('username') ?? null
+  const oauthError = searchParams?.get('error') ?? null
+  const oauthPlatform = searchParams?.get('platform') ?? null
+  const flashMessage = useMemo(() => {
+    if (oauthConnected) return { type: 'ok' as const, text: `${oauthConnected.toUpperCase()} connected successfully${oauthUsername ? ` as @${oauthUsername}` : ''}!` }
+    if (oauthError) return { type: 'err' as const, text: decodeURIComponent(oauthError) }
+    return null
+  }, [oauthConnected, oauthUsername, oauthError])
 
   const loadSocial = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
@@ -533,6 +546,18 @@ export default function ConnectionsPage() {
           {refreshing ? 'Checking…' : 'Check health'}
         </button>
       </div>
+
+      {/* OAuth flash message */}
+      {flashMessage && (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm ${
+          flashMessage.type === 'ok'
+            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          {flashMessage.type === 'ok' ? <CheckCircle2 size={15} className="text-emerald-500 flex-shrink-0" /> : <XCircle size={15} className="text-red-500 flex-shrink-0" />}
+          {flashMessage.text}
+        </div>
+      )}
 
       {/* ── Social Accounts ── */}
       <div>

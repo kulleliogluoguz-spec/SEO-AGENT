@@ -1,7 +1,7 @@
 """
 Twitter Autonomous Growth Engine — Multi-Account
 
-Generates AI content daily using Ollama, manages a tweet queue,
+Generates AI content daily using local Ollama (qwen3:8b), manages a tweet queue,
 posts approved tweets via X API v2 with OAuth 1.0a signing,
 and tracks performance metrics.
 
@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/twitter", tags=["twitter-engine"])
 
-LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001")
 
 X_API_BASE = "https://api.twitter.com/2"
 
@@ -217,45 +216,35 @@ async def _post_to_x(text: str, account: dict, reply_to_id: str | None = None) -
         return {"success": False, "error": str(e)}
 
 
-# ─── LLM (Anthropic Claude) ───────────────────────────────────────────────────
+# ─── LLM (Local Ollama) ───────────────────────────────────────────────────────
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+
 
 async def _ask_llm(prompt: str) -> str:
-    """Call Anthropic Claude API. Falls back to Ollama if no API key."""
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if api_key:
-        try:
-            import anthropic
-
-            # Use AsyncAnthropic to avoid blocking the event loop
-            client = anthropic.AsyncAnthropic(api_key=api_key)
-            message = await client.messages.create(
-                model=LLM_MODEL,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return message.content[0].text.strip()
-        except Exception as e:
-            logger.error("Anthropic API error: %s", e)
-            return ""
-
-    # Fallback: try Ollama if available
-    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    ollama_model = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+    """Generate text using local Ollama. No external APIs."""
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
-                f"{ollama_url}/api/generate",
-                json={"model": ollama_model, "prompt": prompt, "stream": False},
+                f"{OLLAMA_URL}/api/generate",
+                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()
+                # Strip qwen3 reasoning blocks
                 while "<think>" in text and "</think>" in text:
                     start = text.index("<think>")
                     end = text.index("</think>") + len("</think>")
                     text = text[:start] + text[end:]
                 return text.strip()
+            logger.warning("Ollama returned %s: %s", resp.status_code, resp.text[:200])
+    except httpx.ConnectError:
+        logger.error("Ollama not reachable at %s — run: ollama serve", OLLAMA_URL)
+    except httpx.ReadTimeout:
+        logger.error("Ollama timed out (120s) — model may be loading. Try again.")
     except Exception as e:
-        logger.error("Ollama fallback error: %s", e)
+        logger.error("Ollama error: %s", e)
     return ""
 
 
@@ -557,7 +546,7 @@ async def twitter_stats():
 
 @router.post("/generate")
 async def generate_tweets(req: GenerateRequest):
-    """Generate a batch of tweets using Claude AI and add to queue."""
+    """Generate a batch of tweets using local Ollama AI and add to queue."""
     pillars = req.content_pillars or ["education", "opinion", "behind_scenes", "engagement"]
 
     prompt = f"""You are a viral Twitter/X content creator. Generate {req.count} tweets for a {req.niche} account targeting {req.target_audience}.
@@ -596,8 +585,8 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 
     if not data:
         return {
-            "error": "Generation failed — check ANTHROPIC_API_KEY in .env",
-            "hint": "Set ANTHROPIC_API_KEY in apps/api/.env or ensure Ollama is running as fallback",
+            "error": "Generation failed — is Ollama running?",
+            "hint": "Run: ollama serve && ollama pull qwen3:8b",
             "generated": 0,
             "items": [],
         }
@@ -970,8 +959,8 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 
     if not data:
         return {
-            "error": "Generation failed — check ANTHROPIC_API_KEY in .env",
-            "hint": "Set ANTHROPIC_API_KEY in apps/api/.env or ensure Ollama is running as fallback",
+            "error": "Generation failed — is Ollama running?",
+            "hint": "Run: ollama serve && ollama pull qwen3:8b",
             "auto_generated": False,
             "generated": 0,
             "items": [],
@@ -1138,7 +1127,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
     response = await _ask_llm(prompt)
     data = _extract_json(response)
     if not data:
-        return {"error": "Strategy generation failed — check ANTHROPIC_API_KEY"}
+        return {"error": "Strategy generation failed — is Ollama running? Run: ollama serve"}
     return data
 
 

@@ -44,7 +44,8 @@ function XCallback() {
     (async () => {
       try {
         const token = localStorage.getItem('access_token') ?? '';
-        const res = await fetch('/api/v1/auth/x/callback', {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const res = await fetch(`${apiBase}/api/v1/auth/x/callback`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

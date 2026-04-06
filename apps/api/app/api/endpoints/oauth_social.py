@@ -288,6 +288,7 @@ class XCallbackBody(BaseModel):
 
 @router.get("/auth/x/callback")
 async def x_callback_get(
+    request: Request,
     oauth_token: str = Query(None),
     oauth_verifier: str = Query(None),
     denied: str = Query(None),
@@ -297,29 +298,57 @@ async def x_callback_get(
     Exchanges tokens, stores credentials, redirects to frontend.
     All errors redirect to frontend with ?error= instead of returning JSON.
     """
+    # ── Debug: print ALL incoming params to terminal ──
+    print(f"\n{'='*60}")
+    print(f"[X CALLBACK] HIT at {__import__('datetime').datetime.now().isoformat()}")
+    print(f"[X CALLBACK] Full URL: {request.url}")
+    print(f"[X CALLBACK] Query params: {dict(request.query_params)}")
+    print(f"[X CALLBACK] oauth_token={oauth_token}")
+    print(f"[X CALLBACK] oauth_verifier={oauth_verifier}")
+    print(f"[X CALLBACK] denied={denied}")
+    print(f"[X CALLBACK] State file: {_STATE_FILE}")
+    print(f"[X CALLBACK] State file exists: {_STATE_FILE.exists()}")
+    if _STATE_FILE.exists():
+        import json as _json
+        try:
+            _contents = _json.load(open(_STATE_FILE))
+            print(f"[X CALLBACK] State file keys: {list(_contents.keys())}")
+            print(f"[X CALLBACK] Token in state: {oauth_token in _contents if oauth_token else 'N/A'}")
+        except Exception as _e:
+            print(f"[X CALLBACK] State file read error: {_e}")
+    print(f"{'='*60}\n")
+
     # User denied authorization
     if denied:
+        print("[X CALLBACK] User denied. Redirecting with error.")
         return _redirect_with_error("x", "Authorization was denied.")
 
     if not oauth_token or not oauth_verifier:
+        print(f"[X CALLBACK] Missing params! token={oauth_token} verifier={oauth_verifier}")
         return _redirect_with_error("x", "Missing OAuth parameters. Please try connecting again.")
 
     # Look up state
-    logger.info("[x_callback] incoming oauth_token=%s… file=%s", oauth_token[:15], _STATE_FILE)
     state_data = _consume_state(oauth_token)
     if not state_data:
+        print(f"[X CALLBACK] STATE NOT FOUND for token={oauth_token}")
+        print(f"[X CALLBACK] This means the token was not in {_STATE_FILE}")
         return _redirect_with_error(
             "x",
             "OAuth session expired. Please click 'Connect X Account' again to restart.",
         )
 
+    print(f"[X CALLBACK] State found! user_id={state_data.get('user_id')}")
+
     user_id = state_data["user_id"]
     oauth_token_secret = state_data.get("oauth_token_secret", "")
 
     # Exchange for access tokens
+    print("[X CALLBACK] Exchanging tokens with Twitter API...")
     result = await _x_exchange_tokens(oauth_token, oauth_verifier, oauth_token_secret)
     if "error" in result:
+        print(f"[X CALLBACK] TOKEN EXCHANGE FAILED: {result['error']}")
         return _redirect_with_error("x", result["error"])
+    print(f"[X CALLBACK] Token exchange SUCCESS! username=@{result.get('x_username')}")
 
     # Verify the new tokens actually work
     verified = await _x_verify_credentials(result["access_token"], result["access_token_secret"])
@@ -387,12 +416,11 @@ async def x_callback_get(
     except Exception as e:
         logger.debug("[x_callback] twitter_accounts sync skipped: %s", e)
 
+    redirect_url = f"{FRONTEND_URL}/dashboard/connectors?connected=x&username={urllib.parse.quote(username)}"
+    print(f"[X CALLBACK] ALL DONE! Tokens saved. Redirecting to: {redirect_url}")
     logger.info("[x_callback] stored tokens for user=%s @%s", user_id, username)
 
-    return RedirectResponse(
-        url=f"{FRONTEND_URL}/dashboard/connectors?connected=x&username={urllib.parse.quote(username)}",
-        status_code=302,
-    )
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 @router.post("/auth/x/callback")

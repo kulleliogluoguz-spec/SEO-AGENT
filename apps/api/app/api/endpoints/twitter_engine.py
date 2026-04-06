@@ -1,11 +1,12 @@
 """
-Twitter Autonomous Growth Engine
+Twitter Autonomous Growth Engine — Multi-Account
 
 Generates AI content daily using Ollama, manages a tweet queue,
-posts approved tweets via the existing XPublisher service,
+posts approved tweets via X API v2 with OAuth 1.0a signing,
 and tracks performance metrics.
 
-Leverages the existing XPublisher (httpx + OAuth 1.0a) — no tweepy needed.
+Supports multiple connected X accounts stored in SQLite.
+Falls back to .env credentials if no accounts are connected.
 """
 
 import json
@@ -26,7 +27,9 @@ router = APIRouter(prefix="/api/v1/twitter", tags=["twitter-engine"])
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
-# ─── SQLite Queue DB ──────────────────────────────────────────────────────────
+X_API_BASE = "https://api.twitter.com/2"
+
+# ─── SQLite DB ────────────────────────────────────────────────────────────────
 
 DB_PATH = pathlib.Path(__file__).resolve().parents[3] / "storage" / "twitter_queue.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -46,6 +49,7 @@ def _init_db():
             pillar TEXT DEFAULT '',
             ai_score INTEGER DEFAULT 0,
             best_time TEXT DEFAULT '',
+            account_id INTEGER,
             scheduled_for TEXT,
             posted_at TEXT,
             tweet_id TEXT,
@@ -58,11 +62,36 @@ def _init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS twitter_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id TEXT DEFAULT 'default',
+            twitter_user_id TEXT,
+            username TEXT,
+            display_name TEXT DEFAULT '',
+            access_token TEXT NOT NULL,
+            access_token_secret TEXT NOT NULL,
+            followers INTEGER DEFAULT 0,
+            connected_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER DEFAULT 1
+        )
+    """)
     conn.commit()
     conn.close()
 
 
 _init_db()
+
+# Ensure account_id column exists on older DBs
+try:
+    _conn = sqlite3.connect(DB_PATH)
+    _conn.execute("SELECT account_id FROM tweet_queue LIMIT 1")
+    _conn.close()
+except sqlite3.OperationalError:
+    _conn = sqlite3.connect(DB_PATH)
+    _conn.execute("ALTER TABLE tweet_queue ADD COLUMN account_id INTEGER")
+    _conn.commit()
+    _conn.close()
 
 
 def _db(sql: str, params: tuple = (), *, fetch: bool = True):
@@ -79,6 +108,103 @@ def _db(sql: str, params: tuple = (), *, fetch: bool = True):
     return last_id
 
 
+# ─── Account Credentials Helper ──────────────────────────────────────────────
+
+def _get_account(account_id: int | None = None) -> dict | None:
+    """Get account credentials from DB. Falls back to first active account, then .env."""
+    if account_id:
+        rows = _db("SELECT * FROM twitter_accounts WHERE id=? AND is_active=1", (account_id,))
+        if rows:
+            return rows[0]
+
+    # Fall back to first active account
+    rows = _db("SELECT * FROM twitter_accounts WHERE is_active=1 ORDER BY id LIMIT 1")
+    if rows:
+        return rows[0]
+
+    # Fall back to .env
+    api_key = os.getenv("X_API_KEY") or os.getenv("TWITTER_API_KEY")
+    access_token = os.getenv("X_ACCESS_TOKEN") or os.getenv("TWITTER_ACCESS_TOKEN")
+    access_secret = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+    if api_key and access_token and access_secret:
+        return {
+            "id": None,
+            "access_token": access_token,
+            "access_token_secret": access_secret,
+            "username": "env",
+            "twitter_user_id": None,
+            "source": "env",
+        }
+
+    return None
+
+
+def _build_auth_header(method: str, url: str, account: dict) -> str:
+    """Build OAuth 1.0a header for an account."""
+    from app.core.security.oauth1 import build_auth_header
+
+    api_key = os.getenv("X_API_KEY", "")
+    api_secret = os.getenv("X_API_SECRET", "")
+    return build_auth_header(
+        method=method,
+        url=url,
+        consumer_key=api_key,
+        consumer_secret=api_secret,
+        token=account["access_token"],
+        token_secret=account["access_token_secret"],
+    )
+
+
+async def _verify_account(account: dict) -> dict | None:
+    """Call GET /2/users/me to verify credentials and get user info."""
+    url = f"{X_API_BASE}/users/me"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": _build_auth_header("GET", url, account)},
+                params={"user.fields": "public_metrics,name"},
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", {})
+                metrics = data.get("public_metrics", {})
+                return {
+                    "twitter_user_id": data.get("id", ""),
+                    "username": data.get("username", ""),
+                    "display_name": data.get("name", ""),
+                    "followers": metrics.get("followers_count", 0),
+                }
+    except Exception as e:
+        logger.error("Account verification failed: %s", e)
+    return None
+
+
+async def _post_to_x(text: str, account: dict, reply_to_id: str | None = None) -> dict:
+    """Post a tweet via X API v2."""
+    url = f"{X_API_BASE}/tweets"
+    payload: dict = {"text": text[:280]}
+    if reply_to_id:
+        payload["reply"] = {"in_reply_to_tweet_id": reply_to_id}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                url,
+                headers={
+                    "Authorization": _build_auth_header("POST", url, account),
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if resp.status_code == 201:
+                data = resp.json().get("data", {})
+                post_id = data.get("id", "")
+                return {"success": True, "post_id": post_id, "post_url": f"https://x.com/i/web/status/{post_id}"}
+            return {"success": False, "error": f"X API {resp.status_code}: {resp.text[:200]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ─── Ollama AI ────────────────────────────────────────────────────────────────
 
 async def _ask_ollama(prompt: str) -> str:
@@ -90,7 +216,6 @@ async def _ask_ollama(prompt: str) -> str:
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()
-                # Strip <think>...</think> blocks from qwen3 reasoning
                 while "<think>" in text and "</think>" in text:
                     start = text.index("<think>")
                     end = text.index("</think>") + len("</think>")
@@ -120,71 +245,182 @@ class GenerateRequest(BaseModel):
     content_pillars: list[str] | None = None
     count: int = 5
     include_threads: bool = True
+    account_id: int | None = None
 
 
 class ManualTweetRequest(BaseModel):
     content: str
     post_now: bool = False
+    account_id: int | None = None
 
 
 class EditTweetRequest(BaseModel):
     content: str
 
 
+class ConnectAccountRequest(BaseModel):
+    access_token: str
+    access_token_secret: str
+    workspace_id: str = "default"
+
+
+# ─── Account Management ──────────────────────────────────────────────────────
+
+@router.post("/accounts/connect")
+async def connect_account(req: ConnectAccountRequest):
+    """Validate and store a new X account's access tokens."""
+    account = {
+        "access_token": req.access_token,
+        "access_token_secret": req.access_token_secret,
+    }
+    info = await _verify_account(account)
+    if not info:
+        raise HTTPException(400, "Invalid credentials — could not authenticate with X API. Check your tokens and ensure app has Read+Write permissions.")
+
+    # Check if this twitter user is already connected
+    existing = _db(
+        "SELECT id FROM twitter_accounts WHERE twitter_user_id=? AND is_active=1",
+        (info["twitter_user_id"],),
+    )
+    if existing:
+        # Update tokens for existing account
+        _db(
+            """UPDATE twitter_accounts
+               SET access_token=?, access_token_secret=?, username=?,
+                   display_name=?, followers=?, connected_at=?
+               WHERE id=?""",
+            (
+                req.access_token, req.access_token_secret,
+                info["username"], info["display_name"], info["followers"],
+                datetime.now().isoformat(), existing[0]["id"],
+            ),
+            fetch=False,
+        )
+        return {
+            "connected": True,
+            "updated": True,
+            "account": {
+                "id": existing[0]["id"],
+                "username": info["username"],
+                "display_name": info["display_name"],
+                "followers": info["followers"],
+                "twitter_user_id": info["twitter_user_id"],
+            },
+        }
+
+    account_id = _db(
+        """INSERT INTO twitter_accounts
+           (workspace_id, twitter_user_id, username, display_name,
+            access_token, access_token_secret, followers, connected_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            req.workspace_id, info["twitter_user_id"], info["username"],
+            info["display_name"], req.access_token, req.access_token_secret,
+            info["followers"], datetime.now().isoformat(),
+        ),
+        fetch=False,
+    )
+    return {
+        "connected": True,
+        "account": {
+            "id": account_id,
+            "username": info["username"],
+            "display_name": info["display_name"],
+            "followers": info["followers"],
+            "twitter_user_id": info["twitter_user_id"],
+        },
+    }
+
+
+@router.get("/accounts")
+async def list_accounts():
+    """List all connected X accounts."""
+    accounts = _db(
+        "SELECT id, workspace_id, twitter_user_id, username, display_name, followers, connected_at, is_active FROM twitter_accounts WHERE is_active=1 ORDER BY id"
+    )
+    return {"accounts": accounts, "count": len(accounts)}
+
+
+@router.delete("/accounts/{account_id}")
+async def disconnect_account(account_id: int):
+    """Disconnect (soft-delete) an X account."""
+    rows = _db("SELECT id FROM twitter_accounts WHERE id=?", (account_id,))
+    if not rows:
+        raise HTTPException(404, "Account not found")
+    _db("UPDATE twitter_accounts SET is_active=0 WHERE id=?", (account_id,), fetch=False)
+    return {"disconnected": True, "id": account_id}
+
+
+@router.get("/accounts/{account_id}/verify")
+async def verify_account_endpoint(account_id: int):
+    """Re-verify an account's credentials and update info."""
+    rows = _db("SELECT * FROM twitter_accounts WHERE id=? AND is_active=1", (account_id,))
+    if not rows:
+        raise HTTPException(404, "Account not found")
+    info = await _verify_account(rows[0])
+    if not info:
+        return {"valid": False, "message": "Credentials invalid or expired"}
+    _db(
+        "UPDATE twitter_accounts SET username=?, display_name=?, followers=? WHERE id=?",
+        (info["username"], info["display_name"], info["followers"], account_id),
+        fetch=False,
+    )
+    return {"valid": True, "account": {**info, "id": account_id}}
+
+
 # ─── Health & Stats ───────────────────────────────────────────────────────────
 
 @router.get("/health")
 async def twitter_health():
-    """Check Twitter/X connection status using existing XPublisher."""
-    from app.core.store.credential_store import get_credential
-    from app.services.publishers.x_publisher import XPublisher
+    """Check all connected accounts' status."""
+    accounts = _db("SELECT * FROM twitter_accounts WHERE is_active=1 ORDER BY id")
 
-    # Try demo user first, then check env vars
-    demo_user_id = "demo-user-id"
-    cred = get_credential(demo_user_id, "x") or get_credential(demo_user_id, "twitter")
-
-    if not cred:
-        api_key = os.getenv("X_API_KEY") or os.getenv("TWITTER_API_KEY")
-        access_token = os.getenv("X_ACCESS_TOKEN") or os.getenv("TWITTER_ACCESS_TOKEN")
-        if not api_key:
-            return {
-                "status": "not_configured",
-                "message": "No X/Twitter credentials found",
-                "instructions": [
-                    "1. Go to developer.twitter.com",
-                    "2. Open your app > Keys and Tokens",
-                    "3. Generate Access Token & Secret",
-                    "4. Add to apps/api/.env:",
-                    "   X_ACCESS_TOKEN=your_access_token",
-                    "   X_ACCESS_TOKEN_SECRET=your_access_token_secret",
-                    "5. Or connect via Dashboard > Connections > Connect X Account",
-                ],
-            }
-        if not access_token:
-            return {
-                "status": "partial",
-                "message": "API keys found but Access Token missing",
-                "instructions": [
-                    "Go to developer.twitter.com > Your App > Keys and Tokens",
-                    "Generate Access Token & Secret (with Read+Write permissions)",
-                    "Add X_ACCESS_TOKEN and X_ACCESS_TOKEN_SECRET to .env",
-                ],
-            }
-
-    publisher = XPublisher(user_id=demo_user_id)
-    pub_status = await publisher.check_status()
-
-    if pub_status.value == "ready":
+    if accounts:
+        results = []
+        for acct in accounts:
+            info = await _verify_account(acct)
+            results.append({
+                "id": acct["id"],
+                "username": acct["username"],
+                "display_name": acct.get("display_name", ""),
+                "followers": info["followers"] if info else acct.get("followers", 0),
+                "valid": info is not None,
+            })
+        any_valid = any(r["valid"] for r in results)
         return {
-            "status": "connected",
-            "message": "X account connected and ready to post",
-            "publisher_status": pub_status.value,
+            "status": "connected" if any_valid else "invalid_credentials",
+            "message": f"{sum(1 for r in results if r['valid'])} of {len(results)} accounts connected",
+            "accounts": results,
         }
 
+    # No DB accounts — check .env fallback
+    env_account = _get_account()
+    if env_account and env_account.get("source") == "env":
+        info = await _verify_account(env_account)
+        if info:
+            return {
+                "status": "connected",
+                "message": f"@{info['username']} connected via .env",
+                "accounts": [{
+                    "id": None,
+                    "username": info["username"],
+                    "display_name": info.get("display_name", ""),
+                    "followers": info["followers"],
+                    "valid": True,
+                    "source": "env",
+                }],
+            }
+
     return {
-        "status": pub_status.value,
-        "message": f"X connection issue: {pub_status.value}",
-        "publisher_status": pub_status.value,
+        "status": "not_configured",
+        "message": "No X accounts connected",
+        "accounts": [],
+        "instructions": [
+            "Connect your account in the dashboard below, or add tokens to .env:",
+            "1. Go to developer.twitter.com > Your App > Keys and Tokens",
+            "2. Generate Access Token & Secret (Read+Write permissions)",
+            "3. Paste them in the 'Connect New Account' form below",
+        ],
     }
 
 
@@ -284,8 +520,8 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             continue
         tweet_id = _db(
             """INSERT INTO tweet_queue
-               (content, tweet_type, niche, hook_type, pillar, ai_score, best_time, status)
-               VALUES (?, 'single', ?, ?, ?, ?, ?, 'pending')""",
+               (content, tweet_type, niche, hook_type, pillar, ai_score, best_time, account_id, status)
+               VALUES (?, 'single', ?, ?, ?, ?, ?, ?, 'pending')""",
             (
                 content,
                 req.niche,
@@ -293,6 +529,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
                 tweet.get("pillar", ""),
                 tweet.get("ai_score", 70),
                 tweet.get("best_time", ""),
+                req.account_id,
             ),
             fetch=False,
         )
@@ -313,9 +550,9 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         hook = thread.get("hook", thread_tweets[0] if thread_tweets else "")
         thread_id = _db(
             """INSERT INTO tweet_queue
-               (content, tweet_type, thread_tweets, niche, hook_type, pillar, ai_score, status)
-               VALUES (?, 'thread', ?, ?, 'thread', 'education', ?, 'pending')""",
-            (hook, json.dumps(thread_tweets), req.niche, thread.get("ai_score", 85)),
+               (content, tweet_type, thread_tweets, niche, hook_type, pillar, ai_score, account_id, status)
+               VALUES (?, 'thread', ?, ?, 'thread', 'education', ?, ?, 'pending')""",
+            (hook, json.dumps(thread_tweets), req.niche, thread.get("ai_score", 85), req.account_id),
             fetch=False,
         )
         added.append({
@@ -381,16 +618,24 @@ async def edit_tweet(tweet_id: int, req: EditTweetRequest):
 
 
 @router.post("/queue/{tweet_id}/approve")
-async def approve_tweet(tweet_id: int, background_tasks: BackgroundTasks, post_now: bool = False):
-    """Approve a tweet. If post_now=true, posts immediately to Twitter."""
+async def approve_tweet(
+    tweet_id: int,
+    background_tasks: BackgroundTasks,
+    post_now: bool = False,
+    account_id: int | None = None,
+):
+    """Approve a tweet. If post_now=true, posts immediately."""
     rows = _db("SELECT * FROM tweet_queue WHERE id=?", (tweet_id,))
     if not rows:
         raise HTTPException(404, "Tweet not found")
 
-    _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (tweet_id,), fetch=False)
+    if account_id:
+        _db("UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?", (account_id, tweet_id), fetch=False)
+    else:
+        _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (tweet_id,), fetch=False)
 
     if post_now:
-        background_tasks.add_task(_post_tweet, tweet_id)
+        background_tasks.add_task(_post_tweet, tweet_id, account_id or rows[0].get("account_id"))
         return {"approved": True, "posting": True, "message": "Approved and posting now..."}
 
     return {"approved": True, "posting": False, "message": "Approved. Ready to post."}
@@ -411,82 +656,108 @@ async def restore_tweet(tweet_id: int):
 
 
 @router.post("/queue/approve-all")
-async def approve_all_pending(background_tasks: BackgroundTasks, post_now: bool = False):
+async def approve_all_pending(
+    background_tasks: BackgroundTasks,
+    post_now: bool = False,
+    account_id: int | None = None,
+):
     """Approve all pending tweets."""
-    pending = _db("SELECT id FROM tweet_queue WHERE status='pending'")
+    pending = _db("SELECT id, account_id FROM tweet_queue WHERE status='pending'")
     for row in pending:
-        _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (row["id"],), fetch=False)
+        if account_id:
+            _db("UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?", (account_id, row["id"]), fetch=False)
+        else:
+            _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (row["id"],), fetch=False)
         if post_now:
-            background_tasks.add_task(_post_tweet, row["id"])
+            background_tasks.add_task(_post_tweet, row["id"], account_id or row.get("account_id"))
     return {"approved": len(pending), "posting": post_now}
 
 
 # ─── Posting ──────────────────────────────────────────────────────────────────
 
-async def _post_tweet(tweet_id: int):
-    """Post a tweet or thread using the existing XPublisher."""
-    from app.services.publishers.x_publisher import XPublisher
-
+async def _post_tweet(tweet_id: int, account_id: int | None = None):
+    """Post a tweet or thread using account credentials."""
     rows = _db("SELECT * FROM tweet_queue WHERE id=?", (tweet_id,))
     if not rows:
         return
 
     tweet = rows[0]
-    publisher = XPublisher(user_id="demo-user-id")
+    acct_id = account_id or tweet.get("account_id")
+    account = _get_account(acct_id)
+
+    if not account:
+        _db(
+            "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
+            ("No X account connected. Add one in the Twitter Hub.", tweet_id),
+            fetch=False,
+        )
+        return
 
     try:
         if tweet["tweet_type"] == "thread":
             thread_tweets = json.loads(tweet.get("thread_tweets") or "[]")
             if not thread_tweets:
                 thread_tweets = [tweet["content"]]
-            results = await publisher.publish_thread(thread_tweets)
-            if results and results[0].success:
-                _db(
-                    """UPDATE tweet_queue
-                       SET status='posted', posted_at=?, tweet_id=?, post_url=?
-                       WHERE id=?""",
-                    (datetime.now().isoformat(), results[0].post_id, results[0].post_url, tweet_id),
-                    fetch=False,
-                )
-            else:
-                error = results[0].error if results else "Unknown error"
+
+            # Post first tweet
+            result = await _post_to_x(thread_tweets[0], account)
+            if not result["success"]:
                 _db(
                     "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-                    (str(error), tweet_id),
-                    fetch=False,
+                    (result["error"], tweet_id), fetch=False,
                 )
+                return
+
+            first_id = result["post_id"]
+            last_id = first_id
+
+            # Post reply chain
+            for t in thread_tweets[1:]:
+                import asyncio
+                await asyncio.sleep(1)
+                r = await _post_to_x(t, account, reply_to_id=last_id)
+                if r["success"]:
+                    last_id = r["post_id"]
+                else:
+                    break
+
+            _db(
+                """UPDATE tweet_queue
+                   SET status='posted', posted_at=?, tweet_id=?, post_url=?
+                   WHERE id=?""",
+                (datetime.now().isoformat(), first_id, result.get("post_url"), tweet_id),
+                fetch=False,
+            )
         else:
-            result = await publisher.publish_text_post(tweet["content"])
-            if result.success:
+            result = await _post_to_x(tweet["content"], account)
+            if result["success"]:
                 _db(
                     """UPDATE tweet_queue
                        SET status='posted', posted_at=?, tweet_id=?, post_url=?
                        WHERE id=?""",
-                    (datetime.now().isoformat(), result.post_id, result.post_url, tweet_id),
+                    (datetime.now().isoformat(), result["post_id"], result.get("post_url"), tweet_id),
                     fetch=False,
                 )
             else:
                 _db(
                     "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-                    (str(result.error), tweet_id),
-                    fetch=False,
+                    (result["error"], tweet_id), fetch=False,
                 )
     except Exception as e:
         logger.error("Tweet posting failed: %s", e)
         _db(
             "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-            (str(e), tweet_id),
-            fetch=False,
+            (str(e), tweet_id), fetch=False,
         )
 
 
 @router.post("/queue/{tweet_id}/post")
-async def post_tweet_now(tweet_id: int, background_tasks: BackgroundTasks):
+async def post_tweet_now(tweet_id: int, background_tasks: BackgroundTasks, account_id: int | None = None):
     """Post a specific tweet immediately."""
     rows = _db("SELECT * FROM tweet_queue WHERE id=?", (tweet_id,))
     if not rows:
         raise HTTPException(404, "Tweet not found")
-    background_tasks.add_task(_post_tweet, tweet_id)
+    background_tasks.add_task(_post_tweet, tweet_id, account_id or rows[0].get("account_id"))
     return {"posting": True, "tweet_id": tweet_id}
 
 
@@ -499,14 +770,14 @@ async def manual_tweet(req: ManualTweetRequest, background_tasks: BackgroundTask
         raise HTTPException(400, "Tweet exceeds 280 characters")
 
     tweet_id = _db(
-        """INSERT INTO tweet_queue (content, tweet_type, status, niche, hook_type)
-           VALUES (?, 'single', 'approved', 'manual', 'manual')""",
-        (req.content,),
+        """INSERT INTO tweet_queue (content, tweet_type, status, niche, hook_type, account_id)
+           VALUES (?, 'single', 'approved', 'manual', 'manual', ?)""",
+        (req.content, req.account_id),
         fetch=False,
     )
 
     if req.post_now:
-        background_tasks.add_task(_post_tweet, tweet_id)
+        background_tasks.add_task(_post_tweet, tweet_id, req.account_id)
         return {"queued": True, "id": tweet_id, "posting": True}
 
     return {"queued": True, "id": tweet_id, "posting": False}
@@ -533,13 +804,19 @@ async def get_posted_tweets(limit: int = 20):
 # ─── Auto-Generate ────────────────────────────────────────────────────────────
 
 @router.post("/auto-generate")
-async def auto_generate_daily(niche: str = "AI and marketing", target_audience: str = "entrepreneurs", count: int = 5):
+async def auto_generate_daily(
+    niche: str = "AI and marketing",
+    target_audience: str = "entrepreneurs",
+    count: int = 5,
+    account_id: int | None = None,
+):
     """Generate daily content batch. Call via scheduler or cron."""
     req = GenerateRequest(
         niche=niche,
         target_audience=target_audience,
         count=count,
         include_threads=True,
+        account_id=account_id,
     )
     result = await generate_tweets(req)
     return {

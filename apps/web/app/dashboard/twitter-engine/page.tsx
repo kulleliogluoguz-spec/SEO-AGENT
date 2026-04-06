@@ -3,19 +3,42 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Twitter, Loader2, AlertCircle, CheckCircle2,
-  RefreshCw, Zap, BarChart, Send, ListOrdered,
-  Map, Clock, TrendingUp, XCircle,
+  RefreshCw, Zap, Send, ListOrdered,
+  Map, TrendingUp, XCircle, Plus, Trash2,
+  Users, Key, ShieldCheck,
 } from 'lucide-react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/apiFetch'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface AccountInfo {
+  id: number | null
+  username: string
+  display_name?: string
+  followers: number
+  valid: boolean
+  source?: string
+  connected_at?: string
+}
+
 interface HealthData {
   status: string
   message?: string
   instructions?: string[]
-  publisher_status?: string
+  accounts?: AccountInfo[]
+}
+
+interface AccountsResponse {
+  accounts: Array<{
+    id: number
+    username: string
+    display_name: string
+    followers: number
+    connected_at: string
+    is_active: number
+  }>
+  count: number
 }
 
 interface StatsData {
@@ -45,6 +68,7 @@ interface GenerateResult {
 
 export default function TwitterHubPage() {
   const [health, setHealth] = useState<HealthData | null>(null)
+  const [accounts, setAccounts] = useState<AccountsResponse | null>(null)
   const [stats, setStats] = useState<StatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +78,7 @@ export default function TwitterHubPage() {
   const [audience, setAudience] = useState('')
   const [count, setCount] = useState(5)
   const [includeThreads, setIncludeThreads] = useState(true)
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<GenerateResult | null>(null)
 
@@ -62,22 +87,36 @@ export default function TwitterHubPage() {
   const [manualText, setManualText] = useState('')
   const [posting, setPosting] = useState(false)
 
+  // Connect account form
+  const [showConnect, setShowConnect] = useState(false)
+  const [connectToken, setConnectToken] = useState('')
+  const [connectSecret, setConnectSecret] = useState('')
+  const [connecting, setConnecting] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
+  const [connectSuccess, setConnectSuccess] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [h, s] = await Promise.all([
-        apiFetch<HealthData>('/api/v1/twitter/health').catch(() => ({ status: 'error', message: 'Backend unreachable' })),
+      const [h, a, s] = await Promise.all([
+        apiFetch<HealthData>('/api/v1/twitter/health').catch(() => ({ status: 'error', message: 'Backend unreachable', accounts: [] })),
+        apiFetch<AccountsResponse>('/api/v1/twitter/accounts').catch(() => ({ accounts: [], count: 0 })),
         apiFetch<StatsData>('/api/v1/twitter/stats').catch(() => null),
       ])
       setHealth(h)
+      setAccounts(a)
       setStats(s)
+      // Auto-select first account if none selected
+      if (!selectedAccountId && a.accounts.length > 0) {
+        setSelectedAccountId(a.accounts[0].id)
+      }
     } catch {
       setError('Failed to load Twitter Hub')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedAccountId])
 
   useEffect(() => { load() }, [load])
 
@@ -93,6 +132,43 @@ export default function TwitterHubPage() {
     }
   }, [])
 
+  async function handleConnect() {
+    if (!connectToken.trim() || !connectSecret.trim()) return
+    setConnecting(true)
+    setConnectError(null)
+    setConnectSuccess(null)
+    try {
+      const result = await apiFetch<{ connected: boolean; account: { username: string; followers: number } }>(
+        '/api/v1/twitter/accounts/connect',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            access_token: connectToken.trim(),
+            access_token_secret: connectSecret.trim(),
+          }),
+        },
+      )
+      setConnectSuccess(`@${result.account.username} connected (${result.account.followers.toLocaleString()} followers)`)
+      setConnectToken('')
+      setConnectSecret('')
+      load()
+      // Auto-close form after 2 seconds
+      setTimeout(() => { setShowConnect(false); setConnectSuccess(null) }, 2000)
+    } catch (e) {
+      setConnectError(e instanceof Error ? e.message : 'Connection failed')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  async function handleDisconnect(accountId: number) {
+    try {
+      await apiFetch(`/api/v1/twitter/accounts/${accountId}`, { method: 'DELETE' })
+      if (selectedAccountId === accountId) setSelectedAccountId(null)
+      load()
+    } catch { /* ignore */ }
+  }
+
   async function handleGenerate() {
     if (!niche.trim()) return
     setGenerating(true)
@@ -105,11 +181,12 @@ export default function TwitterHubPage() {
           target_audience: audience.trim() || 'general audience',
           count,
           include_threads: includeThreads,
+          account_id: selectedAccountId,
         }),
         timeoutMs: 180_000,
       })
       setGenResult(result)
-      load() // refresh stats
+      load()
     } catch (e) {
       setGenResult({ generated: 0, items: [], error: e instanceof Error ? e.message : 'Generation failed' })
     } finally {
@@ -123,7 +200,11 @@ export default function TwitterHubPage() {
     try {
       await apiFetch('/api/v1/twitter/tweet/manual', {
         method: 'POST',
-        body: JSON.stringify({ content: manualText.trim(), post_now: postNow }),
+        body: JSON.stringify({
+          content: manualText.trim(),
+          post_now: postNow,
+          account_id: selectedAccountId,
+        }),
       })
       setManualText('')
       setShowManual(false)
@@ -151,7 +232,7 @@ export default function TwitterHubPage() {
     </div>
   )
 
-  const isConnected = health?.status === 'connected'
+  const hasAccounts = (accounts?.count ?? 0) > 0 || (health?.accounts?.some(a => a.valid) ?? false)
   const q = stats?.queue
 
   return (
@@ -166,10 +247,10 @@ export default function TwitterHubPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-900">Twitter Growth Engine</h1>
             <p className="text-xs text-gray-500 flex items-center gap-1.5">
-              {isConnected ? (
+              {hasAccounts ? (
                 <><CheckCircle2 size={10} className="text-emerald-500" /> {health?.message}</>
               ) : (
-                <><AlertCircle size={10} className="text-amber-500" /> {health?.message || health?.status}</>
+                <><AlertCircle size={10} className="text-amber-500" /> {health?.message || 'No accounts connected'}</>
               )}
             </p>
           </div>
@@ -179,20 +260,134 @@ export default function TwitterHubPage() {
         </button>
       </div>
 
-      {/* Setup instructions if not connected */}
-      {health?.instructions && !isConnected && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-amber-800 mb-2">Setup Required</h3>
-          <ul className="space-y-1">
-            {health.instructions.map((step, i) => (
-              <li key={i} className="text-xs text-amber-700">{step}</li>
-            ))}
-          </ul>
-          <Link href="/dashboard/connectors" className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 hover:underline">
-            Or connect via Dashboard Connections →
-          </Link>
+      {/* ── Connected Accounts ── */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <Users size={14} className="text-blue-500" /> Connected Accounts
+          </h3>
+          <button
+            onClick={() => { setShowConnect(!showConnect); setConnectError(null); setConnectSuccess(null) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <Plus size={12} /> Connect Account
+          </button>
         </div>
-      )}
+
+        {/* Account cards */}
+        {accounts && accounts.accounts.length > 0 ? (
+          <div className="space-y-2">
+            {accounts.accounts.map(acct => {
+              const isSelected = selectedAccountId === acct.id
+              return (
+                <div
+                  key={acct.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                    isSelected ? 'border-brand-400 bg-brand-50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                  }`}
+                  onClick={() => setSelectedAccountId(acct.id)}
+                >
+                  <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center flex-shrink-0">
+                    <Twitter size={12} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">@{acct.username}</span>
+                      {acct.display_name && <span className="text-xs text-gray-400">{acct.display_name}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-[10px] text-gray-500">{acct.followers.toLocaleString()} followers</span>
+                      <span className="text-[10px] text-gray-400">Connected {new Date(acct.connected_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <span className="text-[9px] font-bold text-brand-600 bg-brand-100 px-2 py-0.5 rounded-full">ACTIVE</span>
+                  )}
+                  <button
+                    onClick={e => { e.stopPropagation(); handleDisconnect(acct.id) }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="Disconnect"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        ) : health?.accounts && health.accounts.length > 0 ? (
+          /* .env fallback accounts */
+          <div className="space-y-2">
+            {health.accounts.filter(a => a.valid).map((acct, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
+                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center flex-shrink-0">
+                  <Twitter size={12} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-semibold text-gray-900">@{acct.username}</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-gray-500">{acct.followers.toLocaleString()} followers</span>
+                    <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">via .env</span>
+                  </div>
+                </div>
+                <ShieldCheck size={14} className="text-emerald-500" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center py-4">No accounts connected. Click &quot;Connect Account&quot; to get started.</p>
+        )}
+
+        {/* Connect form */}
+        {showConnect && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-xs font-semibold text-gray-800 flex items-center gap-2 mb-3">
+              <Key size={12} className="text-amber-500" /> Add X Access Tokens
+            </h4>
+            <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">
+              Go to <span className="font-semibold">developer.twitter.com</span> → Your App → Keys and Tokens → Generate Access Token &amp; Secret.
+              Make sure app permissions are set to <span className="font-semibold">Read and Write</span>.
+            </p>
+            <div className="space-y-2">
+              <input
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 font-mono"
+                placeholder="Access Token"
+                value={connectToken}
+                onChange={e => setConnectToken(e.target.value)}
+              />
+              <input
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 font-mono"
+                placeholder="Access Token Secret"
+                type="password"
+                value={connectSecret}
+                onChange={e => setConnectSecret(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={handleConnect}
+                disabled={connecting || !connectToken.trim() || !connectSecret.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                {connecting ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                {connecting ? 'Verifying...' : 'Connect Account'}
+              </button>
+              <button onClick={() => setShowConnect(false)} className="px-3 py-2 text-xs text-gray-500 hover:text-gray-700">
+                Cancel
+              </button>
+            </div>
+            {connectError && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                <AlertCircle size={12} /> {connectError}
+              </div>
+            )}
+            {connectSuccess && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg">
+                <CheckCircle2 size={12} /> {connectSuccess}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Stats Row */}
       {stats && (
@@ -254,7 +449,7 @@ export default function TwitterHubPage() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-3 mt-3">
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
           <select
             className="px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
             value={count}
@@ -271,6 +466,18 @@ export default function TwitterHubPage() {
             />
             Include thread
           </label>
+          {accounts && accounts.accounts.length > 1 && (
+            <select
+              className="px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              value={selectedAccountId ?? ''}
+              onChange={e => setSelectedAccountId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Default account</option>
+              {accounts.accounts.map(a => (
+                <option key={a.id} value={a.id}>@{a.username}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleGenerate}
             disabled={generating || !niche.trim()}
@@ -349,7 +556,7 @@ export default function TwitterHubPage() {
               </button>
               <button
                 onClick={() => handleManualTweet(true)}
-                disabled={posting || !manualText.trim() || !isConnected}
+                disabled={posting || !manualText.trim() || !hasAccounts}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40"
               >
                 {posting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}

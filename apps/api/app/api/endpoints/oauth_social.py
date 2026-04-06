@@ -83,28 +83,31 @@ def _save_state(state: str, user_id: str, platform: str, **extra) -> None:
     total = conn.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
     conn.close()
     found = row is not None
-    print(f"[OAUTH STATE] SAVED key={state[:20]}… db={_STATE_DB.name} verified={found} total={total}")
+    print(f"[OAUTH STATE] SAVED key={state} verified={found} total={total}")
 
 
 def _consume_state(state: str) -> dict | None:
     """Read and delete OAuth state from SQLite. Returns None if not found or expired."""
     conn = sqlite3.connect(_STATE_DB)
     # GC stale entries
-    conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+    gc_count = conn.execute("SELECT COUNT(*) FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,)).fetchone()[0]
+    if gc_count:
+        conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+        print(f"[OAUTH STATE] GC: removed {gc_count} expired entries")
     row = conn.execute("SELECT data FROM oauth_state WHERE oauth_token=?", (state,)).fetchone()
     if row:
         conn.execute("DELETE FROM oauth_state WHERE oauth_token=?", (state,))
         conn.commit()
         remaining = conn.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
         conn.close()
-        print(f"[OAUTH STATE] CONSUMED key={state[:20]}… ({remaining} remaining)")
+        print(f"[OAUTH STATE] CONSUMED key={state} ({remaining} remaining)")
         return json.loads(row[0])
 
     # Not found — log what IS in the table for debugging
-    all_keys = [r[0] for r in conn.execute("SELECT oauth_token FROM oauth_state").fetchall()]
+    all_rows = conn.execute("SELECT oauth_token, created_at FROM oauth_state").fetchall()
     conn.close()
-    print(f"[OAUTH STATE] NOT FOUND key={state[:20]}…")
-    print(f"[OAUTH STATE] DB has {len(all_keys)} keys: {[k[:20] for k in all_keys]}")
+    print(f"[OAUTH STATE] NOT FOUND key={state}")
+    print(f"[OAUTH STATE] DB has {len(all_rows)} entries: {[(r[0], f'{_time.time()-r[1]:.0f}s ago') for r in all_rows]}")
     return None
 
 

@@ -568,6 +568,18 @@ export default function ConnectionsPage() {
     return null
   }, [oauthConnected, oauthUsername, oauthError])
 
+  // Debug: log auth state on mount
+  useEffect(() => {
+    const jwt = localStorage.getItem('access_token')
+    console.log('[Connectors] Page mounted. JWT present:', !!jwt, 'JWT length:', jwt?.length ?? 0)
+    if (jwt) {
+      try {
+        const payload = JSON.parse(atob(jwt.split('.')[1]))
+        console.log('[Connectors] JWT sub:', payload.sub, 'exp:', new Date(payload.exp * 1000).toISOString())
+      } catch { console.log('[Connectors] JWT decode failed') }
+    }
+  }, [])
+
   const loadSocial = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     setSocialError(null)

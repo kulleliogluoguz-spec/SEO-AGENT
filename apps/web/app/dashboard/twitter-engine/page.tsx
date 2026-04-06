@@ -95,8 +95,8 @@ export default function TwitterHubPage() {
   const [connectError, setConnectError] = useState<string | null>(null)
   const [connectSuccess, setConnectSuccess] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true)
     setError(null)
     try {
       const [h, a, s] = await Promise.all([
@@ -112,7 +112,7 @@ export default function TwitterHubPage() {
         setSelectedAccountId(a.accounts[0].id)
       }
     } catch {
-      setError('Failed to load Twitter Hub')
+      if (showSpinner) setError('Failed to load Twitter Hub')
     } finally {
       setLoading(false)
     }
@@ -151,7 +151,7 @@ export default function TwitterHubPage() {
       setConnectSuccess(`@${result.account.username} connected (${result.account.followers.toLocaleString()} followers)`)
       setConnectToken('')
       setConnectSecret('')
-      load()
+      load(false) // refetch without full spinner
       // Auto-close form after 2 seconds
       setTimeout(() => { setShowConnect(false); setConnectSuccess(null) }, 2000)
     } catch (e) {
@@ -165,7 +165,7 @@ export default function TwitterHubPage() {
     try {
       await apiFetch(`/api/v1/twitter/accounts/${accountId}`, { method: 'DELETE' })
       if (selectedAccountId === accountId) setSelectedAccountId(null)
-      load()
+      load(false)
     } catch { /* ignore */ }
   }
 
@@ -186,7 +186,7 @@ export default function TwitterHubPage() {
         timeoutMs: 180_000,
       })
       setGenResult(result)
-      load()
+      load(false)
     } catch (e) {
       setGenResult({ generated: 0, items: [], error: e instanceof Error ? e.message : 'Generation failed' })
     } finally {
@@ -208,7 +208,7 @@ export default function TwitterHubPage() {
       })
       setManualText('')
       setShowManual(false)
-      load()
+      load(false)
     } catch { /* ignore */ }
     finally { setPosting(false) }
   }
@@ -226,13 +226,13 @@ export default function TwitterHubPage() {
     <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
       <XCircle className="w-8 h-8 text-red-400" />
       <p className="text-sm text-gray-800">{error}</p>
-      <button onClick={load} className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-gray-100 rounded-lg hover:bg-gray-200">
+      <button onClick={() => load()} className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-gray-100 rounded-lg hover:bg-gray-200">
         <RefreshCw className="w-3.5 h-3.5" /> Try again
       </button>
     </div>
   )
 
-  const hasAccounts = (accounts?.count ?? 0) > 0 || (health?.accounts?.some(a => a.valid) ?? false)
+  const hasAccounts = (accounts?.count ?? 0) > 0 || (health?.status === 'connected')
   const q = stats?.queue
 
   return (
@@ -255,7 +255,7 @@ export default function TwitterHubPage() {
             </p>
           </div>
         </div>
-        <button onClick={load} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+        <button onClick={() => load()} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
           <RefreshCw size={14} />
         </button>
       </div>

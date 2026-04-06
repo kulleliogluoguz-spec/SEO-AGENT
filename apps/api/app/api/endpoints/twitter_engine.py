@@ -375,74 +375,70 @@ async def verify_account_endpoint(account_id: int):
 
 @router.get("/health")
 async def twitter_health():
-    """Check all connected accounts' status."""
-    accounts = _db("SELECT * FROM twitter_accounts WHERE is_active=1 ORDER BY id")
+    """Return connection status. Does NOT call the X API (avoids rate limits).
 
+    Checks in order:
+    1. twitter_accounts table (populated by /accounts/connect or OAuth)
+    2. credential_store (populated by OAuth callback)
+    3. .env (X_ACCESS_TOKEN)
+    """
+    # 1. Check DB accounts — instant, no API call
+    accounts = _db("SELECT * FROM twitter_accounts WHERE is_active=1 ORDER BY id")
     if accounts:
-        results = []
-        for acct in accounts:
-            info = await _verify_account(acct)
-            results.append({
-                "id": acct["id"],
-                "username": acct["username"],
-                "display_name": acct.get("display_name", ""),
-                "followers": info["followers"] if info else acct.get("followers", 0),
-                "valid": info is not None,
-            })
-        any_valid = any(r["valid"] for r in results)
         return {
-            "status": "connected" if any_valid else "invalid_credentials",
-            "message": f"{sum(1 for r in results if r['valid'])} of {len(results)} accounts connected",
-            "accounts": results,
+            "status": "connected",
+            "message": f"{len(accounts)} account{'s' if len(accounts) != 1 else ''} connected",
+            "accounts": [
+                {
+                    "id": acct["id"],
+                    "username": acct["username"],
+                    "display_name": acct.get("display_name", ""),
+                    "followers": acct.get("followers", 0),
+                    "valid": True,
+                }
+                for acct in accounts
+            ],
         }
 
-    # No DB accounts — check credential_store (populated by OAuth callback)
+    # 2. Check credential_store (OAuth callback saves here)
     try:
         from app.core.store.credential_store import get_credential
 
         demo_uid = "00000000-0000-0000-0001-000000000001"
         cred = get_credential(demo_uid, "x") or get_credential(demo_uid, "twitter")
         if cred and cred.get("access_token"):
-            cred_account = {
-                "access_token": cred["access_token"],
-                "access_token_secret": cred.get("refresh_token", ""),
-            }
-            info = await _verify_account(cred_account)
             extra = cred.get("extra") or {}
-            username = (info or {}).get("username") or extra.get("x_username", "")
-            if info or extra.get("x_username"):
-                return {
-                    "status": "connected" if info else "token_stored",
-                    "message": f"@{username} connected via OAuth" if username else "Token stored via OAuth",
-                    "accounts": [{
-                        "id": None,
-                        "username": username,
-                        "display_name": (info or {}).get("display_name", ""),
-                        "followers": (info or {}).get("followers", 0),
-                        "valid": info is not None,
-                        "source": "oauth",
-                    }],
-                }
+            username = extra.get("x_username", "")
+            return {
+                "status": "connected",
+                "message": f"@{username} connected via OAuth" if username else "Token stored via OAuth",
+                "accounts": [{
+                    "id": None,
+                    "username": username,
+                    "display_name": "",
+                    "followers": extra.get("followers", 0),
+                    "valid": True,
+                    "source": "oauth",
+                }],
+            }
     except Exception as e:
         logger.debug("[health] credential_store check failed: %s", e)
 
-    # Fall back to .env
-    env_account = _get_account()
-    if env_account and env_account.get("source") == "env":
-        info = await _verify_account(env_account)
-        if info:
-            return {
-                "status": "connected",
-                "message": f"@{info['username']} connected via .env",
-                "accounts": [{
-                    "id": None,
-                    "username": info["username"],
-                    "display_name": info.get("display_name", ""),
-                    "followers": info["followers"],
-                    "valid": True,
-                    "source": "env",
-                }],
-            }
+    # 3. Check .env
+    access_token = os.getenv("X_ACCESS_TOKEN") or os.getenv("TWITTER_ACCESS_TOKEN")
+    if access_token:
+        return {
+            "status": "connected",
+            "message": "Token configured via .env",
+            "accounts": [{
+                "id": None,
+                "username": "env",
+                "display_name": "",
+                "followers": 0,
+                "valid": True,
+                "source": "env",
+            }],
+        }
 
     return {
         "status": "not_configured",

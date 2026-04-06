@@ -97,13 +97,39 @@ function SocialCard({
   async function handleOAuth() {
     setOauthLoading(true)
     setOauthError(null)
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const endpoint = isIG ? '/api/v1/auth/meta/authorize?scope=all' : '/api/v1/auth/x/authorize'
+    const fullUrl = `${apiBase}${endpoint}`
+    const jwt = localStorage.getItem('access_token') || ''
+
+    console.log('[handleOAuth] Calling:', fullUrl, 'JWT present:', !!jwt)
+
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const endpoint = isIG ? '/api/v1/auth/meta/authorize?scope=all' : '/api/v1/auth/x/authorize'
-      const fullUrl = `${apiBase}${endpoint}`
-      console.log('[handleOAuth] Calling:', fullUrl)
-      const data = await apiFetch<{ authorization_url: string }>(endpoint)
+      const res = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+        },
+      })
+
+      console.log('[handleOAuth] Response status:', res.status)
+
+      if (!res.ok) {
+        const body = await res.text()
+        console.error('[handleOAuth] Error response:', res.status, body)
+        if (res.status === 401 || res.status === 403) {
+          setOauthError(`Auth failed (${res.status}). Please log out and log back in.`)
+        } else {
+          setOauthError(`Server error ${res.status}: ${body.slice(0, 200)}`)
+        }
+        setOauthLoading(false)
+        return
+      }
+
+      const data = await res.json()
       console.log('[handleOAuth] Got authorization_url:', data.authorization_url)
+
       if (data.authorization_url) {
         window.location.href = data.authorization_url
       } else {
@@ -111,8 +137,8 @@ function SocialCard({
         setOauthLoading(false)
       }
     } catch (e) {
-      console.error('[handleOAuth] Failed:', e)
-      setOauthError(e instanceof Error ? e.message : 'OAuth not configured — check server .env')
+      console.error('[handleOAuth] Network error:', e)
+      setOauthError(`Network error: ${e instanceof Error ? e.message : 'check if backend is running on port 8000'}`)
       setOauthLoading(false)
     }
   }

@@ -148,12 +148,36 @@ function PriorityDot({ priority }: { priority: string }) {
 
 function ConnectPanel() {
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   async function handleConnect() {
     setLoading(true)
+    setError(null)
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''
+
+    console.log('[X ConnectPanel] Calling authorize, JWT present:', !!jwt)
+
     try {
-      const data = await apiFetch<{ authorization_url: string }>('/api/v1/auth/x/authorize')
+      const res = await fetch(`${apiBase}/api/v1/auth/x/authorize`, {
+        headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
+      })
+      console.log('[X ConnectPanel] Response:', res.status)
+      if (!res.ok) {
+        const body = await res.text()
+        console.error('[X ConnectPanel] Error:', res.status, body)
+        setError(res.status === 401 || res.status === 403 ? 'Session expired. Please log out and log back in.' : `Error ${res.status}`)
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
+      console.log('[X ConnectPanel] Got URL:', data.authorization_url)
       if (data.authorization_url) window.location.href = data.authorization_url
-    } catch { setLoading(false) }
+      else { setError('No authorization URL returned'); setLoading(false) }
+    } catch (e) {
+      console.error('[X ConnectPanel] Failed:', e)
+      setError(e instanceof Error ? e.message : 'Connection failed')
+      setLoading(false)
+    }
   }
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-6 text-center max-w-lg mx-auto">
@@ -175,6 +199,11 @@ function ConnectPanel() {
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
           {loading ? 'Redirecting to X…' : 'Connect X Account'}
         </button>
+        {error && (
+          <div className="w-full max-w-xs bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 text-center">
+            {error}
+          </div>
+        )}
         <Link href="/dashboard/connectors" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
           Or set up manually with tokens →
         </Link>

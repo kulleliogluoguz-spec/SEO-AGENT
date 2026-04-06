@@ -96,7 +96,10 @@ export default function TwitterHubPage() {
   const [editAutoGen, setEditAutoGen] = useState(true)
   const [savingSetup, setSavingSetup] = useState(false)
 
-  // Connect account form
+  // OAuth connect
+  const [oauthLoading, setOauthLoading] = useState(false)
+
+  // Manual token connect form
   const [showConnect, setShowConnect] = useState(false)
   const [connectToken, setConnectToken] = useState('')
   const [connectSecret, setConnectSecret] = useState('')
@@ -153,6 +156,22 @@ export default function TwitterHubPage() {
       } catch { /* ignore */ }
     }
   }, [])
+
+  async function handleOAuthConnect() {
+    setOauthLoading(true)
+    try {
+      console.log('[TwitterHub] Calling /auth/x/authorize...')
+      const data = await apiFetch<{ authorization_url: string }>('/api/v1/auth/x/authorize')
+      console.log('[TwitterHub] Got URL:', data.authorization_url)
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url
+      }
+    } catch (e) {
+      console.error('[TwitterHub] OAuth failed:', e)
+      setConnectError(e instanceof Error ? e.message : 'OAuth failed')
+      setOauthLoading(false)
+    }
+  }
 
   async function handleSaveSetup() {
     if (!selectedAccountId) return
@@ -382,7 +401,30 @@ export default function TwitterHubPage() {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400 text-center py-4">No accounts connected. Click &quot;Connect Account&quot; to get started.</p>
+          <div className="flex flex-col items-center gap-3 py-6">
+            <Twitter size={24} className="text-gray-300" />
+            <p className="text-xs text-gray-400">No accounts connected yet</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleOAuthConnect}
+                disabled={oauthLoading}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                {oauthLoading ? <Loader2 size={12} className="animate-spin" /> : <Twitter size={12} />}
+                {oauthLoading ? 'Redirecting to X...' : 'Connect with OAuth'}
+              </button>
+              <span className="text-[10px] text-gray-300">or</span>
+              <button
+                onClick={() => setShowConnect(true)}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Enter tokens manually
+              </button>
+            </div>
+            {connectError && !showConnect && (
+              <p className="text-xs text-red-500">{connectError}</p>
+            )}
+          </div>
         )}
 
         {/* Account Setup — niche, audience, auto-generate */}

@@ -98,10 +98,20 @@ function SocialCard({
     setOauthLoading(true)
     setOauthError(null)
     try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       const endpoint = isIG ? '/api/v1/auth/meta/authorize?scope=all' : '/api/v1/auth/x/authorize'
+      const fullUrl = `${apiBase}${endpoint}`
+      console.log('[handleOAuth] Calling:', fullUrl)
       const data = await apiFetch<{ authorization_url: string }>(endpoint)
-      if (data.authorization_url) window.location.href = data.authorization_url
+      console.log('[handleOAuth] Got authorization_url:', data.authorization_url)
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url
+      } else {
+        setOauthError('No authorization URL returned from server')
+        setOauthLoading(false)
+      }
     } catch (e) {
+      console.error('[handleOAuth] Failed:', e)
       setOauthError(e instanceof Error ? e.message : 'OAuth not configured — check server .env')
       setOauthLoading(false)
     }

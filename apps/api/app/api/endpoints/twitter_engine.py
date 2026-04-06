@@ -226,8 +226,9 @@ async def _ask_llm(prompt: str) -> str:
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key)
-            message = client.messages.create(
+            # Use AsyncAnthropic to avoid blocking the event loop
+            client = anthropic.AsyncAnthropic(api_key=api_key)
+            message = await client.messages.create(
                 model=LLM_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],

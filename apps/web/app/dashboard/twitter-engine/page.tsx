@@ -621,7 +621,7 @@ export default function TwitterHubPage() {
             className="ml-auto flex items-center gap-2 px-5 py-2.5 bg-black text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-40 transition-colors"
           >
             {generating ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-            {generating ? 'Generating...' : 'Generate with AI'}
+            {generating ? 'Generating (up to 60s)...' : 'Generate with AI'}
           </button>
         </div>
 

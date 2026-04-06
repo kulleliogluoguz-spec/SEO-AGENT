@@ -311,8 +311,54 @@ export default function ContentPage() {
 
   const loadDrafts = useCallback(async () => {
     try {
-      const data = await apiFetch<{ posts: Draft[] }>('/api/v1/content-queue/drafts?limit=50')
-      setDrafts(data.posts ?? [])
+      // Fetch from both content queue AND twitter engine queue
+      const [contentData, twitterData] = await Promise.all([
+        apiFetch<{ posts: Draft[] }>('/api/v1/content-queue/drafts?limit=50').catch(() => ({ posts: [] })),
+        apiFetch<{ items: Array<{ id: number; content: string; tweet_type: string; status: string; niche: string; hook_type: string; pillar: string; ai_score: number; created_at: string; posted_at: string | null; error_message: string | null }> }>('/api/v1/twitter/queue?status=pending&limit=50').catch(() => ({ items: [] })),
+      ])
+
+      // Map twitter queue items to Draft format
+      const twitterDrafts: Draft[] = (twitterData.items ?? []).map(item => ({
+        id: `tw-${item.id}`,
+        content_type: item.hook_type || item.pillar || 'tweet',
+        topic: item.niche,
+        generated_text: item.content,
+        status: item.status === 'pending' ? 'draft' : item.status === 'approved' ? 'approved' : item.status === 'posted' ? 'published' : item.status,
+        channels: ['x'],
+        niche: item.niche,
+        created_at: item.created_at,
+      }))
+
+      // Also fetch approved and posted from twitter queue
+      const [approvedData, postedData] = await Promise.all([
+        apiFetch<{ items: typeof twitterData.items }>('/api/v1/twitter/queue?status=approved&limit=20').catch(() => ({ items: [] })),
+        apiFetch<{ items: typeof twitterData.items }>('/api/v1/twitter/queue?status=posted&limit=20').catch(() => ({ items: [] })),
+      ])
+
+      const approvedDrafts: Draft[] = (approvedData.items ?? []).map(item => ({
+        id: `tw-${item.id}`,
+        content_type: item.hook_type || 'tweet',
+        topic: item.niche,
+        generated_text: item.content,
+        status: 'approved',
+        channels: ['x'],
+        niche: item.niche,
+        created_at: item.created_at,
+      }))
+
+      const postedDrafts: Draft[] = (postedData.items ?? []).map(item => ({
+        id: `tw-${item.id}`,
+        content_type: item.hook_type || 'tweet',
+        topic: item.niche,
+        generated_text: item.content,
+        status: 'published',
+        channels: ['x'],
+        niche: item.niche,
+        created_at: item.created_at,
+        platform_post_id: item.posted_at ? 'posted' : undefined,
+      }))
+
+      setDrafts([...(contentData.posts ?? []), ...twitterDrafts, ...approvedDrafts, ...postedDrafts])
     } catch { /* best effort */ }
   }, [])
 
@@ -334,19 +380,30 @@ export default function ContentPage() {
 
   async function handleAction(draftId: string, action: 'approve' | 'reject' | 'queue') {
     setActionLoading(draftId)
+    const isTwitter = draftId.startsWith('tw-')
+    const realId = isTwitter ? draftId.slice(3) : draftId
     try {
-      if (action === 'approve') {
-        await apiFetch(`/api/v1/content-queue/drafts/${draftId}/approve`, { method: 'POST' })
-        setActionMsg('Post approved!')
-      } else if (action === 'reject') {
-        await apiFetch(`/api/v1/content-queue/drafts/${draftId}/reject`, {
-          method: 'POST',
-          body: JSON.stringify({ reason: 'Rejected via content page' }),
-        })
-        setActionMsg('Post rejected.')
+      if (isTwitter) {
+        // Route to Twitter Engine queue endpoints
+        if (action === 'approve' || action === 'queue') {
+          await apiFetch(`/api/v1/twitter/queue/${realId}/approve`, { method: 'POST' })
+          setActionMsg('Tweet approved!')
+        } else {
+          await apiFetch(`/api/v1/twitter/queue/${realId}/reject`, { method: 'POST' })
+          setActionMsg('Tweet rejected.')
+        }
       } else {
-        await apiFetch(`/api/v1/content-queue/drafts/${draftId}/approve`, { method: 'POST' })
-        setActionMsg('Post approved and ready for scheduling!')
+        // Route to content queue endpoints
+        if (action === 'approve' || action === 'queue') {
+          await apiFetch(`/api/v1/content-queue/drafts/${realId}/approve`, { method: 'POST' })
+          setActionMsg('Post approved!')
+        } else {
+          await apiFetch(`/api/v1/content-queue/drafts/${realId}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason: 'Rejected via content page' }),
+          })
+          setActionMsg('Post rejected.')
+        }
       }
       await loadDrafts()
     } catch (e) {

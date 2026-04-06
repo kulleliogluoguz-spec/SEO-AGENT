@@ -20,14 +20,14 @@ Token refresh:
 
 Reference: https://developer.twitter.com/en/docs/twitter-api/tweets/manage-tweets/api-reference
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
-from app.services.publishers.base import PublisherService, PublishResult, PublisherStatus
+from app.services.publishers.base import PublisherService, PublisherStatus, PublishResult
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +45,22 @@ THREAD_MAX_POSTS = 25
 class XPublisher(PublisherService):
     channel = "x"
 
-    def _load_cred(self) -> Optional[dict]:
+    def _load_cred(self) -> dict | None:
         """Load credentials, also trying the 'twitter' alias."""
         cred = self._load_credentials()
         if not cred:
             from app.core.store.credential_store import get_credential
+
             cred = get_credential(self.user_id, "twitter")
         return cred
 
-    def _auth_header(self, method: str, url: str, cred: dict) -> str:
+    def _auth_header(self, method: str, url: str, cred: dict, query_params: dict | None = None) -> str:
         """Build the correct Authorization header for the credential type."""
         token = cred.get("access_token") or cred.get("api_key") or ""
         if (cred.get("extra") or {}).get("token_type") == "oauth1":
-            from app.core.security.oauth1 import build_auth_header
             from app.core.config.settings import get_settings
+            from app.core.security.oauth1 import build_auth_header
+
             s = get_settings()
             return build_auth_header(
                 method=method,
@@ -67,10 +69,11 @@ class XPublisher(PublisherService):
                 consumer_secret=s.x_api_secret,
                 token=token,
                 token_secret=cred.get("refresh_token", ""),
+                query_params=query_params,
             )
         return f"Bearer {token}"
 
-    async def _get_token(self) -> Optional[str]:
+    async def _get_token(self) -> str | None:
         """Return a valid access_token (OAuth 2.0 path only)."""
         cred = self._load_cred()
         if not cred:
@@ -105,8 +108,8 @@ class XPublisher(PublisherService):
     async def publish_text_post(
         self,
         text: str,
-        reply_to_id: Optional[str] = None,
-        schedule_at: Optional[str] = None,
+        reply_to_id: str | None = None,
+        schedule_at: str | None = None,
     ) -> PublishResult:
         """
         Post a tweet via X API v2.
@@ -120,7 +123,9 @@ class XPublisher(PublisherService):
         """
         cred = self._load_cred()
         if not cred:
-            result = PublishResult.fail("No X/Twitter credentials found. Connect your account in Connections.")
+            result = PublishResult.fail(
+                "No X/Twitter credentials found. Connect your account in Connections."
+            )
             self._audit("text_post", result)
             return result
 
@@ -156,12 +161,16 @@ class XPublisher(PublisherService):
 
                 if resp.status_code == 429:
                     retry_after = int(resp.headers.get("x-rate-limit-reset", 900))
-                    result = PublishResult.fail("X rate limit reached", rate_limited=True, retry_after=retry_after)
+                    result = PublishResult.fail(
+                        "X rate limit reached", rate_limited=True, retry_after=retry_after
+                    )
                     self._audit("text_post", result)
                     return result
 
                 if resp.status_code == 401:
-                    result = PublishResult.fail("X access token invalid or expired. Reconnect in Connections.")
+                    result = PublishResult.fail(
+                        "X access token invalid or expired. Reconnect in Connections."
+                    )
                     self._audit("text_post", result)
                     return result
 
@@ -191,7 +200,7 @@ class XPublisher(PublisherService):
         Returns list of PublishResult for each tweet in the thread.
         """
         results = []
-        previous_id: Optional[str] = None
+        previous_id: str | None = None
 
         for i, text in enumerate(tweets[:THREAD_MAX_POSTS]):
             result = await self.publish_text_post(text, reply_to_id=previous_id)
@@ -203,7 +212,7 @@ class XPublisher(PublisherService):
 
         return results
 
-    async def get_post_metrics(self, post_id: str) -> Optional[dict]:
+    async def get_post_metrics(self, post_id: str) -> dict | None:
         """
         Fetch public metrics for a tweet.
         Requires tweet.read scope and Basic/Pro tier for non-public metrics.
@@ -213,12 +222,13 @@ class XPublisher(PublisherService):
             return None
 
         metrics_url = f"{X_API_BASE}/tweets/{post_id}"
+        qp = {"tweet.fields": "public_metrics,created_at"}
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 resp = await client.get(
                     metrics_url,
-                    headers={"Authorization": self._auth_header("GET", metrics_url, cred)},
-                    params={"tweet.fields": "public_metrics,created_at"},
+                    headers={"Authorization": self._auth_header("GET", metrics_url, cred, query_params=qp)},
+                    params=qp,
                 )
                 if resp.status_code == 200:
                     data = resp.json().get("data", {})
@@ -231,7 +241,7 @@ class XPublisher(PublisherService):
                         "quotes": metrics.get("quote_count", 0),
                         "bookmarks": metrics.get("bookmark_count", 0),
                         "profile_visits": 0,  # requires elevated access
-                        "link_clicks": 0,     # requires Promoted metrics
+                        "link_clicks": 0,  # requires Promoted metrics
                     }
         except Exception as e:
             logger.debug("[x] metrics fetch failed for %s: %s", post_id, e)

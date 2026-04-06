@@ -1,4 +1,5 @@
 """OAuth 1.0a HMAC-SHA1 signing helper."""
+
 from __future__ import annotations
 
 import base64
@@ -7,7 +8,6 @@ import hmac
 import secrets
 import time
 import urllib.parse
-from typing import Optional
 
 
 def build_auth_header(
@@ -17,9 +17,18 @@ def build_auth_header(
     consumer_secret: str,
     token: str = "",
     token_secret: str = "",
-    additional_oauth_params: Optional[dict] = None,
+    additional_oauth_params: dict | None = None,
+    query_params: dict | None = None,
 ) -> str:
-    """Build OAuth 1.0a Authorization header with HMAC-SHA1 signature."""
+    """Build OAuth 1.0a Authorization header with HMAC-SHA1 signature.
+
+    Args:
+        query_params: GET query parameters to include in the signature base
+                      string. OAuth 1.0a requires ALL request params (OAuth
+                      params + query params) to be signed together. Pass the
+                      same dict you give to httpx ``params=``.
+    """
+
     def pct(s: str) -> str:
         return urllib.parse.quote(str(s), safe="")
 
@@ -35,10 +44,12 @@ def build_auth_header(
     if additional_oauth_params:
         oauth_params.update(additional_oauth_params)
 
-    param_string = "&".join(
-        f"{pct(k)}={pct(v)}"
-        for k, v in sorted(oauth_params.items())
-    )
+    # Merge query params into the signing base (OAuth 1.0a spec requirement)
+    all_params = dict(oauth_params)
+    if query_params:
+        all_params.update({str(k): str(v) for k, v in query_params.items()})
+
+    param_string = "&".join(f"{pct(k)}={pct(v)}" for k, v in sorted(all_params.items()))
     base_string = f"{method.upper()}&{pct(url)}&{pct(param_string)}"
     signing_key = f"{pct(consumer_secret)}&{pct(token_secret)}"
     signature = base64.b64encode(
@@ -46,7 +57,4 @@ def build_auth_header(
     ).decode()
 
     oauth_params["oauth_signature"] = signature
-    return "OAuth " + ", ".join(
-        f'{pct(k)}="{pct(v)}"'
-        for k, v in sorted(oauth_params.items())
-    )
+    return "OAuth " + ", ".join(f'{pct(k)}="{pct(v)}"' for k, v in sorted(oauth_params.items()))

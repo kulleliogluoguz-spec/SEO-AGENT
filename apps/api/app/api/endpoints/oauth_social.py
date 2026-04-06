@@ -179,6 +179,7 @@ async def _x_exchange_tokens(oauth_token: str, oauth_verifier: str, oauth_token_
 
 async def _x_verify_credentials(access_token: str, access_token_secret: str) -> dict | None:
     """Verify tokens by calling GET /2/users/me. Returns user info or None."""
+    qp = {"user.fields": "public_metrics,name"}
     auth_header = _oauth1_auth_header(
         method="GET",
         url=X_VERIFY_URL,
@@ -186,13 +187,25 @@ async def _x_verify_credentials(access_token: str, access_token_secret: str) -> 
         consumer_secret=settings.x_api_secret,
         token=access_token,
         token_secret=access_token_secret,
+        additional_oauth_params=None,
+    )
+    # OAuth 1.0a requires query params in the signature — use the updated helper
+    from app.core.security.oauth1 import build_auth_header as _build
+    auth_header = _build(
+        method="GET",
+        url=X_VERIFY_URL,
+        consumer_key=settings.x_api_key,
+        consumer_secret=settings.x_api_secret,
+        token=access_token,
+        token_secret=access_token_secret,
+        query_params=qp,
     )
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 X_VERIFY_URL,
                 headers={"Authorization": auth_header},
-                params={"user.fields": "public_metrics,name"},
+                params=qp,
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", {})

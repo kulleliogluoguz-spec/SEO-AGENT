@@ -139,31 +139,33 @@ def _get_account(account_id: int | None = None) -> dict | None:
     return None
 
 
-def _build_auth_header(method: str, url: str, account: dict) -> str:
+def _build_auth_header(method: str, url: str, account: dict, query_params: dict | None = None) -> str:
     """Build OAuth 1.0a header for an account."""
+    from app.core.config.settings import get_settings
     from app.core.security.oauth1 import build_auth_header
 
-    api_key = os.getenv("X_API_KEY", "")
-    api_secret = os.getenv("X_API_SECRET", "")
+    s = get_settings()
     return build_auth_header(
         method=method,
         url=url,
-        consumer_key=api_key,
-        consumer_secret=api_secret,
+        consumer_key=s.x_api_key,
+        consumer_secret=s.x_api_secret,
         token=account["access_token"],
         token_secret=account["access_token_secret"],
+        query_params=query_params,
     )
 
 
 async def _verify_account(account: dict) -> dict | None:
     """Call GET /2/users/me to verify credentials and get user info."""
     url = f"{X_API_BASE}/users/me"
+    qp = {"user.fields": "public_metrics,name"}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 url,
-                headers={"Authorization": _build_auth_header("GET", url, account)},
-                params={"user.fields": "public_metrics,name"},
+                headers={"Authorization": _build_auth_header("GET", url, account, query_params=qp)},
+                params=qp,
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", {})
@@ -174,6 +176,7 @@ async def _verify_account(account: dict) -> dict | None:
                     "display_name": data.get("name", ""),
                     "followers": metrics.get("followers_count", 0),
                 }
+            logger.warning("[x] verify_account got %s: %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.error("Account verification failed: %s", e)
     return None
@@ -393,7 +396,37 @@ async def twitter_health():
             "accounts": results,
         }
 
-    # No DB accounts — check .env fallback
+    # No DB accounts — check credential_store (populated by OAuth callback)
+    try:
+        from app.core.store.credential_store import get_credential
+
+        demo_uid = "00000000-0000-0000-0001-000000000001"
+        cred = get_credential(demo_uid, "x") or get_credential(demo_uid, "twitter")
+        if cred and cred.get("access_token"):
+            cred_account = {
+                "access_token": cred["access_token"],
+                "access_token_secret": cred.get("refresh_token", ""),
+            }
+            info = await _verify_account(cred_account)
+            extra = cred.get("extra") or {}
+            username = (info or {}).get("username") or extra.get("x_username", "")
+            if info or extra.get("x_username"):
+                return {
+                    "status": "connected" if info else "token_stored",
+                    "message": f"@{username} connected via OAuth" if username else "Token stored via OAuth",
+                    "accounts": [{
+                        "id": None,
+                        "username": username,
+                        "display_name": (info or {}).get("display_name", ""),
+                        "followers": (info or {}).get("followers", 0),
+                        "valid": info is not None,
+                        "source": "oauth",
+                    }],
+                }
+    except Exception as e:
+        logger.debug("[health] credential_store check failed: %s", e)
+
+    # Fall back to .env
     env_account = _get_account()
     if env_account and env_account.get("source") == "env":
         info = await _verify_account(env_account)

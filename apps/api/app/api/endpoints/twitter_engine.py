@@ -357,7 +357,7 @@ async def connect_account(req: ConnectAccountRequest):
 async def list_accounts():
     """List all connected X accounts."""
     accounts = _db(
-        "SELECT id, workspace_id, twitter_user_id, username, display_name, followers, connected_at, is_active FROM twitter_accounts WHERE is_active=1 ORDER BY id"
+        "SELECT id, workspace_id, twitter_user_id, username, display_name, followers, niche, target_audience, auto_generate, connected_at, is_active FROM twitter_accounts WHERE is_active=1 ORDER BY id"
     )
     return {"accounts": accounts, "count": len(accounts)}
 

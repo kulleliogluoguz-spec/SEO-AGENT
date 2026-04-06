@@ -166,9 +166,12 @@ export default function TwitterHubPage() {
     window.location.replace(`${apiBase}/api/v1/auth/x/authorize?token=${encodeURIComponent(jwt)}`)
   }
 
+  const [setupSaved, setSetupSaved] = useState(false)
+
   async function handleSaveSetup() {
     if (!selectedAccountId) return
     setSavingSetup(true)
+    setSetupSaved(false)
     try {
       await apiFetch(`/api/v1/twitter/accounts/${selectedAccountId}`, {
         method: 'PUT',
@@ -178,9 +181,11 @@ export default function TwitterHubPage() {
           auto_generate: editAutoGen,
         }),
       })
-      // Also update generate form
+      // Update generate form
       setNiche(editNiche.trim())
       setAudience(editAudience.trim())
+      setSetupSaved(true)
+      setTimeout(() => setSetupSaved(false), 3000)
       load(false)
     } catch { /* ignore */ }
     finally { setSavingSetup(false) }
@@ -462,8 +467,9 @@ export default function TwitterHubPage() {
                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
               >
                 {savingSetup ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                {savingSetup ? 'Saving...' : 'Save Settings'}
+                {savingSetup ? 'Saving...' : setupSaved ? 'Saved!' : 'Save Settings'}
               </button>
+              {setupSaved && <span className="text-xs text-emerald-600 font-medium">Settings saved</span>}
             </div>
           </div>
         )}

@@ -47,11 +47,19 @@ def _workspace_id_for(user) -> str:
 
 
 def _row_to_dict(row) -> dict:
-    """Convert a SQLAlchemy row mapping to a JSON-safe dict."""
+    """Convert a SQLAlchemy row (or mapping/dict) to a JSON-safe dict."""
     if row is None:
         return {}
+    # Accept both Row objects (have ._mapping) and mappings/dicts
+    if hasattr(row, "_mapping"):
+        items = dict(row._mapping).items()
+    elif isinstance(row, dict):
+        items = row.items()
+    else:
+        items = dict(row).items()
+
     out = {}
-    for k, v in dict(row._mapping).items():
+    for k, v in items:
         if isinstance(v, uuid.UUID):
             out[k] = str(v)
         elif isinstance(v, date):

@@ -1,11 +1,11 @@
 """
 Lead Qualification Engine — BANT-style scoring + AI analysis via local Ollama.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,9 +22,7 @@ class LeadQualifier:
         "Never fabricate information."
     )
 
-    async def analyze_call(
-        self, call_id: str, segments: list[dict], db: AsyncSession
-    ) -> dict:
+    async def analyze_call(self, call_id: str, segments: list[dict], db: AsyncSession) -> dict:
         t0 = time.time()
         transcript = "\n".join(
             f"{s.get('speaker', '?')}: {(s.get('text') or '').strip()}"

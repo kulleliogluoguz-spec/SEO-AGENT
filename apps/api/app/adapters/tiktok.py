@@ -23,21 +23,26 @@ Key differences from Meta:
   - Minimum budget: $50/day at campaign, $20/day at ad group
   - Ad status uses DISABLE (not PAUSED)
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import os
 import time
-from datetime import datetime
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
 
 from app.adapters.base import (
-    AdapterCapabilityStage, AdapterCredentials, AdapterStatus,
-    AudienceDraft, BaseAdsAdapter, CampaignDraft, CampaignMetrics, CreativeDraft,
+    AdapterCapabilityStage,
+    AdapterCredentials,
+    AdapterStatus,
+    AudienceDraft,
+    BaseAdsAdapter,
+    CampaignDraft,
+    CampaignMetrics,
+    CreativeDraft,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,11 +85,15 @@ class TikTokAdsAdapter(BaseAdsAdapter):
     PLATFORM = "tiktok"
     DOCS_URL = "https://ads.tiktok.com/marketing_api/docs"
     REQUIRED_SCOPES = [
-        "ad.read", "ad.write",
-        "adgroup.read", "adgroup.write",
-        "campaign.read", "campaign.write",
+        "ad.read",
+        "ad.write",
+        "adgroup.read",
+        "adgroup.write",
+        "campaign.read",
+        "campaign.write",
         "report.read",
-        "audience.read", "audience.write",
+        "audience.read",
+        "audience.write",
     ]
 
     # ── Internal HTTP helpers ─────────────────────────────────────────────────
@@ -95,7 +104,7 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             "Content-Type": "application/json",
         }
 
-    def _get(self, path: str, params: Optional[dict] = None, retries: int = 2) -> dict:
+    def _get(self, path: str, params: dict | None = None, retries: int = 2) -> dict:
         url = f"{TIKTOK_API_BASE}/{path.lstrip('/')}"
         for attempt in range(retries + 1):
             try:
@@ -180,11 +189,15 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             )
 
         try:
-            resp = httpx.post(f"{TIKTOK_API_BASE}/oauth2/access_token/", json={
-                "app_id": app_id,
-                "secret": app_secret,
-                "auth_code": code,
-            }, timeout=_TIMEOUT)
+            resp = httpx.post(
+                f"{TIKTOK_API_BASE}/oauth2/access_token/",
+                json={
+                    "app_id": app_id,
+                    "secret": app_secret,
+                    "auth_code": code,
+                },
+                timeout=_TIMEOUT,
+            )
             data = resp.json()
         except httpx.RequestError as e:
             raise TikTokAPIError(f"Network error during token exchange: {e}")
@@ -202,8 +215,11 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             raise TikTokAPIError("No access_token in TikTok token exchange response")
 
         advertiser_ids = token_data.get("advertiser_ids", [])
-        self._log("exchange_code", status="success",
-                  response_summary={"advertiser_count": len(advertiser_ids)})
+        self._log(
+            "exchange_code",
+            status="success",
+            response_summary={"advertiser_count": len(advertiser_ids)},
+        )
 
         return AdapterCredentials(
             platform="tiktok",
@@ -221,8 +237,11 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         TikTok access tokens don't expire.
         This method is a no-op — return current credentials unchanged.
         """
-        self._log("refresh_access_token", status="success",
-                  response_summary={"note": "TikTok tokens do not expire"})
+        self._log(
+            "refresh_access_token",
+            status="success",
+            response_summary={"note": "TikTok tokens do not expire"},
+        )
         return self.credentials
 
     def verify_credentials(self) -> AdapterStatus:
@@ -232,12 +251,19 @@ class TikTokAdsAdapter(BaseAdsAdapter):
 
         app_id = self.credentials.client_id or os.environ.get("TIKTOK_CLIENT_ID", "")
         try:
-            data = self._get("oauth2/advertiser/get/", {
-                "app_id": app_id,
-                "secret": self.credentials.client_secret or os.environ.get("TIKTOK_CLIENT_SECRET", ""),
-            })
-            self._log("verify_credentials", status="success",
-                      response_summary={"advertiser_count": len(data.get("list", []))})
+            data = self._get(
+                "oauth2/advertiser/get/",
+                {
+                    "app_id": app_id,
+                    "secret": self.credentials.client_secret
+                    or os.environ.get("TIKTOK_CLIENT_SECRET", ""),
+                },
+            )
+            self._log(
+                "verify_credentials",
+                status="success",
+                response_summary={"advertiser_count": len(data.get("list", []))},
+            )
             return AdapterStatus.AUTH_VERIFIED
         except TikTokAPIError as e:
             logger.warning("[tiktok] verify_credentials failed: %s", e)
@@ -251,23 +277,33 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         app_id = self.credentials.client_id or os.environ.get("TIKTOK_CLIENT_ID", "")
         app_secret = self.credentials.client_secret or os.environ.get("TIKTOK_CLIENT_SECRET", "")
 
-        data = self._get("oauth2/advertiser/get/", {
-            "app_id": app_id,
-            "secret": app_secret,
-        })
+        data = self._get(
+            "oauth2/advertiser/get/",
+            {
+                "app_id": app_id,
+                "secret": app_secret,
+            },
+        )
 
         accounts = []
         for raw in data.get("list", []):
-            accounts.append({
-                "id": str(raw.get("advertiser_id")),
-                "name": raw.get("advertiser_name", "Unnamed"),
-                "currency": raw.get("currency", "USD"),
-                "timezone": raw.get("timezone", "UTC"),
-                "status": raw.get("status", "UNKNOWN"),
-            })
+            accounts.append(
+                {
+                    "id": str(raw.get("advertiser_id")),
+                    "name": raw.get("advertiser_name", "Unnamed"),
+                    "currency": raw.get("currency", "USD"),
+                    "timezone": raw.get("timezone", "UTC"),
+                    "status": raw.get("status", "UNKNOWN"),
+                }
+            )
 
-        self._log("list_ad_accounts", "account", None, "success",
-                  response_summary={"count": len(accounts)})
+        self._log(
+            "list_ad_accounts",
+            "account",
+            None,
+            "success",
+            response_summary={"count": len(accounts)},
+        )
         return accounts
 
     def get_account_info(self) -> dict:
@@ -275,9 +311,12 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         advertiser_id = self._advertiser_id()
 
-        data = self._get("advertiser/info/", {
-            "advertiser_ids": json.dumps([advertiser_id]),
-        })
+        data = self._get(
+            "advertiser/info/",
+            {
+                "advertiser_ids": json.dumps([advertiser_id]),
+            },
+        )
 
         info_list = data.get("list", [])
         if not info_list:
@@ -296,7 +335,7 @@ class TikTokAdsAdapter(BaseAdsAdapter):
 
     # ── Campaigns ─────────────────────────────────────────────────────────────
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """GET /campaign/get/"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         advertiser_id = self._advertiser_id()
@@ -311,19 +350,26 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         data = self._get("campaign/get/", params)
         campaigns = []
         for raw in data.get("list", []):
-            campaigns.append({
-                "id": str(raw.get("campaign_id")),
-                "name": raw.get("campaign_name"),
-                "status": raw.get("primary_status"),
-                "objective": raw.get("objective_type"),
-                "daily_budget_usd": float(raw.get("budget", 0)),
-                "budget_mode": raw.get("budget_mode"),
-                "created_time": raw.get("create_time"),
-                "platform": "tiktok",
-            })
+            campaigns.append(
+                {
+                    "id": str(raw.get("campaign_id")),
+                    "name": raw.get("campaign_name"),
+                    "status": raw.get("primary_status"),
+                    "objective": raw.get("objective_type"),
+                    "daily_budget_usd": float(raw.get("budget", 0)),
+                    "budget_mode": raw.get("budget_mode"),
+                    "created_time": raw.get("create_time"),
+                    "platform": "tiktok",
+                }
+            )
 
-        self._log("list_campaigns", "campaign", None, "success",
-                  response_summary={"count": len(campaigns)})
+        self._log(
+            "list_campaigns",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(campaigns)},
+        )
         return campaigns
 
     def create_campaign(self, draft: CampaignDraft) -> dict:
@@ -350,9 +396,14 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         data = self._post("campaign/create/", payload)
         campaign_id = str(data.get("campaign_id", ""))
 
-        self._log("create_campaign", "campaign", campaign_id, "success",
-                  request_summary={"name": draft.name, "objective": objective, "status": "DISABLE"},
-                  response_summary={"campaign_id": campaign_id})
+        self._log(
+            "create_campaign",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"name": draft.name, "objective": objective, "status": "DISABLE"},
+            response_summary={"campaign_id": campaign_id},
+        )
 
         return {
             "id": campaign_id,
@@ -372,14 +423,22 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.DRAFT_CREATE)
 
         advertiser_id = self._advertiser_id()
-        data = self._post("campaign/status/update/", {
-            "advertiser_id": advertiser_id,
-            "campaign_ids": [campaign_id],
-            "operation_status": tiktok_status,
-        })
+        self._post(
+            "campaign/status/update/",
+            {
+                "advertiser_id": advertiser_id,
+                "campaign_ids": [campaign_id],
+                "operation_status": tiktok_status,
+            },
+        )
 
-        self._log("update_campaign_status", "campaign", campaign_id, "success",
-                  request_summary={"status": tiktok_status})
+        self._log(
+            "update_campaign_status",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"status": tiktok_status},
+        )
         return {"id": campaign_id, "status": tiktok_status}
 
     def update_campaign_budget(self, campaign_id: str, daily_budget_usd: float) -> dict:
@@ -388,15 +447,23 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         advertiser_id = self._advertiser_id()
 
         budget = max(daily_budget_usd, 50.0)
-        self._post("campaign/update/", {
-            "advertiser_id": advertiser_id,
-            "campaign_id": campaign_id,
-            "budget": budget,
-            "budget_mode": "BUDGET_MODE_DAY",
-        })
+        self._post(
+            "campaign/update/",
+            {
+                "advertiser_id": advertiser_id,
+                "campaign_id": campaign_id,
+                "budget": budget,
+                "budget_mode": "BUDGET_MODE_DAY",
+            },
+        )
 
-        self._log("update_campaign_budget", "campaign", campaign_id, "success",
-                  request_summary={"daily_budget_usd": budget})
+        self._log(
+            "update_campaign_budget",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"daily_budget_usd": budget},
+        )
         return {"id": campaign_id, "daily_budget_usd": budget}
 
     # ── Audiences ─────────────────────────────────────────────────────────────
@@ -406,23 +473,33 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         advertiser_id = self._advertiser_id()
 
-        data = self._get("dmp/custom_audience/list/", {
-            "advertiser_id": advertiser_id,
-            "page_size": 100,
-        })
+        data = self._get(
+            "dmp/custom_audience/list/",
+            {
+                "advertiser_id": advertiser_id,
+                "page_size": 100,
+            },
+        )
 
         audiences = []
         for raw in data.get("list", []):
-            audiences.append({
-                "id": str(raw.get("custom_audience_id")),
-                "name": raw.get("name"),
-                "type": raw.get("audience_type"),
-                "size": raw.get("audience_size"),
-                "status": raw.get("status"),
-            })
+            audiences.append(
+                {
+                    "id": str(raw.get("custom_audience_id")),
+                    "name": raw.get("name"),
+                    "type": raw.get("audience_type"),
+                    "size": raw.get("audience_size"),
+                    "status": raw.get("status"),
+                }
+            )
 
-        self._log("list_audiences", "audience", None, "success",
-                  response_summary={"count": len(audiences)})
+        self._log(
+            "list_audiences",
+            "audience",
+            None,
+            "success",
+            response_summary={"count": len(audiences)},
+        )
         return audiences
 
     def create_audience(self, draft: AudienceDraft) -> dict:
@@ -430,7 +507,9 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.DRAFT_CREATE)
         advertiser_id = self._advertiser_id()
 
-        audience_type = "ENGAGEMENT" if draft.audience_type in ("CUSTOM", "ENGAGEMENT") else "CUSTOMER_FILE"
+        audience_type = (
+            "ENGAGEMENT" if draft.audience_type in ("CUSTOM", "ENGAGEMENT") else "CUSTOMER_FILE"
+        )
         payload = {
             "advertiser_id": advertiser_id,
             "custom_audience_name": draft.name,
@@ -448,13 +527,18 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         data = self._post("dmp/custom_audience/create/", payload)
         audience_id = str(data.get("custom_audience_id", ""))
 
-        self._log("create_audience", "audience", audience_id, "success",
-                  request_summary={"name": draft.name, "type": audience_type})
+        self._log(
+            "create_audience",
+            "audience",
+            audience_id,
+            "success",
+            request_summary={"name": draft.name, "type": audience_type},
+        )
         return {"id": audience_id, "name": draft.name, "type": audience_type}
 
     # ── Creatives ─────────────────────────────────────────────────────────────
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GET /ad/get/"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         advertiser_id = self._advertiser_id()
@@ -466,17 +550,24 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         data = self._get("ad/get/", params)
         creatives = []
         for raw in data.get("list", []):
-            creatives.append({
-                "id": str(raw.get("ad_id")),
-                "name": raw.get("ad_name"),
-                "format": raw.get("ad_format"),
-                "status": raw.get("primary_status"),
-                "video_id": raw.get("video_id"),
-                "thumbnail_url": raw.get("image_ids", [None])[0],
-            })
+            creatives.append(
+                {
+                    "id": str(raw.get("ad_id")),
+                    "name": raw.get("ad_name"),
+                    "format": raw.get("ad_format"),
+                    "status": raw.get("primary_status"),
+                    "video_id": raw.get("video_id"),
+                    "thumbnail_url": raw.get("image_ids", [None])[0],
+                }
+            )
 
-        self._log("list_creatives", "creative", None, "success",
-                  response_summary={"count": len(creatives)})
+        self._log(
+            "list_creatives",
+            "creative",
+            None,
+            "success",
+            response_summary={"count": len(creatives)},
+        )
         return creatives
 
     def create_creative(self, draft: CreativeDraft) -> dict:
@@ -514,8 +605,13 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         data = self._post("ad/create/", payload)
         ad_id = str(data.get("ad_id", ""))
 
-        self._log("create_creative", "creative", ad_id, "success",
-                  request_summary={"name": draft.name, "ad_group_id": ad_group_id})
+        self._log(
+            "create_creative",
+            "creative",
+            ad_id,
+            "success",
+            request_summary={"name": draft.name, "ad_group_id": ad_group_id},
+        )
         return {
             "id": ad_id,
             "name": draft.name,
@@ -531,7 +627,7 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         campaign_ids: list[str],
         date_start: str,
         date_end: str,
-        breakdown: Optional[str] = None,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GET /report/integrated/get/ — campaign-level report.
@@ -541,10 +637,21 @@ class TikTokAdsAdapter(BaseAdsAdapter):
         advertiser_id = self._advertiser_id()
 
         metrics_fields = [
-            "spend", "impressions", "clicks", "ctr", "cpm", "cpc",
-            "conversion", "cost_per_conversion", "real_time_conversion",
-            "reach", "frequency", "video_play_actions", "video_watched_2s",
-            "video_watched_6s", "video_views_p100",
+            "spend",
+            "impressions",
+            "clicks",
+            "ctr",
+            "cpm",
+            "cpc",
+            "conversion",
+            "cost_per_conversion",
+            "real_time_conversion",
+            "reach",
+            "frequency",
+            "video_play_actions",
+            "video_watched_2s",
+            "video_watched_6s",
+            "video_views_p100",
         ]
 
         params = {
@@ -555,11 +662,15 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             "metrics": json.dumps(metrics_fields),
             "start_date": date_start,
             "end_date": date_end,
-            "filters": json.dumps([{
-                "field_name": "campaign_id",
-                "filter_type": "IN",
-                "filter_value": json.dumps(campaign_ids),
-            }]),
+            "filters": json.dumps(
+                [
+                    {
+                        "field_name": "campaign_id",
+                        "filter_type": "IN",
+                        "filter_value": json.dumps(campaign_ids),
+                    }
+                ]
+            ),
             "page_size": 200,
         }
 
@@ -576,29 +687,38 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             revenue = float(m.get("real_time_conversion_rate_v2", 0))
             impressions = int(m.get("impressions", 0))
 
-            metrics.append(CampaignMetrics(
-                campaign_id=str(dims.get("campaign_id", "")),
-                platform="tiktok",
-                date=dims.get("stat_time_day", date_start)[:10],
-                impressions=impressions,
-                clicks=int(m.get("clicks", 0)),
-                spend_usd=round(spend, 4),
-                conversions=conversions,
-                revenue_usd=round(revenue, 2),
-                cpm_usd=round(float(m.get("cpm", 0)), 4),
-                cpc_usd=round(float(m.get("cpc", 0)), 4),
-                ctr_pct=round(float(m.get("ctr", 0)), 4),
-                roas=round(revenue / spend, 3) if spend > 0 else 0.0,
-                cpa_usd=round(float(m.get("cost_per_conversion", 0)), 4),
-                reach=int(m.get("reach", 0)),
-                frequency=round(float(m.get("frequency", 0)), 2),
-                video_views=int(m.get("video_play_actions", 0)),
-                video_completion_rate=round(float(m.get("video_views_p100", 0)) / max(impressions, 1), 4),
-                raw=row,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=str(dims.get("campaign_id", "")),
+                    platform="tiktok",
+                    date=dims.get("stat_time_day", date_start)[:10],
+                    impressions=impressions,
+                    clicks=int(m.get("clicks", 0)),
+                    spend_usd=round(spend, 4),
+                    conversions=conversions,
+                    revenue_usd=round(revenue, 2),
+                    cpm_usd=round(float(m.get("cpm", 0)), 4),
+                    cpc_usd=round(float(m.get("cpc", 0)), 4),
+                    ctr_pct=round(float(m.get("ctr", 0)), 4),
+                    roas=round(revenue / spend, 3) if spend > 0 else 0.0,
+                    cpa_usd=round(float(m.get("cost_per_conversion", 0)), 4),
+                    reach=int(m.get("reach", 0)),
+                    frequency=round(float(m.get("frequency", 0)), 2),
+                    video_views=int(m.get("video_play_actions", 0)),
+                    video_completion_rate=round(
+                        float(m.get("video_views_p100", 0)) / max(impressions, 1), 4
+                    ),
+                    raw=row,
+                )
+            )
 
-        self._log("pull_campaign_metrics", "campaign", None, "success",
-                  response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"})
+        self._log(
+            "pull_campaign_metrics",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"},
+        )
         return metrics
 
     def pull_ad_metrics(
@@ -616,14 +736,20 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             "report_type": "BASIC",
             "data_level": "AUCTION_AD",
             "dimensions": json.dumps(["ad_id", "stat_time_day"]),
-            "metrics": json.dumps(["spend", "impressions", "clicks", "ctr", "cpm", "cpc", "conversion"]),
+            "metrics": json.dumps(
+                ["spend", "impressions", "clicks", "ctr", "cpm", "cpc", "conversion"]
+            ),
             "start_date": date_start,
             "end_date": date_end,
-            "filters": json.dumps([{
-                "field_name": "ad_id",
-                "filter_type": "IN",
-                "filter_value": json.dumps(ad_ids),
-            }]),
+            "filters": json.dumps(
+                [
+                    {
+                        "field_name": "ad_id",
+                        "filter_type": "IN",
+                        "filter_value": json.dumps(ad_ids),
+                    }
+                ]
+            ),
             "page_size": 200,
         }
 
@@ -635,21 +761,24 @@ class TikTokAdsAdapter(BaseAdsAdapter):
             spend = float(m.get("spend", 0))
             conversions = int(float(m.get("conversion", 0)))
 
-            metrics.append(CampaignMetrics(
-                campaign_id=str(dims.get("ad_id", "")),
-                platform="tiktok",
-                date=dims.get("stat_time_day", date_start)[:10],
-                impressions=int(m.get("impressions", 0)),
-                clicks=int(m.get("clicks", 0)),
-                spend_usd=round(spend, 4),
-                conversions=conversions,
-                cpm_usd=round(float(m.get("cpm", 0)), 4),
-                cpc_usd=round(float(m.get("cpc", 0)), 4),
-                ctr_pct=round(float(m.get("ctr", 0)), 4),
-                cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
-                raw=row,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=str(dims.get("ad_id", "")),
+                    platform="tiktok",
+                    date=dims.get("stat_time_day", date_start)[:10],
+                    impressions=int(m.get("impressions", 0)),
+                    clicks=int(m.get("clicks", 0)),
+                    spend_usd=round(spend, 4),
+                    conversions=conversions,
+                    cpm_usd=round(float(m.get("cpm", 0)), 4),
+                    cpc_usd=round(float(m.get("cpc", 0)), 4),
+                    ctr_pct=round(float(m.get("ctr", 0)), 4),
+                    cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
+                    raw=row,
+                )
+            )
 
-        self._log("pull_ad_metrics", "ad", None, "success",
-                  response_summary={"count": len(metrics)})
+        self._log(
+            "pull_ad_metrics", "ad", None, "success", response_summary={"count": len(metrics)}
+        )
         return metrics

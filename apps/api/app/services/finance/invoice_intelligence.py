@@ -5,6 +5,7 @@ The whole pipeline degrades gracefully when optional OCR backends
 (paddleocr / pytesseract) aren't installed: text-only PDFs still work
 via pdfplumber, and structured extraction always falls back to local Ollama.
 """
+
 from __future__ import annotations
 
 import json
@@ -151,9 +152,7 @@ If field not found use null. Estimate confidence 0-1."""
         except Exception:
             vat_rate = float(TR_KDV.get(category, 20))
         try:
-            vat_amount = float(
-                data.get("tax_amount") or total * vat_rate / (100 + vat_rate)
-            )
+            vat_amount = float(data.get("tax_amount") or total * vat_rate / (100 + vat_rate))
         except Exception:
             vat_amount = 0.0
 
@@ -189,9 +188,7 @@ Write 2-3 sentences: what this is, VAT impact, one accounting note.
 End with: "Please verify with your accountant before filing." """
         return call_ollama(prompt, task=TaskType.STANDARD, max_tokens=200, timeout=60)
 
-    async def process_file(
-        self, file_path: str, file_name: str, db, workspace_id: str
-    ) -> dict:
+    async def process_file(self, file_path: str, file_name: str, db, workspace_id: str) -> dict:
         raw = self.extract_text(file_path)
         data = self.extract_fields(raw, file_name)
         if "error" in data:

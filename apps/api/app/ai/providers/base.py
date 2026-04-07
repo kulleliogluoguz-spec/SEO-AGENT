@@ -10,9 +10,10 @@ from __future__ import annotations
 import abc
 import time
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 
 class FinishReason(str, Enum):
@@ -32,6 +33,7 @@ class ToolCall:
 @dataclass
 class AIMessage:
     """Unified response from any provider."""
+
     content: str = ""
     role: str = "assistant"
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -53,27 +55,28 @@ class AIMessage:
 @dataclass
 class AIRequest:
     """Unified request to any provider."""
+
     messages: list[dict[str, Any]]
-    model_id: str = ""                    # Registry model ID
+    model_id: str = ""  # Registry model ID
     system: str = ""
     temperature: float = 0.3
     max_tokens: int = 4096
     tools: list[dict[str, Any]] = field(default_factory=list)
-    tool_choice: Optional[str] = None     # "auto", "required", "none"
-    response_format: Optional[dict] = None  # {"type": "json_object"}
-    stop: Optional[list[str]] = None
+    tool_choice: str | None = None  # "auto", "required", "none"
+    response_format: dict | None = None  # {"type": "json_object"}
+    stop: list[str] | None = None
     stream: bool = False
 
     # Routing hints
-    role: Optional[str] = None             # AIRole hint for the router
-    priority: str = "normal"               # "low", "normal", "high"
+    role: str | None = None  # AIRole hint for the router
+    priority: str = "normal"  # "low", "normal", "high"
     timeout_ms: int = 60000
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     # Context
-    workspace_id: Optional[str] = None
-    site_id: Optional[str] = None
-    agent_id: Optional[str] = None
+    workspace_id: str | None = None
+    site_id: str | None = None
+    agent_id: str | None = None
 
 
 class BaseProvider(abc.ABC):

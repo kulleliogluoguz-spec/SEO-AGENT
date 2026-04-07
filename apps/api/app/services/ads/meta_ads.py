@@ -17,16 +17,16 @@ Authentication:
   Must have: ads_management, ads_read, business_management scopes
   Ad account ID stored in linked_accounts under platform="meta_ads"
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
-from app.core.store.credential_store import get_credential, get_linked_accounts
 from app.core.store.audit_store import write_audit_event
+from app.core.store.credential_store import get_credential, get_linked_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +56,11 @@ BILLING_EVENT_MAP = {
 @dataclass
 class MetaAdsResult:
     success: bool
-    campaign_id: Optional[str] = None
-    ad_set_id: Optional[str] = None
-    ad_id: Optional[str] = None
-    creative_id: Optional[str] = None
-    error: Optional[str] = None
+    campaign_id: str | None = None
+    ad_set_id: str | None = None
+    ad_id: str | None = None
+    creative_id: str | None = None
+    error: str | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -83,10 +83,10 @@ class MetaAdsService:
 
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self._token: Optional[str] = None
-        self._ad_account_id: Optional[str] = None
+        self._token: str | None = None
+        self._ad_account_id: str | None = None
 
-    def _load_credentials(self) -> tuple[Optional[str], Optional[str]]:
+    def _load_credentials(self) -> tuple[str | None, str | None]:
         """Return (access_token, ad_account_id) or (None, None) if not configured."""
         cred = get_credential(self.user_id, "meta")
         if not cred:
@@ -151,15 +151,28 @@ class MetaAdsService:
         """Validate Meta credentials and return account info."""
         token, account_id = self._load_credentials()
         if not token:
-            return {"connected": False, "reason": "No Meta credentials. Connect via Settings → Connections."}
+            return {
+                "connected": False,
+                "reason": "No Meta credentials. Connect via Settings → Connections.",
+            }
         if not account_id:
-            return {"connected": False, "reason": "No Meta Ads account linked. Complete Meta connection flow."}
+            return {
+                "connected": False,
+                "reason": "No Meta Ads account linked. Complete Meta connection flow.",
+            }
 
         try:
-            data = await self._api("GET", f"{account_id}", token, params={"fields": "id,name,currency,account_status"})
+            data = await self._api(
+                "GET", f"{account_id}", token, params={"fields": "id,name,currency,account_status"}
+            )
             status = data.get("account_status")
             if status == 1:
-                return {"connected": True, "account_id": account_id, "account_name": data.get("name"), "currency": data.get("currency", "USD")}
+                return {
+                    "connected": True,
+                    "account_id": account_id,
+                    "account_name": data.get("name"),
+                    "currency": data.get("currency", "USD"),
+                }
             else:
                 return {"connected": False, "reason": f"Ad account status {status} (not active)"}
         except Exception as e:
@@ -176,9 +189,9 @@ class MetaAdsService:
         description: str,
         age_min: int = 18,
         age_max: int = 65,
-        geo_locations: Optional[list[str]] = None,
-        interests: Optional[list[str]] = None,
-        campaign_user_id: Optional[str] = None,
+        geo_locations: list[str] | None = None,
+        interests: list[str] | None = None,
+        campaign_user_id: str | None = None,
     ) -> MetaAdsResult:
         """
         Full campaign launch: creates Campaign → Ad Set → Creative → Ad.
@@ -189,11 +202,13 @@ class MetaAdsService:
         if not token or not account_id:
             result = MetaAdsResult(
                 success=False,
-                error="Meta Ads not connected. Go to Connections and link your Meta Ads account."
+                error="Meta Ads not connected. Go to Connections and link your Meta Ads account.",
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.meta.create_campaign",
-                channel="meta_ads", success=False,
+                user_id=self.user_id,
+                action="ads.meta.create_campaign",
+                channel="meta_ads",
+                success=False,
                 metadata={"error": result.error, "campaign_name": name},
             )
             return result
@@ -207,7 +222,9 @@ class MetaAdsService:
         try:
             # Step 1: Create Campaign
             camp_data = await self._api(
-                "POST", f"{account_id}/campaigns", token,
+                "POST",
+                f"{account_id}/campaigns",
+                token,
                 json={
                     "name": name,
                     "objective": meta_objective,
@@ -228,18 +245,20 @@ class MetaAdsService:
             }
             if interests:
                 # interests should be Facebook interest IDs or names
-                targeting["flexible_spec"] = [
-                    {"interests": [{"name": i} for i in interests[:5]]}
-                ]
+                targeting["flexible_spec"] = [{"interests": [{"name": i} for i in interests[:5]]}]
 
             ad_set_data = await self._api(
-                "POST", f"{account_id}/adsets", token,
+                "POST",
+                f"{account_id}/adsets",
+                token,
                 json={
                     "name": f"{name} — Ad Set",
                     "campaign_id": campaign_id,
                     "daily_budget": daily_budget_cents,
                     "billing_event": billing_event,
-                    "optimization_goal": "LINK_CLICKS" if meta_objective == "OUTCOME_TRAFFIC" else "OFFSITE_CONVERSIONS",
+                    "optimization_goal": "LINK_CLICKS"
+                    if meta_objective == "OUTCOME_TRAFFIC"
+                    else "OFFSITE_CONVERSIONS",
                     "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
                     "targeting": targeting,
                     "status": "PAUSED",
@@ -251,7 +270,9 @@ class MetaAdsService:
 
             # Step 3: Create Ad Creative (link ad)
             creative_data = await self._api(
-                "POST", f"{account_id}/adcreatives", token,
+                "POST",
+                f"{account_id}/adcreatives",
+                token,
                 json={
                     "name": f"{name} — Creative",
                     "object_story_spec": {
@@ -273,7 +294,9 @@ class MetaAdsService:
 
             # Step 4: Create Ad
             ad_data = await self._api(
-                "POST", f"{account_id}/ads", token,
+                "POST",
+                f"{account_id}/ads",
+                token,
                 json={
                     "name": f"{name} — Ad",
                     "adset_id": ad_set_id,
@@ -287,15 +310,19 @@ class MetaAdsService:
         except Exception as e:
             logger.error("[meta_ads] create_campaign failed: %s", e)
             write_audit_event(
-                user_id=self.user_id, action="ads.meta.create_campaign",
-                channel="meta_ads", success=False,
+                user_id=self.user_id,
+                action="ads.meta.create_campaign",
+                channel="meta_ads",
+                success=False,
                 metadata={"error": str(e), "campaign_id": campaign_id},
             )
             return MetaAdsResult(success=False, error=str(e), campaign_id=campaign_id)
 
         write_audit_event(
-            user_id=self.user_id, action="ads.meta.create_campaign",
-            channel="meta_ads", success=True,
+            user_id=self.user_id,
+            action="ads.meta.create_campaign",
+            channel="meta_ads",
+            success=True,
             metadata={
                 "campaign_id": campaign_id,
                 "ad_set_id": ad_set_id,
@@ -322,8 +349,10 @@ class MetaAdsService:
         try:
             await self._api("POST", f"{campaign_id}", token, json={"status": "ACTIVE"})
             write_audit_event(
-                user_id=self.user_id, action="ads.meta.activate_campaign",
-                channel="meta_ads", success=True,
+                user_id=self.user_id,
+                action="ads.meta.activate_campaign",
+                channel="meta_ads",
+                success=True,
                 metadata={"campaign_id": campaign_id},
             )
             return True
@@ -339,8 +368,10 @@ class MetaAdsService:
         try:
             await self._api("POST", f"{campaign_id}", token, json={"status": "PAUSED"})
             write_audit_event(
-                user_id=self.user_id, action="ads.meta.pause_campaign",
-                channel="meta_ads", success=True,
+                user_id=self.user_id,
+                action="ads.meta.pause_campaign",
+                channel="meta_ads",
+                success=True,
                 metadata={"campaign_id": campaign_id},
             )
             return True
@@ -352,7 +383,7 @@ class MetaAdsService:
         self,
         campaign_id: str,
         date_preset: str = "last_7d",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Fetch campaign performance metrics.
         date_preset options: today, yesterday, last_7d, last_30d, this_month
@@ -395,12 +426,16 @@ class MetaAdsService:
             return False
         try:
             await self._api(
-                "POST", f"{ad_set_id}", token,
+                "POST",
+                f"{ad_set_id}",
+                token,
                 json={"daily_budget": int(new_budget_usd * 100)},
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.meta.update_budget",
-                channel="meta_ads", success=True,
+                user_id=self.user_id,
+                action="ads.meta.update_budget",
+                channel="meta_ads",
+                success=True,
                 metadata={"ad_set_id": ad_set_id, "new_budget_usd": new_budget_usd},
             )
             return True

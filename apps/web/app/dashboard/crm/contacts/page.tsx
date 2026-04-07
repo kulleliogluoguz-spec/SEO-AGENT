@@ -132,7 +132,7 @@ export default function CRMContactsPage() {
       <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
         <AlertCircle size={14} className="text-blue-500 flex-shrink-0" />
         <p className="text-xs text-blue-700">
-          Contacts auto-sync when you use the <Link href="/dashboard/intelligence/outbound" className="font-semibold underline">Outbound Engine</Link> — click "Add to CRM" after generating outreach.
+          Contacts auto-sync when you use the <Link href="/dashboard/intelligence/outbound" className="font-semibold underline">Outbound Engine</Link> — click &ldquo;Add to CRM&rdquo; after generating outreach.
         </p>
       </div>
 

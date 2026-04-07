@@ -24,24 +24,24 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class DatasetType(str, Enum):
-    SFT = "sft"                        # Supervised fine-tuning pairs
-    PREFERENCE = "preference"           # DPO/RLHF preference pairs
-    CLASSIFICATION = "classification"   # Label classification examples
-    RECOMMENDATION = "recommendation"   # Recommendation-evidence pairs
-    CONTENT = "content"                 # Content quality examples
-    EVALUATION = "evaluation"           # Eval gold-standard examples
+    SFT = "sft"  # Supervised fine-tuning pairs
+    PREFERENCE = "preference"  # DPO/RLHF preference pairs
+    CLASSIFICATION = "classification"  # Label classification examples
+    RECOMMENDATION = "recommendation"  # Recommendation-evidence pairs
+    CONTENT = "content"  # Content quality examples
+    EVALUATION = "evaluation"  # Eval gold-standard examples
 
 
 class DataQuality(str, Enum):
-    GOLD = "gold"          # Human-verified, high quality
-    SILVER = "silver"      # Programmatically filtered, good quality
-    BRONZE = "bronze"      # Raw collection, unverified
+    GOLD = "gold"  # Human-verified, high quality
+    SILVER = "silver"  # Programmatically filtered, good quality
+    BRONZE = "bronze"  # Raw collection, unverified
     REJECTED = "rejected"  # Explicitly rejected by human
 
 
@@ -51,14 +51,15 @@ class DataQuality(str, Enum):
 @dataclass
 class SFTExample:
     """Supervised fine-tuning example (instruction-response pair)."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     instruction: str = ""
     input_context: str = ""
     output: str = ""
     system_prompt: str = ""
-    category: str = ""          # e.g. "seo_audit", "recommendation", "content"
+    category: str = ""  # e.g. "seo_audit", "recommendation", "content"
     quality: DataQuality = DataQuality.BRONZE
-    source: str = ""            # Where this came from
+    source: str = ""  # Where this came from
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
@@ -78,11 +79,12 @@ class SFTExample:
 @dataclass
 class PreferenceExample:
     """DPO preference pair (chosen vs rejected)."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     instruction: str = ""
     input_context: str = ""
-    chosen_output: str = ""     # Preferred/accepted response
-    rejected_output: str = ""   # Rejected/worse response
+    chosen_output: str = ""  # Preferred/accepted response
+    rejected_output: str = ""  # Rejected/worse response
     category: str = ""
     rejection_reason: str = ""  # Why the rejected output was worse
     source: str = ""
@@ -101,11 +103,12 @@ class PreferenceExample:
 @dataclass
 class RecommendationTrainingExample:
     """Recommendation-evidence training pair."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     site_context: dict[str, Any] = field(default_factory=dict)
     analysis_data: dict[str, Any] = field(default_factory=dict)
     recommendation: dict[str, Any] = field(default_factory=dict)
-    outcome: str = ""           # "implemented", "approved", "rejected", "deferred"
+    outcome: str = ""  # "implemented", "approved", "rejected", "deferred"
     impact_data: dict[str, Any] = field(default_factory=dict)  # Post-implementation metrics
     quality: DataQuality = DataQuality.BRONZE
     created_at: float = field(default_factory=time.time)
@@ -114,15 +117,16 @@ class RecommendationTrainingExample:
 @dataclass
 class ContentTrainingExample:
     """Content quality training example."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    content_type: str = ""      # "blog_post", "landing_page", "social_post"
+    content_type: str = ""  # "blog_post", "landing_page", "social_post"
     input_brief: str = ""
     generated_content: str = ""
-    edited_content: str = ""    # Human-edited version
-    approval_status: str = ""   # "approved", "rejected", "revised"
+    edited_content: str = ""  # Human-edited version
+    approval_status: str = ""  # "approved", "rejected", "revised"
     quality_score: float = 0.0  # Human-assigned quality score
     edit_distance: float = 0.0  # How much was changed
-    channel: str = ""           # "web", "linkedin", "twitter"
+    channel: str = ""  # "web", "linkedin", "twitter"
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
@@ -238,11 +242,17 @@ class DatasetManager:
         category: str = "",
     ) -> list[dict]:
         """Export SFT examples in training format."""
-        quality_order = {DataQuality.GOLD: 3, DataQuality.SILVER: 2, DataQuality.BRONZE: 1, DataQuality.REJECTED: 0}
+        quality_order = {
+            DataQuality.GOLD: 3,
+            DataQuality.SILVER: 2,
+            DataQuality.BRONZE: 1,
+            DataQuality.REJECTED: 0,
+        }
         min_level = quality_order.get(min_quality, 0)
 
         examples = [
-            ex for ex in self._sft_examples
+            ex
+            for ex in self._sft_examples
             if quality_order.get(ex.quality, 0) >= min_level
             and (not category or ex.category == category)
         ]
@@ -251,8 +261,7 @@ class DatasetManager:
     def export_preference_dataset(self, category: str = "") -> list[dict]:
         """Export preference pairs in DPO training format."""
         examples = [
-            ex for ex in self._preference_examples
-            if not category or ex.category == category
+            ex for ex in self._preference_examples if not category or ex.category == category
         ]
         return [ex.to_training_format() for ex in examples]
 
@@ -281,11 +290,12 @@ class DatasetManager:
             "recommendation_examples": len(self._recommendation_examples),
             "content_examples": len(self._content_examples),
             "sft_by_quality": {
-                q.value: sum(1 for ex in self._sft_examples if ex.quality == q)
-                for q in DataQuality
+                q.value: sum(1 for ex in self._sft_examples if ex.quality == q) for q in DataQuality
             },
             "sft_by_category": self._count_by_field(self._sft_examples, "category"),
-            "recommendation_by_outcome": self._count_by_field(self._recommendation_examples, "outcome"),
+            "recommendation_by_outcome": self._count_by_field(
+                self._recommendation_examples, "outcome"
+            ),
             "content_by_status": self._count_by_field(self._content_examples, "approval_status"),
         }
 
@@ -304,7 +314,7 @@ class DatasetManager:
             return 0.0
         if not a or not b:
             return 1.0
-        common = sum(1 for ca, cb in zip(a, b) if ca == cb)
+        common = sum(1 for ca, cb in zip(a, b, strict=False) if ca == cb)
         return 1.0 - (common / max(len(a), len(b)))
 
 
@@ -314,6 +324,7 @@ class DatasetManager:
 @dataclass
 class LoRAAdapter:
     """A LoRA adapter configuration."""
+
     id: str
     name: str
     base_model: str
@@ -368,8 +379,8 @@ class AdapterManager:
 
 
 # Singletons
-_dataset_manager: Optional[DatasetManager] = None
-_adapter_manager: Optional[AdapterManager] = None
+_dataset_manager: DatasetManager | None = None
+_adapter_manager: AdapterManager | None = None
 
 
 def get_dataset_manager() -> DatasetManager:

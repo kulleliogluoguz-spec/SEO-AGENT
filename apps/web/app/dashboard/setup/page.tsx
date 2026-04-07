@@ -405,7 +405,7 @@ export default function SetupPage() {
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-bold text-gray-900">Brand Intelligence Ready</h2>
-              <p className="text-sm text-gray-500 mt-1">Here's what we know about {result.brand_profile.brand_name as string}.</p>
+              <p className="text-sm text-gray-500 mt-1">Here&rsquo;s what we know about {result.brand_profile.brand_name as string}.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

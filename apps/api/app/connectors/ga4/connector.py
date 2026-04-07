@@ -6,6 +6,7 @@ MOCK mode: Returns realistic demo data (default in development).
 
 Set GA4_MOCK_MODE=false and configure credentials for real data.
 """
+
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -61,6 +62,7 @@ class GA4Connector:
         """Initialize real GA4 API client."""
         try:
             from google.analytics.data_v1beta import BetaAnalyticsDataClient
+
             self._client = BetaAnalyticsDataClient()
             self._property_id = settings.ga4_mock_mode  # Should be property ID
             logger.info("ga4.real_client_initialized")

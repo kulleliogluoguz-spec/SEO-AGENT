@@ -11,20 +11,19 @@ Routes:
   POST /api/v1/autonomy/policies/{channel}/kill   — toggle kill switch
   GET  /api/v1/autonomy/summary                   — compact summary for UI
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies.auth import get_current_user
 from app.core.store.autonomy_store import (
+    CHANNELS,
     get_all_policies,
     get_policy,
     set_kill_switch,
     upsert_policy,
-    CHANNELS,
 )
 
 router = APIRouter(prefix="/autonomy", tags=["autonomy"])
@@ -32,20 +31,20 @@ router = APIRouter(prefix="/autonomy", tags=["autonomy"])
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
+
 class PolicyUpsert(BaseModel):
-    autonomy_mode: Optional[str] = Field(
-        None,
-        description="manual | assisted | semi_auto | autonomous"
+    autonomy_mode: str | None = Field(
+        None, description="manual | assisted | semi_auto | autonomous"
     )
-    content_auto_publish: Optional[bool] = None
-    ads_auto_launch: Optional[bool] = None
-    max_daily_posts: Optional[int] = Field(None, ge=0, le=50)
-    max_daily_spend_usd: Optional[float] = Field(None, ge=0.0, le=10000.0)
-    reallocation_cap_pct: Optional[int] = Field(None, ge=0, le=50)
-    approval_threshold_usd: Optional[float] = Field(None, ge=0.0, le=10000.0)
-    quiet_hours_start: Optional[str] = Field(None, description="HH:MM in user local time")
-    quiet_hours_end: Optional[str] = Field(None, description="HH:MM in user local time")
-    kill_switch: Optional[bool] = None
+    content_auto_publish: bool | None = None
+    ads_auto_launch: bool | None = None
+    max_daily_posts: int | None = Field(None, ge=0, le=50)
+    max_daily_spend_usd: float | None = Field(None, ge=0.0, le=10000.0)
+    reallocation_cap_pct: int | None = Field(None, ge=0, le=50)
+    approval_threshold_usd: float | None = Field(None, ge=0.0, le=10000.0)
+    quiet_hours_start: str | None = Field(None, description="HH:MM in user local time")
+    quiet_hours_end: str | None = Field(None, description="HH:MM in user local time")
+    kill_switch: bool | None = None
 
 
 class KillSwitchRequest(BaseModel):
@@ -53,6 +52,7 @@ class KillSwitchRequest(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.get("/policies")
 async def list_policies(current_user=Depends(get_current_user)) -> dict:
@@ -72,7 +72,9 @@ async def get_channel_policy(
 ) -> dict:
     """Return the automation policy for a specific channel."""
     if channel not in CHANNELS:
-        raise HTTPException(status_code=400, detail=f"Unknown channel '{channel}'. Valid: {CHANNELS}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown channel '{channel}'. Valid: {CHANNELS}"
+        )
     policy = get_policy(str(current_user.id), channel)
     return policy
 
@@ -85,11 +87,15 @@ async def upsert_channel_policy(
 ) -> dict:
     """Create or update automation policy for a channel."""
     if channel not in CHANNELS:
-        raise HTTPException(status_code=400, detail=f"Unknown channel '{channel}'. Valid: {CHANNELS}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown channel '{channel}'. Valid: {CHANNELS}"
+        )
 
     valid_modes = {"manual", "assisted", "semi_auto", "autonomous"}
     if payload.autonomy_mode and payload.autonomy_mode not in valid_modes:
-        raise HTTPException(status_code=400, detail=f"Invalid autonomy_mode. Must be one of: {valid_modes}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid autonomy_mode. Must be one of: {valid_modes}"
+        )
 
     updates = payload.model_dump(exclude_none=True)
     policy = upsert_policy(str(current_user.id), channel, updates)

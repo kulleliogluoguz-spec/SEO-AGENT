@@ -3,20 +3,28 @@ Marketing Execution Engine — SQLAlchemy Models
 Covers: campaigns, content calendar, social posts, approvals,
         channel connectors, performance metrics, ad campaigns.
 """
+
 from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, ForeignKey,
-    Integer, JSON, String, Text, UniqueConstraint, Index, func,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
-from sqlalchemy.orm import relationship, DeclarativeBase
-
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  INTEGRATION POINT: Replace this Base with your existing repo's Base.
@@ -33,12 +41,15 @@ except ImportError:
     try:
         from app.core.database import Base  # Fallback path
     except ImportError:
+
         class Base(DeclarativeBase):
             """Fallback Base — only used when running outside the main repo."""
+
             pass
 
 
 # ─── Enums ──────────────────────────────────────────────────────────────────
+
 
 class ChannelType(str, enum.Enum):
     INSTAGRAM = "instagram"
@@ -98,6 +109,7 @@ class AutomationLevel(int, enum.Enum):
 
 # ─── Campaign ───────────────────────────────────────────────────────────────
 
+
 class Campaign(Base):
     __tablename__ = "campaigns"
 
@@ -119,15 +131,18 @@ class Campaign(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    content_items = relationship("ContentItem", back_populates="campaign", cascade="all,delete-orphan")
-    ad_campaigns = relationship("AdCampaign", back_populates="campaign", cascade="all,delete-orphan")
-
-    __table_args__ = (
-        Index("ix_campaigns_workspace_status", "workspace_id", "status"),
+    content_items = relationship(
+        "ContentItem", back_populates="campaign", cascade="all,delete-orphan"
     )
+    ad_campaigns = relationship(
+        "AdCampaign", back_populates="campaign", cascade="all,delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_campaigns_workspace_status", "workspace_id", "status"),)
 
 
 # ─── Content Calendar / Content Items ───────────────────────────────────────
+
 
 class ContentItem(Base):
     __tablename__ = "content_items"
@@ -184,10 +199,15 @@ class ContentItem(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     campaign = relationship("Campaign", back_populates="content_items")
-    approval = relationship("ContentApproval", back_populates="content_item", uselist=False,
-                            cascade="all,delete-orphan")
-    performance = relationship("ContentPerformance", back_populates="content_item", uselist=False,
-                               cascade="all,delete-orphan")
+    approval = relationship(
+        "ContentApproval", back_populates="content_item", uselist=False, cascade="all,delete-orphan"
+    )
+    performance = relationship(
+        "ContentPerformance",
+        back_populates="content_item",
+        uselist=False,
+        cascade="all,delete-orphan",
+    )
 
     __table_args__ = (
         Index("ix_content_workspace_status", "workspace_id", "status"),
@@ -199,11 +219,14 @@ class ContentItem(Base):
 
 # ─── Approval Queue ────────────────────────────────────────────────────────
 
+
 class ContentApproval(Base):
     __tablename__ = "content_approvals"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    content_item_id = Column(UUID(as_uuid=True), ForeignKey("content_items.id"), unique=True, nullable=False)
+    content_item_id = Column(
+        UUID(as_uuid=True), ForeignKey("content_items.id"), unique=True, nullable=False
+    )
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     decision = Column(Enum(ApprovalDecision), default=ApprovalDecision.PENDING, nullable=False)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -226,18 +249,19 @@ class ContentApproval(Base):
 
     content_item = relationship("ContentItem", back_populates="approval")
 
-    __table_args__ = (
-        Index("ix_approvals_workspace_decision", "workspace_id", "decision"),
-    )
+    __table_args__ = (Index("ix_approvals_workspace_decision", "workspace_id", "decision"),)
 
 
 # ─── Content Performance Metrics ────────────────────────────────────────────
+
 
 class ContentPerformance(Base):
     __tablename__ = "content_performance"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    content_item_id = Column(UUID(as_uuid=True), ForeignKey("content_items.id"), unique=True, nullable=False)
+    content_item_id = Column(
+        UUID(as_uuid=True), ForeignKey("content_items.id"), unique=True, nullable=False
+    )
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
 
     impressions = Column(Integer, default=0)
@@ -267,6 +291,7 @@ class ContentPerformance(Base):
 
 # ─── Channel Connector Config ───────────────────────────────────────────────
 
+
 class ChannelConnector(Base):
     __tablename__ = "channel_connectors"
 
@@ -294,12 +319,11 @@ class ChannelConnector(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "channel", name="uq_workspace_channel"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", "channel", name="uq_workspace_channel"),)
 
 
 # ─── Ad Campaign (Meta Ads layer) ──────────────────────────────────────────
+
 
 class AdCampaign(Base):
     __tablename__ = "ad_campaigns"
@@ -348,6 +372,7 @@ class AdCampaign(Base):
 
 
 # ─── Content Repurposing Log ────────────────────────────────────────────────
+
 
 class RepurposeLog(Base):
     __tablename__ = "repurpose_logs"

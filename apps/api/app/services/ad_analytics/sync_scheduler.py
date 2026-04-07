@@ -6,6 +6,7 @@ asyncio loops, matching the existing background-job pattern in this codebase.
 We don't use APScheduler — the existing pattern uses asyncio.create_task with
 sleep loops, and we follow the same convention for consistency.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,13 +34,17 @@ async def sync_all_accounts(db: AsyncSession) -> dict:
     get_performance_metrics for the last 7 days.
     """
     rows = (
-        await db.execute(
-            text(
-                "SELECT id, workspace_id, platform, account_id, credentials "
-                "FROM ad_accounts WHERE is_active = true"
+        (
+            await db.execute(
+                text(
+                    "SELECT id, workspace_id, platform, account_id, credentials "
+                    "FROM ad_accounts WHERE is_active = true"
+                )
             )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     synced = 0
     failed = 0
@@ -113,18 +118,22 @@ async def run_decision_engine(db: AsyncSession) -> dict:
     Analyze every active campaign and write recommendations to the DB.
     """
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT c.id, c.name, c.daily_budget, c.platform_campaign_id,
                        a.workspace_id, a.platform
                 FROM analytics_ad_campaigns c
                 JOIN ad_accounts a ON c.ad_account_id = a.id
                 WHERE a.is_active = true AND c.status IN ('ENABLED', 'ACTIVE', 'PAUSED')
                 """
+                )
             )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     engine = DecisionEngine()
     created = 0
@@ -135,19 +144,23 @@ async def run_decision_engine(db: AsyncSession) -> dict:
         cid = camp["id"]
         # Build signal from performance data
         perf = (
-            await db.execute(
-                text(
-                    """
+            (
+                await db.execute(
+                    text(
+                        """
                     SELECT date, spend, revenue, conversions, clicks, impressions,
                            roas, cpa, ctr, frequency
                     FROM ad_performance_daily
                     WHERE campaign_id = :cid AND date BETWEEN :s AND :e
                     ORDER BY date
                     """
-                ),
-                {"cid": cid, "s": start_d, "e": end_d},
+                    ),
+                    {"cid": cid, "s": start_d, "e": end_d},
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
         if not perf:
             continue
@@ -168,14 +181,8 @@ async def run_decision_engine(db: AsyncSession) -> dict:
         roas_30 = rev_30 / spend_30 if spend_30 > 0 else 0
         cpa_7 = spend_7 / conv_7 if conv_7 > 0 else None
 
-        ctr_avg = (
-            sum(float(r["ctr"] or 0) for r in last_7) / len(last_7) if last_7 else 0
-        )
-        freq_avg = (
-            sum(float(r["frequency"] or 0) for r in last_7) / len(last_7)
-            if last_7
-            else 0
-        )
+        ctr_avg = sum(float(r["ctr"] or 0) for r in last_7) / len(last_7) if last_7 else 0
+        freq_avg = sum(float(r["frequency"] or 0) for r in last_7) / len(last_7) if last_7 else 0
         impr_7 = sum(int(r["impressions"] or 0) for r in last_7)
 
         budget = float(camp["daily_budget"] or 0)
@@ -254,25 +261,26 @@ async def refresh_forecasts(db: AsyncSession) -> dict:
     refreshed = 0
     for (cid,) in rows:
         perf = (
-            await db.execute(
-                text(
-                    """
+            (
+                await db.execute(
+                    text(
+                        """
                     SELECT date, roas FROM ad_performance_daily
                     WHERE campaign_id = :cid
                     ORDER BY date
                     """
-                ),
-                {"cid": cid},
+                    ),
+                    {"cid": cid},
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
         if len(perf) < 14:
             continue
 
-        historical = [
-            {"date": r["date"].isoformat(), "roas": float(r["roas"] or 0)}
-            for r in perf
-        ]
+        historical = [{"date": r["date"].isoformat(), "roas": float(r["roas"] or 0)} for r in perf]
         result = fc.forecast_roas(historical, forecast_days=30)
 
         # Wipe old forecasts for this campaign

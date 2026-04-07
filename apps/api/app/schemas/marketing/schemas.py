@@ -2,17 +2,17 @@
 Marketing Execution Engine — Pydantic Schemas
 Request / Response models for campaigns, content, approvals, ads, performance.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 from enum import Enum
 
-from pydantic import BaseModel, Field, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field
 
 # ─── Shared Enums (mirror SQLAlchemy enums) ─────────────────────────────────
+
 
 class ChannelType(str, Enum):
     INSTAGRAM = "instagram"
@@ -65,29 +65,30 @@ class ApprovalDecision(str, Enum):
 
 # ─── Campaign ───────────────────────────────────────────────────────────────
 
+
 class CampaignCreate(BaseModel):
     name: str = Field(..., max_length=255)
-    description: Optional[str] = None
-    objective: Optional[str] = None
-    funnel_stage: Optional[FunnelStage] = None
+    description: str | None = None
+    objective: str | None = None
+    funnel_stage: FunnelStage | None = None
     target_channels: list[ChannelType] = []
     target_personas: list[dict] = []
     budget: float = 0.0
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     tags: list[str] = []
 
 
 class CampaignUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[CampaignStatus] = None
-    objective: Optional[str] = None
-    funnel_stage: Optional[FunnelStage] = None
-    target_channels: Optional[list[ChannelType]] = None
-    budget: Optional[float] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    name: str | None = None
+    description: str | None = None
+    status: CampaignStatus | None = None
+    objective: str | None = None
+    funnel_stage: FunnelStage | None = None
+    target_channels: list[ChannelType] | None = None
+    budget: float | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 class CampaignResponse(BaseModel):
@@ -96,15 +97,15 @@ class CampaignResponse(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     name: str
-    description: Optional[str]
+    description: str | None
     status: CampaignStatus
-    objective: Optional[str]
-    funnel_stage: Optional[FunnelStage]
+    objective: str | None
+    funnel_stage: FunnelStage | None
     target_channels: list[str]
     target_personas: list[dict]
     budget: float
-    start_date: Optional[datetime]
-    end_date: Optional[datetime]
+    start_date: datetime | None
+    end_date: datetime | None
     tags: list[str]
     created_at: datetime
     updated_at: datetime
@@ -112,35 +113,36 @@ class CampaignResponse(BaseModel):
 
 # ─── Content Item ────────────────────────────────────────────────────────────
 
+
 class ContentItemCreate(BaseModel):
-    campaign_id: Optional[uuid.UUID] = None
+    campaign_id: uuid.UUID | None = None
     channel: ChannelType
-    title: Optional[str] = None
+    title: str | None = None
     body: str
-    hook: Optional[str] = None
-    cta: Optional[str] = None
+    hook: str | None = None
+    cta: str | None = None
     hashtags: list[str] = []
-    media_instructions: Optional[str] = None
+    media_instructions: str | None = None
     channel_metadata: dict = {}
-    scheduled_at: Optional[datetime] = None
+    scheduled_at: datetime | None = None
     timezone: str = "UTC"
-    funnel_stage: Optional[FunnelStage] = None
-    target_persona: Optional[str] = None
-    source_type: Optional[str] = None
-    source_id: Optional[uuid.UUID] = None
-    variant_group: Optional[uuid.UUID] = None
-    variant_label: Optional[str] = None
+    funnel_stage: FunnelStage | None = None
+    target_persona: str | None = None
+    source_type: str | None = None
+    source_id: uuid.UUID | None = None
+    variant_group: uuid.UUID | None = None
+    variant_label: str | None = None
 
 
 class ContentItemUpdate(BaseModel):
-    title: Optional[str] = None
-    body: Optional[str] = None
-    hook: Optional[str] = None
-    cta: Optional[str] = None
-    hashtags: Optional[list[str]] = None
-    channel_metadata: Optional[dict] = None
-    scheduled_at: Optional[datetime] = None
-    status: Optional[ContentStatus] = None
+    title: str | None = None
+    body: str | None = None
+    hook: str | None = None
+    cta: str | None = None
+    hashtags: list[str] | None = None
+    channel_metadata: dict | None = None
+    scheduled_at: datetime | None = None
+    status: ContentStatus | None = None
 
 
 class ContentItemResponse(BaseModel):
@@ -148,38 +150,39 @@ class ContentItemResponse(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
-    campaign_id: Optional[uuid.UUID]
+    campaign_id: uuid.UUID | None
     channel: ChannelType
     status: ContentStatus
-    title: Optional[str]
+    title: str | None
     body: str
-    hook: Optional[str]
-    cta: Optional[str]
+    hook: str | None
+    cta: str | None
     hashtags: list[str]
-    media_instructions: Optional[str]
+    media_instructions: str | None
     channel_metadata: dict
-    scheduled_at: Optional[datetime]
-    published_at: Optional[datetime]
+    scheduled_at: datetime | None
+    published_at: datetime | None
     timezone: str
-    funnel_stage: Optional[FunnelStage]
-    target_persona: Optional[str]
+    funnel_stage: FunnelStage | None
+    target_persona: str | None
     risk_level: RiskLevel
     compliance_notes: list
     policy_warnings: list
-    source_type: Optional[str]
-    source_id: Optional[uuid.UUID]
-    variant_group: Optional[uuid.UUID]
-    variant_label: Optional[str]
-    external_post_id: Optional[str]
+    source_type: str | None
+    source_id: uuid.UUID | None
+    variant_group: uuid.UUID | None
+    variant_label: str | None
+    external_post_id: str | None
     created_at: datetime
     updated_at: datetime
 
 
 # ─── Approval ────────────────────────────────────────────────────────────────
 
+
 class ApprovalSubmit(BaseModel):
     decision: ApprovalDecision
-    review_notes: Optional[str] = None
+    review_notes: str | None = None
 
 
 class ApprovalResponse(BaseModel):
@@ -189,12 +192,12 @@ class ApprovalResponse(BaseModel):
     content_item_id: uuid.UUID
     workspace_id: uuid.UUID
     decision: ApprovalDecision
-    reviewed_by: Optional[uuid.UUID]
-    review_notes: Optional[str]
+    reviewed_by: uuid.UUID | None
+    review_notes: str | None
     risk_score: float
     compliance_check: dict
     auto_approved: bool
-    reviewed_at: Optional[datetime]
+    reviewed_at: datetime | None
     created_at: datetime
 
 
@@ -205,52 +208,56 @@ class ApprovalQueueItem(BaseModel):
 
 # ─── Content Generation Requests ─────────────────────────────────────────────
 
+
 class GenerateContentRequest(BaseModel):
     """Generate content for one or more channels from a topic / brief."""
+
     topic: str
     channels: list[ChannelType]
-    campaign_id: Optional[uuid.UUID] = None
-    funnel_stage: Optional[FunnelStage] = FunnelStage.AWARENESS
-    target_persona: Optional[str] = None
-    tone: Optional[str] = "professional"
+    campaign_id: uuid.UUID | None = None
+    funnel_stage: FunnelStage | None = FunnelStage.AWARENESS
+    target_persona: str | None = None
+    tone: str | None = "professional"
     key_points: list[str] = []
-    source_type: Optional[str] = None
-    source_id: Optional[uuid.UUID] = None
+    source_type: str | None = None
+    source_id: uuid.UUID | None = None
     generate_variants: bool = False
     num_variants: int = Field(default=1, ge=1, le=5)
 
 
 class RepurposeContentRequest(BaseModel):
     """Take one piece of content and generate multi-channel variants."""
+
     source_text: str
     source_type: str = "blog_post"
-    source_id: Optional[uuid.UUID] = None
+    source_id: uuid.UUID | None = None
     target_channels: list[ChannelType] = [
         ChannelType.INSTAGRAM,
         ChannelType.TWITTER,
         ChannelType.LINKEDIN,
         ChannelType.TIKTOK,
     ]
-    funnel_stage: Optional[FunnelStage] = None
-    target_persona: Optional[str] = None
+    funnel_stage: FunnelStage | None = None
+    target_persona: str | None = None
 
 
 class GeneratedContentResponse(BaseModel):
     items: list[ContentItemResponse]
-    repurpose_log_id: Optional[uuid.UUID] = None
+    repurpose_log_id: uuid.UUID | None = None
     total_generated: int
 
 
 # ─── Ad Campaign ─────────────────────────────────────────────────────────────
 
+
 class AdCampaignCreate(BaseModel):
-    campaign_id: Optional[uuid.UUID] = None
+    campaign_id: uuid.UUID | None = None
     name: str
-    objective: Optional[str] = "traffic"
+    objective: str | None = "traffic"
     primary_text: str
     headline: str
-    description: Optional[str] = None
-    audience_angle: Optional[str] = None
+    description: str | None = None
+    audience_angle: str | None = None
     daily_budget: float = 0.0
     lifetime_budget: float = 0.0
     audience_targeting: dict = {}
@@ -261,15 +268,15 @@ class AdCampaignResponse(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
-    campaign_id: Optional[uuid.UUID]
+    campaign_id: uuid.UUID | None
     channel: ChannelType
     name: str
     status: CampaignStatus
-    objective: Optional[str]
-    primary_text: Optional[str]
-    headline: Optional[str]
-    description: Optional[str]
-    audience_angle: Optional[str]
+    objective: str | None
+    primary_text: str | None
+    headline: str | None
+    description: str | None
+    audience_angle: str | None
     daily_budget: float
     lifetime_budget: float
     audience_targeting: dict
@@ -279,6 +286,7 @@ class AdCampaignResponse(BaseModel):
 
 
 # ─── Performance ─────────────────────────────────────────────────────────────
+
 
 class PerformanceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -301,7 +309,7 @@ class PerformanceResponse(BaseModel):
     cost_per_conversion: float
     revenue: float
     roas: float
-    fetched_at: Optional[datetime]
+    fetched_at: datetime | None
 
 
 class PerformanceSummary(BaseModel):
@@ -320,11 +328,12 @@ class PerformanceSummary(BaseModel):
 
 # ─── Channel Connector ──────────────────────────────────────────────────────
 
+
 class ConnectorCreate(BaseModel):
     channel: ChannelType
-    account_name: Optional[str] = None
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
+    account_name: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
     scopes: list[str] = []
     automation_level: int = Field(default=0, ge=0, le=3)
 
@@ -336,15 +345,16 @@ class ConnectorResponse(BaseModel):
     workspace_id: uuid.UUID
     channel: ChannelType
     is_connected: bool
-    account_name: Optional[str]
-    account_id: Optional[str]
+    account_name: str | None
+    account_id: str | None
     automation_level: int
-    rate_limit_remaining: Optional[int]
+    rate_limit_remaining: int | None
     created_at: datetime
     updated_at: datetime
 
 
 # ─── Calendar ────────────────────────────────────────────────────────────────
+
 
 class CalendarDay(BaseModel):
     date: str  # YYYY-MM-DD
@@ -359,6 +369,7 @@ class CalendarResponse(BaseModel):
 
 
 # ─── Batch Scheduling ───────────────────────────────────────────────────────
+
 
 class BatchScheduleRequest(BaseModel):
     content_item_ids: list[uuid.UUID]

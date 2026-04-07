@@ -15,19 +15,20 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ToolPermission(str, Enum):
-    READ_ONLY = "read_only"         # Can read data
-    WRITE_DRAFT = "write_draft"     # Can create drafts (needs approval)
+    READ_ONLY = "read_only"  # Can read data
+    WRITE_DRAFT = "write_draft"  # Can create drafts (needs approval)
     WRITE_APPROVED = "write_approved"  # Can write after approval
-    EXECUTE = "execute"             # Can trigger actions
-    ADMIN = "admin"                 # Full access
+    EXECUTE = "execute"  # Can trigger actions
+    ADMIN = "admin"  # Full access
 
 
 class ToolCategory(str, Enum):
@@ -41,9 +42,10 @@ class ToolCategory(str, Enum):
 @dataclass
 class ToolDefinition:
     """A tool that AI agents can call."""
+
     name: str
     description: str
-    parameters: dict[str, Any]       # JSON Schema for parameters
+    parameters: dict[str, Any]  # JSON Schema for parameters
     category: ToolCategory = ToolCategory.INTERNAL
     permission: ToolPermission = ToolPermission.READ_ONLY
     timeout_seconds: float = 30.0
@@ -67,10 +69,11 @@ class ToolDefinition:
 @dataclass
 class ToolExecution:
     """Record of a tool execution."""
+
     tool_name: str
     arguments: dict[str, Any]
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: float = 0.0
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     approved: bool = False
@@ -90,12 +93,12 @@ class ToolRegistry:
         self._execution_log: list[ToolExecution] = []
         self._load_defaults()
 
-    def register(self, definition: ToolDefinition, handler: Optional[ToolHandler] = None) -> None:
+    def register(self, definition: ToolDefinition, handler: ToolHandler | None = None) -> None:
         self._tools[definition.name] = definition
         if handler:
             self._handlers[definition.name] = handler
 
-    def get(self, name: str) -> Optional[ToolDefinition]:
+    def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
     def get_tools_for_role(self, permission_level: ToolPermission) -> list[ToolDefinition]:
@@ -109,11 +112,12 @@ class ToolRegistry:
         }
         max_level = perm_hierarchy.get(permission_level, 0)
         return [
-            t for t in self._tools.values()
+            t
+            for t in self._tools.values()
             if t.enabled and perm_hierarchy.get(t.permission, 0) <= max_level
         ]
 
-    def get_openai_schemas(self, tools: Optional[list[str]] = None) -> list[dict]:
+    def get_openai_schemas(self, tools: list[str] | None = None) -> list[dict]:
         """Get OpenAI-format tool schemas."""
         if tools:
             return [
@@ -186,7 +190,7 @@ class ToolRegistry:
                 )
                 self._execution_log.append(execution)
                 return execution
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = f"Timeout after {definition.timeout_seconds}s (attempt {attempt + 1})"
                 logger.warning(f"Tool {tool_name} timeout: attempt {attempt + 1}")
             except Exception as e:
@@ -235,132 +239,152 @@ class ToolRegistry:
     def _load_defaults(self) -> None:
         """Register default platform tools."""
 
-        self.register(ToolDefinition(
-            name="get_site_crawl_data",
-            description="Retrieve crawl data for a site including pages, metadata, and technical SEO signals.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string", "description": "The site UUID"},
-                    "include_pages": {"type": "boolean", "default": True},
-                    "max_pages": {"type": "integer", "default": 100},
+        self.register(
+            ToolDefinition(
+                name="get_site_crawl_data",
+                description="Retrieve crawl data for a site including pages, metadata, and technical SEO signals.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string", "description": "The site UUID"},
+                        "include_pages": {"type": "boolean", "default": True},
+                        "max_pages": {"type": "integer", "default": 100},
+                    },
+                    "required": ["site_id"],
                 },
-                "required": ["site_id"],
-            },
-            category=ToolCategory.DATA_RETRIEVAL,
-            permission=ToolPermission.READ_ONLY,
-        ))
+                category=ToolCategory.DATA_RETRIEVAL,
+                permission=ToolPermission.READ_ONLY,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_recommendations",
-            description="Retrieve existing recommendations for a site.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string"},
-                    "status": {"type": "string", "enum": ["pending", "approved", "rejected", "implemented"]},
+        self.register(
+            ToolDefinition(
+                name="get_recommendations",
+                description="Retrieve existing recommendations for a site.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string"},
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "approved", "rejected", "implemented"],
+                        },
+                    },
+                    "required": ["site_id"],
                 },
-                "required": ["site_id"],
-            },
-            category=ToolCategory.DATA_RETRIEVAL,
-            permission=ToolPermission.READ_ONLY,
-        ))
+                category=ToolCategory.DATA_RETRIEVAL,
+                permission=ToolPermission.READ_ONLY,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="create_recommendation",
-            description="Create a new recommendation for a site. Goes into the approval queue.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string"},
-                    "title": {"type": "string"},
-                    "category": {"type": "string"},
-                    "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
-                    "description": {"type": "string"},
-                    "evidence": {"type": "string"},
-                    "implementation_steps": {"type": "array", "items": {"type": "string"}},
+        self.register(
+            ToolDefinition(
+                name="create_recommendation",
+                description="Create a new recommendation for a site. Goes into the approval queue.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "category": {"type": "string"},
+                        "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+                        "description": {"type": "string"},
+                        "evidence": {"type": "string"},
+                        "implementation_steps": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["site_id", "title", "category", "priority", "description"],
                 },
-                "required": ["site_id", "title", "category", "priority", "description"],
-            },
-            category=ToolCategory.CONTENT,
-            permission=ToolPermission.WRITE_DRAFT,
-            requires_approval=True,
-        ))
+                category=ToolCategory.CONTENT,
+                permission=ToolPermission.WRITE_DRAFT,
+                requires_approval=True,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="create_content_draft",
-            description="Create a content draft. Always goes to the review queue.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string"},
-                    "title": {"type": "string"},
-                    "content_type": {"type": "string", "enum": ["blog_post", "landing_page", "guide", "comparison"]},
-                    "body": {"type": "string"},
-                    "target_keywords": {"type": "array", "items": {"type": "string"}},
-                    "meta_description": {"type": "string"},
+        self.register(
+            ToolDefinition(
+                name="create_content_draft",
+                description="Create a content draft. Always goes to the review queue.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "content_type": {
+                            "type": "string",
+                            "enum": ["blog_post", "landing_page", "guide", "comparison"],
+                        },
+                        "body": {"type": "string"},
+                        "target_keywords": {"type": "array", "items": {"type": "string"}},
+                        "meta_description": {"type": "string"},
+                    },
+                    "required": ["site_id", "title", "content_type", "body"],
                 },
-                "required": ["site_id", "title", "content_type", "body"],
-            },
-            category=ToolCategory.CONTENT,
-            permission=ToolPermission.WRITE_DRAFT,
-            requires_approval=True,
-        ))
+                category=ToolCategory.CONTENT,
+                permission=ToolPermission.WRITE_DRAFT,
+                requires_approval=True,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_analytics_data",
-            description="Retrieve analytics data (GA4, GSC) for a site.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string"},
-                    "source": {"type": "string", "enum": ["ga4", "gsc", "all"]},
-                    "date_range": {"type": "string", "enum": ["7d", "30d", "90d"]},
-                    "metrics": {"type": "array", "items": {"type": "string"}},
+        self.register(
+            ToolDefinition(
+                name="get_analytics_data",
+                description="Retrieve analytics data (GA4, GSC) for a site.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string"},
+                        "source": {"type": "string", "enum": ["ga4", "gsc", "all"]},
+                        "date_range": {"type": "string", "enum": ["7d", "30d", "90d"]},
+                        "metrics": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["site_id"],
                 },
-                "required": ["site_id"],
-            },
-            category=ToolCategory.CONNECTOR,
-            permission=ToolPermission.READ_ONLY,
-        ))
+                category=ToolCategory.CONNECTOR,
+                permission=ToolPermission.READ_ONLY,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="get_competitor_data",
-            description="Retrieve competitor analysis data.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "site_id": {"type": "string"},
-                    "competitor_urls": {"type": "array", "items": {"type": "string"}},
+        self.register(
+            ToolDefinition(
+                name="get_competitor_data",
+                description="Retrieve competitor analysis data.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "site_id": {"type": "string"},
+                        "competitor_urls": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["site_id"],
                 },
-                "required": ["site_id"],
-            },
-            category=ToolCategory.DATA_RETRIEVAL,
-            permission=ToolPermission.READ_ONLY,
-        ))
+                category=ToolCategory.DATA_RETRIEVAL,
+                permission=ToolPermission.READ_ONLY,
+            )
+        )
 
-        self.register(ToolDefinition(
-            name="send_notification",
-            description="Send a notification to the workspace (e.g., Slack, email).",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "channel": {"type": "string", "enum": ["slack", "email", "in_app"]},
-                    "message": {"type": "string"},
-                    "urgency": {"type": "string", "enum": ["low", "normal", "high"]},
+        self.register(
+            ToolDefinition(
+                name="send_notification",
+                description="Send a notification to the workspace (e.g., Slack, email).",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "channel": {"type": "string", "enum": ["slack", "email", "in_app"]},
+                        "message": {"type": "string"},
+                        "urgency": {"type": "string", "enum": ["low", "normal", "high"]},
+                    },
+                    "required": ["channel", "message"],
                 },
-                "required": ["channel", "message"],
-            },
-            category=ToolCategory.CONNECTOR,
-            permission=ToolPermission.EXECUTE,
-            requires_approval=True,
-        ))
+                category=ToolCategory.CONNECTOR,
+                permission=ToolPermission.EXECUTE,
+                requires_approval=True,
+            )
+        )
 
         logger.info(f"ToolRegistry loaded {len(self._tools)} default tools")
 
 
 # Singleton
-_registry: Optional[ToolRegistry] = None
+_registry: ToolRegistry | None = None
 
 
 def get_tool_registry() -> ToolRegistry:

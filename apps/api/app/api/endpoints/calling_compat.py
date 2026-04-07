@@ -7,11 +7,11 @@ Phase 2 spec see them at the expected paths. Must be registered BEFORE the
 legacy `calls_router` so that literal `/contacts` and `/leads` win against
 its `/{call_id}` parameterized matcher.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -48,7 +48,7 @@ def _row_to_dict(row) -> dict:
 # ─── CONTACTS ──────────────────────────────────────────────────────────────
 @router.get("/contacts")
 async def list_contacts(
-    search: Optional[str] = None,
+    search: str | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -97,8 +97,8 @@ async def create_contact(
 # ─── LEADS ─────────────────────────────────────────────────────────────────
 @router.get("/leads")
 async def list_leads(
-    status: Optional[str] = None,
-    category: Optional[str] = None,
+    status: str | None = None,
+    category: str | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

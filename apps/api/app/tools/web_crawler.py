@@ -8,6 +8,7 @@ Features:
 - SSRF protection via domain allowlist/blocklist
 - Per-domain rate limiting
 """
+
 import asyncio
 import re
 from dataclasses import dataclass, field
@@ -78,6 +79,7 @@ class WebCrawlerTool:
                 return True
         # Block private IP ranges
         import ipaddress
+
         try:
             ip = ipaddress.ip_address(host)
             if ip.is_private or ip.is_loopback or ip.is_link_local:
@@ -145,6 +147,7 @@ class WebCrawlerTool:
         # Structured data
         structured_data: list[dict] = []
         import json
+
         for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
             try:
                 data = json.loads(script.string or "")
@@ -196,6 +199,7 @@ class WebCrawlerTool:
         """Fetch JS-rendered page using Playwright."""
         try:
             from playwright.async_api import async_playwright
+
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
@@ -268,9 +272,7 @@ class WebCrawlerTool:
                 except Exception as e:
                     logger.error("crawl_page_error", url=current_url, error=str(e))
                     failed += 1
-                    pages.append(CrawledPage(
-                        url=current_url, status_code=0, error=str(e)
-                    ))
+                    pages.append(CrawledPage(url=current_url, status_code=0, error=str(e)))
 
         return CrawlResult(
             success=True,

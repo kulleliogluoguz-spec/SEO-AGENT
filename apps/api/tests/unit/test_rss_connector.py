@@ -1,14 +1,14 @@
 """Unit tests for the RSS connector."""
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import sys
 import os
+import sys
+from unittest.mock import patch
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../packages/connector-sdk"))
 
-from connector_sdk.base import ConnectorConfig, ComplianceMode
+from connector_sdk.base import ComplianceMode, ConnectorConfig
 
 
 def make_config(feed_url: str) -> ConnectorConfig:
@@ -23,6 +23,7 @@ def make_config(feed_url: str) -> ConnectorConfig:
 class TestRSSConnector:
     def setup_method(self):
         from app.connectors.rss.connector import RSSConnector
+
         self.connector = RSSConnector()
 
     def test_compliance_mode_is_public_web(self):
@@ -118,8 +119,20 @@ class TestRSSConnector:
     async def test_fetch_keyword_filter(self):
         """Fetch should only yield documents matching keywords."""
         entries = [
-            {"title": "AI news", "link": "https://example.com/ai", "summary": "AI machine learning news", "published_parsed": (2026, 3, 28, 12, 0, 0, 4, 87, 0), "tags": []},
-            {"title": "Sports news", "link": "https://example.com/sports", "summary": "Football game results", "published_parsed": (2026, 3, 28, 12, 0, 0, 4, 87, 0), "tags": []},
+            {
+                "title": "AI news",
+                "link": "https://example.com/ai",
+                "summary": "AI machine learning news",
+                "published_parsed": (2026, 3, 28, 12, 0, 0, 4, 87, 0),
+                "tags": [],
+            },
+            {
+                "title": "Sports news",
+                "link": "https://example.com/sports",
+                "summary": "Football game results",
+                "published_parsed": (2026, 3, 28, 12, 0, 0, 4, 87, 0),
+                "tags": [],
+            },
         ]
         mock_feed = {"entries": entries, "feed": {"title": "Mixed Feed"}, "bozo": False}
 
@@ -142,12 +155,14 @@ class TestRSSConnector:
     def test_doc_id_is_deterministic(self):
         """Same URL should always produce same document ID."""
         from connector_sdk.base import make_doc_id
+
         id1 = make_doc_id("rss", "https://example.com/article")
         id2 = make_doc_id("rss", "https://example.com/article")
         assert id1 == id2
 
     def test_doc_id_differs_for_different_urls(self):
         from connector_sdk.base import make_doc_id
+
         id1 = make_doc_id("rss", "https://example.com/article-1")
         id2 = make_doc_id("rss", "https://example.com/article-2")
         assert id1 != id2

@@ -3,30 +3,29 @@ Social Channel Connector — Base Interface + Adapter Pattern
 Every channel implements this interface. Mock implementations are provided;
 real API adapters follow the same contract.
 """
+
 from __future__ import annotations
 
 import abc
 import asyncio
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 # ─── Shared Types ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PublishResult:
     success: bool
-    external_id: Optional[str] = None
-    url: Optional[str] = None
-    error: Optional[str] = None
-    rate_limit_remaining: Optional[int] = None
-    rate_limit_reset: Optional[datetime] = None
+    external_id: str | None = None
+    url: str | None = None
+    error: str | None = None
+    rate_limit_remaining: int | None = None
+    rate_limit_reset: datetime | None = None
     raw_response: dict = field(default_factory=dict)
 
 
@@ -34,27 +33,28 @@ class PublishResult:
 class MetricsResult:
     success: bool
     metrics: dict = field(default_factory=dict)
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
 class AuthStatus:
     connected: bool
-    account_name: Optional[str] = None
-    account_id: Optional[str] = None
+    account_name: str | None = None
+    account_id: str | None = None
     scopes: list[str] = field(default_factory=list)
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 @dataclass
 class RateLimitState:
     remaining: int = 999
     limit: int = 1000
-    reset_at: Optional[datetime] = None
+    reset_at: datetime | None = None
     window_seconds: int = 3600
 
 
 # ─── Base Interface ──────────────────────────────────────────────────────────
+
 
 class BaseSocialConnector(abc.ABC):
     """Abstract base for all social media channel connectors."""
@@ -62,9 +62,12 @@ class BaseSocialConnector(abc.ABC):
     channel_name: str = "base"
     _rate_limit: RateLimitState
 
-    def __init__(self, access_token: Optional[str] = None,
-                 refresh_token: Optional[str] = None,
-                 account_id: Optional[str] = None):
+    def __init__(
+        self,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+        account_id: str | None = None,
+    ):
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.account_id = account_id
@@ -124,11 +127,11 @@ class BaseSocialConnector(abc.ABC):
     async def _rate_limited_call(self, coro_factory, *args, **kwargs):
         """
         Wrapper that enforces rate limits with retry.
-        
+
         CRITICAL: accepts a callable that RETURNS a coroutine, not a coroutine
         itself. Python coroutines can only be awaited once — passing an already-
         created coroutine would crash on retry.
-        
+
         Usage: await self._rate_limited_call(self._real_publish, content)
         NOT:   await self._rate_limited_call(self._real_publish(content))
         """
@@ -138,7 +141,9 @@ class BaseSocialConnector(abc.ABC):
                 wait = 60
                 if self._rate_limit.reset_at:
                     wait = max(1, (self._rate_limit.reset_at - datetime.utcnow()).total_seconds())
-                logger.warning(f"[{self.channel_name}] Rate limited. Waiting {wait:.0f}s (attempt {attempt+1}/3)")
+                logger.warning(
+                    f"[{self.channel_name}] Rate limited. Waiting {wait:.0f}s (attempt {attempt+1}/3)"
+                )
                 await asyncio.sleep(min(wait, 300))
                 continue
             self.consume_rate_limit()
@@ -148,11 +153,12 @@ class BaseSocialConnector(abc.ABC):
                 last_error = e
                 logger.error(f"[{self.channel_name}] Attempt {attempt+1}/3 failed: {e}")
                 if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         return PublishResult(success=False, error=f"Failed after 3 attempts: {last_error}")
 
 
 # ─── Connector Registry ─────────────────────────────────────────────────────
+
 
 class ConnectorRegistry:
     """Central registry to get the right connector for a channel."""
@@ -160,7 +166,7 @@ class ConnectorRegistry:
     _connectors: dict[str, type[BaseSocialConnector]] = {}
 
     @classmethod
-    def register(cls, channel: str, connector_cls: type[BaseSocialConnector]):
+    def register(cls, channel: str, connector_cls: type[BaseSocialConnector]) -> None:
         cls._connectors[channel] = connector_cls
 
     @classmethod

@@ -10,12 +10,20 @@ Snap campaign hierarchy:
 
 Note: Snap API requires Business account + approved developer application.
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Optional
+
 from app.adapters.base import (
-    AdapterCapabilityStage, AdapterCredentials, AdapterStatus,
-    AudienceDraft, BaseAdsAdapter, CampaignDraft, CampaignMetrics, CreativeDraft,
+    AdapterCapabilityStage,
+    AdapterCredentials,
+    AdapterStatus,
+    AudienceDraft,
+    BaseAdsAdapter,
+    CampaignDraft,
+    CampaignMetrics,
+    CreativeDraft,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,13 +43,16 @@ class SnapAdsAdapter(BaseAdsAdapter):
 
     def get_auth_url(self, redirect_uri: str, state: str) -> str:
         from urllib.parse import urlencode
-        return f"{SNAP_AUTH_URL}?" + urlencode({
-            "client_id": self.credentials.client_id,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "scope": " ".join(self.REQUIRED_SCOPES),
-            "state": state,
-        })
+
+        return f"{SNAP_AUTH_URL}?" + urlencode(
+            {
+                "client_id": self.credentials.client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": " ".join(self.REQUIRED_SCOPES),
+                "state": state,
+            }
+        )
 
     def exchange_code(self, code: str, redirect_uri: str) -> AdapterCredentials:
         raise NotImplementedError("Implement: POST /accounts/oauth2/token with code")
@@ -63,7 +74,7 @@ class SnapAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adaccounts/{ad_account_id}")
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """GET /adaccounts/{ad_account_id}/campaigns"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adaccounts/{id}/campaigns")
@@ -95,7 +106,7 @@ class SnapAdsAdapter(BaseAdsAdapter):
     def create_audience(self, draft: AudienceDraft) -> dict:
         raise NotImplementedError("Implement: POST /adaccounts/{id}/segments")
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GET /adaccounts/{ad_account_id}/creatives"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adaccounts/{id}/creatives")
@@ -109,7 +120,11 @@ class SnapAdsAdapter(BaseAdsAdapter):
         raise NotImplementedError("Implement: POST /adaccounts/{id}/creatives")
 
     def pull_campaign_metrics(
-        self, campaign_ids: list[str], date_start: str, date_end: str, breakdown: Optional[str] = None,
+        self,
+        campaign_ids: list[str],
+        date_start: str,
+        date_end: str,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GET /adaccounts/{ad_account_id}/stats
@@ -118,6 +133,8 @@ class SnapAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adaccounts/{id}/stats with campaign filter")
 
-    def pull_ad_metrics(self, ad_ids: list[str], date_start: str, date_end: str) -> list[CampaignMetrics]:
+    def pull_ad_metrics(
+        self, ad_ids: list[str], date_start: str, date_end: str
+    ) -> list[CampaignMetrics]:
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ads/{id}/stats")

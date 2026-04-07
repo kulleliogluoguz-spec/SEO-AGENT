@@ -10,6 +10,7 @@ Evaluates recommendations for quality along multiple dimensions:
 
 Used in evaluation harness and as a quality gate before surfacing recommendations.
 """
+
 import uuid
 from typing import ClassVar
 
@@ -72,12 +73,14 @@ class RecommendationQualityAgent(LLMAgent[RecommendationQualityInput, Recommenda
         if not has_evidence:
             issues.append("Recommendation lacks supporting evidence")
             improvements.append("Add crawl findings or data points as evidence")
-        dimensions.append(QualityDimension(
-            dimension="evidence_grounding",
-            score=evidence_score,
-            pass_=has_evidence,
-            notes=f"{len(input_data.evidence)} evidence items",
-        ))
+        dimensions.append(
+            QualityDimension(
+                dimension="evidence_grounding",
+                score=evidence_score,
+                pass_=has_evidence,
+                notes=f"{len(input_data.evidence)} evidence items",
+            )
+        )
 
         # ── Dimension 2: Actionability ─────────────────────────────────────
         has_action = bool(input_data.proposed_action and len(input_data.proposed_action) > 20)
@@ -85,12 +88,14 @@ class RecommendationQualityAgent(LLMAgent[RecommendationQualityInput, Recommenda
         if not has_action:
             issues.append("Missing or vague proposed_action")
             improvements.append("Add a specific, executable proposed_action")
-        dimensions.append(QualityDimension(
-            dimension="actionability",
-            score=action_score,
-            pass_=has_action,
-            notes="Proposed action evaluated for specificity",
-        ))
+        dimensions.append(
+            QualityDimension(
+                dimension="actionability",
+                score=action_score,
+                pass_=has_action,
+                notes="Proposed action evaluated for specificity",
+            )
+        )
 
         # ── Dimension 3: Rationale Quality ────────────────────────────────
         rationale_len = len(input_data.rationale.split())
@@ -98,12 +103,14 @@ class RecommendationQualityAgent(LLMAgent[RecommendationQualityInput, Recommenda
         if rationale_len < 15:
             issues.append("Rationale is too brief")
             improvements.append("Expand rationale to explain why this matters")
-        dimensions.append(QualityDimension(
-            dimension="rationale_quality",
-            score=rationale_score,
-            pass_=rationale_len >= 15,
-            notes=f"{rationale_len} words in rationale",
-        ))
+        dimensions.append(
+            QualityDimension(
+                dimension="rationale_quality",
+                score=rationale_score,
+                pass_=rationale_len >= 15,
+                notes=f"{rationale_len} words in rationale",
+            )
+        )
 
         # ── Dimension 4: Score Consistency ────────────────────────────────
         # Impact and confidence should be consistent: high impact with very low confidence is suspicious
@@ -113,13 +120,17 @@ class RecommendationQualityAgent(LLMAgent[RecommendationQualityInput, Recommenda
         consistency_score = 1.0 if score_consistent else 0.4
         if not score_consistent:
             issues.append("High impact score with low confidence — review scores")
-            improvements.append("Reduce impact_score or increase confidence_score with more evidence")
-        dimensions.append(QualityDimension(
-            dimension="score_consistency",
-            score=consistency_score,
-            pass_=score_consistent,
-            notes=f"impact={input_data.impact_score:.1f}, confidence={input_data.confidence_score:.1f}",
-        ))
+            improvements.append(
+                "Reduce impact_score or increase confidence_score with more evidence"
+            )
+        dimensions.append(
+            QualityDimension(
+                dimension="score_consistency",
+                score=consistency_score,
+                pass_=score_consistent,
+                notes=f"impact={input_data.impact_score:.1f}, confidence={input_data.confidence_score:.1f}",
+            )
+        )
 
         # ── Dimension 5: Risk Awareness ────────────────────────────────────
         # High-risk recommendations should have risk flags
@@ -128,17 +139,21 @@ class RecommendationQualityAgent(LLMAgent[RecommendationQualityInput, Recommenda
         risk_score = 1.0 if has_risk_consideration else 0.7
         if high_impact and not input_data.risk_flags:
             improvements.append("Consider adding risk_flags for high-impact recommendations")
-        dimensions.append(QualityDimension(
-            dimension="risk_awareness",
-            score=risk_score,
-            pass_=True,  # Not a hard failure
-            notes="Risk flags reviewed",
-        ))
+        dimensions.append(
+            QualityDimension(
+                dimension="risk_awareness",
+                score=risk_score,
+                pass_=True,  # Not a hard failure
+                notes="Risk flags reviewed",
+            )
+        )
 
         # ── Overall Score ─────────────────────────────────────────────────
         weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-        overall = sum(d.score * w for d, w in zip(dimensions, weights))
-        passed = overall >= 0.6 and all(d.pass_ for d in dimensions if d.dimension != "risk_awareness")
+        overall = sum(d.score * w for d, w in zip(dimensions, weights, strict=False))
+        passed = overall >= 0.6 and all(
+            d.pass_ for d in dimensions if d.dimension != "risk_awareness"
+        )
 
         return RecommendationQualityOutput(
             recommendation_id=input_data.recommendation_id,

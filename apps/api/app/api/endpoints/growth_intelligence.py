@@ -7,14 +7,14 @@ Skills used: ab-test-setup, cold-email, copywriting, page-cro, content-strategy,
 All AI calls use local Ollama — zero external cost.
 """
 
-import os
 import json
-import httpx
+import os
 from datetime import datetime
+
+import httpx
+from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, List
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -25,6 +25,7 @@ LLM_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 async def ask_ollama(prompt: str) -> str:
     try:
@@ -64,12 +65,13 @@ def extract_array(text: str) -> list:
 
 # ─── Request Models ───────────────────────────────────────────────────────────
 
+
 class ExperimentRequest(BaseModel):
     hypothesis: str
     metric: str
-    variants: List[str]
+    variants: list[str]
     business_type: str
-    niche: Optional[str] = ""
+    niche: str | None = ""
 
 
 class ContentScoreRequest(BaseModel):
@@ -84,7 +86,7 @@ class ICPRequest(BaseModel):
     business_type: str
     product_description: str
     target_market: str
-    average_deal_size: Optional[str] = ""
+    average_deal_size: str | None = ""
 
 
 class OutboundRequest(BaseModel):
@@ -104,6 +106,7 @@ class WeeklyScorecardRequest(BaseModel):
 
 # ─── Dashboard ───────────────────────────────────���────────────────────────────
 
+
 @router.get("/dashboard")
 async def get_dashboard():
     return {
@@ -111,7 +114,10 @@ async def get_dashboard():
             {
                 "name": "Growth Engine",
                 "description": "Design A/B experiments using ab-test-setup skill. Structure hypotheses, define variants, and get statistical measurement plans.",
-                "endpoints": ["/intelligence/experiments/create", "/intelligence/experiments/analyze"],
+                "endpoints": [
+                    "/intelligence/experiments/create",
+                    "/intelligence/experiments/analyze",
+                ],
                 "skill": "ab-test-setup",
                 "status": "active",
             },
@@ -125,7 +131,10 @@ async def get_dashboard():
             {
                 "name": "Sales Pipeline",
                 "description": "ICP definition and prospect scoring using customer-research skill frameworks.",
-                "endpoints": ["/intelligence/pipeline/icp-score", "/intelligence/pipeline/prospect-score"],
+                "endpoints": [
+                    "/intelligence/pipeline/icp-score",
+                    "/intelligence/pipeline/prospect-score",
+                ],
                 "skill": "customer-research",
                 "status": "active",
             },
@@ -155,6 +164,7 @@ async def get_dashboard():
 
 
 # ─── GROWTH ENGINE ────────────────────────────────────────────────────────────
+
 
 @router.post("/experiments/create")
 async def create_experiment(req: ExperimentRequest):
@@ -286,6 +296,7 @@ Respond ONLY with valid JSON:
 
 # ─── CONTENT OPS ──────────────────────────────────────────────────────────────
 
+
 @router.post("/content/score")
 async def score_content(req: ContentScoreRequest):
     """
@@ -295,8 +306,14 @@ async def score_content(req: ContentScoreRequest):
     """
     experts = [
         ("Conversion Copywriter", "clarity, benefit-first messaging, headline strength, CTA power"),
-        ("CRO Specialist", "friction points, trust signals, value proposition, conversion elements"),
-        ("Marketing Psychologist", "emotional triggers, social proof, loss aversion, desire amplification"),
+        (
+            "CRO Specialist",
+            "friction points, trust signals, value proposition, conversion elements",
+        ),
+        (
+            "Marketing Psychologist",
+            "emotional triggers, social proof, loss aversion, desire amplification",
+        ),
     ]
 
     expert_scores = []
@@ -350,9 +367,7 @@ Respond ONLY with valid JSON:
     overall_data = extract_json(overall_response)
 
     avg_score = (
-        sum(e.get("score", 70) for e in expert_scores) / len(expert_scores)
-        if expert_scores
-        else 70
+        sum(e.get("score", 70) for e in expert_scores) / len(expert_scores) if expert_scores else 70
     )
 
     return {
@@ -397,6 +412,7 @@ Respond ONLY with valid JSON:
 
 
 # ─── SALES PIPELINE ───────────────────────────────────────────────────────────
+
 
 @router.post("/pipeline/icp-score")
 async def score_icp(req: ICPRequest):
@@ -446,7 +462,7 @@ Respond ONLY with valid JSON:
 async def score_prospect(
     company: str,
     role: str,
-    signals: List[str],
+    signals: list[str],
     business_type: str,
 ):
     """Score an individual prospect against ICP criteria."""
@@ -475,6 +491,7 @@ Respond ONLY with valid JSON:
 
 
 # ─── OUTBOUND ENGINE ──────────────────────────────────────────────────────────
+
 
 @router.post("/outbound/generate")
 async def generate_outreach(req: OutboundRequest):

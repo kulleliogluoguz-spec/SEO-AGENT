@@ -9,12 +9,11 @@ Separation of concerns:
   Temporal = workflow durability, scheduling, retries
   LangGraph = agent reasoning logic
 """
-import uuid
+
 from datetime import timedelta
 
 from temporalio import activity, workflow
 from temporalio.common import RetryPolicy
-
 
 # ─── Activities ───────────────────────────────────────────────────────────────
 # Activities are the actual executable units in Temporal.
@@ -25,6 +24,7 @@ from temporalio.common import RetryPolicy
 async def validate_domain_activity(url: str) -> dict:
     """Validate domain reachability."""
     import httpx
+
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             r = await client.head(url)
@@ -41,6 +41,7 @@ async def run_crawl_activity(site_id: str, crawl_id: str, url: str, max_pages: i
     """
     # Import here to avoid circular imports in activity context
     from app.tools.web_crawler import WebCrawlerTool
+
     tool = WebCrawlerTool()
     result = await tool.crawl(url=url, max_pages=max_pages)
     return {"pages_crawled": result.pages_crawled, "success": result.success}
@@ -71,13 +72,16 @@ async def generate_initial_report_activity(workspace_id: str, site_id: str) -> d
 
 
 @activity.defn(name="notify_onboarding_complete")
-async def notify_onboarding_complete_activity(workspace_id: str, site_id: str, summary: dict) -> None:
+async def notify_onboarding_complete_activity(
+    workspace_id: str, site_id: str, summary: dict
+) -> None:
     """Send notification that onboarding is complete."""
     # In production: send Slack/email notification
     pass
 
 
 # ─── Workflow ─────────────────────────────────────────────────────────────────
+
 
 @workflow.defn(name="SiteOnboardingWorkflow")
 class SiteOnboardingWorkflow:

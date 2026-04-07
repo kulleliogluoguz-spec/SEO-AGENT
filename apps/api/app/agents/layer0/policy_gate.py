@@ -5,6 +5,7 @@ Evaluates proposed actions against workspace autonomy policy.
 Blocks actions that exceed the configured autonomy level.
 Every consequential agent should call the PolicyGateAgent before executing.
 """
+
 import uuid
 from typing import ClassVar
 
@@ -14,7 +15,7 @@ from app.agents.base import AgentMetadata, AgentRunContext, BaseAgent
 
 
 class PolicyCheckInput(BaseModel):
-    action_type: str          # e.g. "publish_content", "send_notification", "update_meta"
+    action_type: str  # e.g. "publish_content", "send_notification", "update_meta"
     action_description: str
     entity_type: str | None = None
     entity_id: uuid.UUID | None = None
@@ -37,21 +38,17 @@ ACTION_AUTONOMY_REQUIREMENTS: dict[str, int] = {
     "analyze_site": 0,
     "generate_recommendations": 0,
     "crawl_site": 0,
-
     # Level 1 — draft generation (default)
     "generate_content_draft": 1,
     "generate_report": 1,
     "create_brief": 1,
-
     # Level 2 — approval required for execution
     "update_meta_tags": 2,
     "send_notification": 2,
     "submit_for_review": 2,
-
     # Level 3 — low-risk auto execution
     "publish_meta_update": 3,
     "send_approved_notification": 3,
-
     # Level 4 — advanced automation (disabled by default)
     "publish_content": 4,
     "post_social": 4,
@@ -101,7 +98,7 @@ class PolicyGateAgent(BaseAgent[PolicyCheckInput, PolicyCheckOutput]):
             return PolicyCheckOutput(
                 allowed=False,
                 reason=f"Action '{action}' is explicitly prohibited by platform policy. "
-                       "AI CMO OS does not support spam, fake reviews, or deceptive content.",
+                "AI CMO OS does not support spam, fake reviews, or deceptive content.",
                 required_autonomy_level=5,  # Never allowed
                 actual_autonomy_level=context.autonomy_level,
                 approval_required=True,
@@ -123,7 +120,9 @@ class PolicyGateAgent(BaseAgent[PolicyCheckInput, PolicyCheckOutput]):
                 required_autonomy_level=required,
                 actual_autonomy_level=context.autonomy_level,
                 approval_required=True,
-                policy_flags=[f"AUTONOMY_LEVEL_INSUFFICIENT: requires {required}, have {context.autonomy_level}"],
+                policy_flags=[
+                    f"AUTONOMY_LEVEL_INSUFFICIENT: requires {required}, have {context.autonomy_level}"
+                ],
             )
 
         # Check risk level gating

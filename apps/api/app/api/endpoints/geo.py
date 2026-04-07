@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Annotated, Any, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/geo", tags=["GEO"])
 class GEOAuditRequest(BaseModel):
     site_id: str = Field(..., description="Site ID to audit")
     workspace_id: str = Field(..., description="Workspace ID")
-    site_url: Optional[str] = Field(None, description="Override site URL (defaults to site's URL)")
+    site_url: str | None = Field(None, description="Override site URL (defaults to site's URL)")
 
 
 class GEOAuditResponse(BaseModel):
@@ -37,19 +37,19 @@ class GEOAuditResponse(BaseModel):
     workspace_id: str
     site_id: str
     status: str
-    overall_score: Optional[float] = None
-    citability_score: Optional[float] = None
-    ai_crawler_score: Optional[float] = None
-    schema_score: Optional[float] = None
-    entity_score: Optional[float] = None
-    content_clarity_score: Optional[float] = None
-    llms_txt_present: Optional[bool] = None
-    llms_txt_quality: Optional[float] = None
-    robots_txt_allows_ai: Optional[bool] = None
+    overall_score: float | None = None
+    citability_score: float | None = None
+    ai_crawler_score: float | None = None
+    schema_score: float | None = None
+    entity_score: float | None = None
+    content_clarity_score: float | None = None
+    llms_txt_present: bool | None = None
+    llms_txt_quality: float | None = None
+    robots_txt_allows_ai: bool | None = None
     structured_data_types: list[str] = Field(default_factory=list)
     issues: list[dict] = Field(default_factory=list)
     recommendations: list[dict] = Field(default_factory=list)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     created_at: datetime
 
 
@@ -82,6 +82,7 @@ async def trigger_geo_audit(
     if not site_url:
         # Look up site URL from database
         from sqlalchemy import text
+
         result = await db.execute(
             text("SELECT url FROM sites WHERE id = :site_id AND workspace_id = :workspace_id"),
             {"site_id": request.site_id, "workspace_id": request.workspace_id},
@@ -93,7 +94,7 @@ async def trigger_geo_audit(
 
     # Create audit record in DB
     audit_id = str(uuid.uuid4())
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     await db.execute(
         __import__("sqlalchemy", fromlist=["text"]).text("""
@@ -133,7 +134,7 @@ async def trigger_geo_audit(
 @router.get("/audits", response_model=list[GEOAuditResponse])
 async def list_geo_audits(
     workspace_id: Annotated[str, Query(..., description="Workspace ID")],
-    site_id: Optional[str] = Query(None),
+    site_id: str | None = Query(None),
     limit: int = Query(10, ge=1, le=100),
     current_user: Annotated[Any, Depends(get_current_user)] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
@@ -226,10 +227,12 @@ async def _run_geo_audit_background(
     site_id: str,
 ) -> None:
     """Run GEO audit asynchronously and persist results."""
+    import json
+
+    from sqlalchemy import text
+
     from app.agents.geo.geo_auditor import GEOAuditor
     from app.core.db.database import get_async_session
-    from sqlalchemy import text
-    import json
 
     try:
         auditor = GEOAuditor()
@@ -272,7 +275,7 @@ async def _run_geo_audit_background(
                     "issues": json.dumps(result.issues),
                     "recommendations": json.dumps(result.recommendations),
                     "duration": int(result.duration_seconds),
-                    "now": datetime.now(tz=timezone.utc),
+                    "now": datetime.now(tz=UTC),
                 },
             )
             await db.commit()
@@ -280,8 +283,9 @@ async def _run_geo_audit_background(
 
     except Exception as e:
         logger.error(f"GEO audit {audit_id} failed: {e}")
-        from app.core.db.database import get_async_session
         from sqlalchemy import text
+
+        from app.core.db.database import get_async_session
 
         async with get_async_session() as db:
             await db.execute(
@@ -290,6 +294,6 @@ async def _run_geo_audit_background(
                     SET status = 'failed', updated_at = :now
                     WHERE id = :audit_id
                 """),
-                {"audit_id": audit_id, "now": datetime.now(tz=timezone.utc)},
+                {"audit_id": audit_id, "now": datetime.now(tz=UTC)},
             )
             await db.commit()

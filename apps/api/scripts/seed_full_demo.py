@@ -9,6 +9,7 @@ Usage:
     DATABASE_URL='postgresql+asyncpg://aicmo:aicmo_dev@localhost:5432/aicmo' \
         python3 scripts/seed_full_demo.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,41 +30,135 @@ def _dsn() -> str:
 
 
 CONTACTS = [
-    ("Ahmet Yılmaz",  "TechSoft A.Ş.",  "ahmet@techsoft.com.tr",  "+90 532 111 2233", "Software",      "Istanbul", "call"),
-    ("Ayşe Kaya",     "Marketing Pro",  "ayse@marketingpro.com",  "+90 533 222 3344", "Marketing",     "Ankara",   "email"),
-    ("Mehmet Demir",  "Retail Plus",    "mehmet@retailplus.com",  "+90 541 333 4455", "Retail",        "Izmir",    "call"),
-    ("Fatma Şahin",   "E-Commerce Hub", "fatma@ecommhub.com",     "+90 542 444 5566", "E-Commerce",    "Istanbul", "ad"),
-    ("Ali Çelik",     "B2B Solutions",  "ali@b2bsolutions.com",   "+90 505 555 6677", "Consulting",    "Bursa",    "call"),
-    ("Zeynep Arslan", "Digital First",  "zeynep@digitalfirst.com","+90 506 666 7788", "Digital Agency","Antalya",  "call"),
+    (
+        "Ahmet Yılmaz",
+        "TechSoft A.Ş.",
+        "ahmet@techsoft.com.tr",
+        "+90 532 111 2233",
+        "Software",
+        "Istanbul",
+        "call",
+    ),
+    (
+        "Ayşe Kaya",
+        "Marketing Pro",
+        "ayse@marketingpro.com",
+        "+90 533 222 3344",
+        "Marketing",
+        "Ankara",
+        "email",
+    ),
+    (
+        "Mehmet Demir",
+        "Retail Plus",
+        "mehmet@retailplus.com",
+        "+90 541 333 4455",
+        "Retail",
+        "Izmir",
+        "call",
+    ),
+    (
+        "Fatma Şahin",
+        "E-Commerce Hub",
+        "fatma@ecommhub.com",
+        "+90 542 444 5566",
+        "E-Commerce",
+        "Istanbul",
+        "ad",
+    ),
+    (
+        "Ali Çelik",
+        "B2B Solutions",
+        "ali@b2bsolutions.com",
+        "+90 505 555 6677",
+        "Consulting",
+        "Bursa",
+        "call",
+    ),
+    (
+        "Zeynep Arslan",
+        "Digital First",
+        "zeynep@digitalfirst.com",
+        "+90 506 666 7788",
+        "Digital Agency",
+        "Antalya",
+        "call",
+    ),
 ]
 
 LEADS = [
-    (82, "hot",  "qualified",
-     "Very interested in enterprise plan. Has budget approval. Wants demo next week.",
-     "interested",         "high",   "Schedule product demo for next Tuesday"),
-    (65, "warm", "contacted",
-     "Currently evaluating 3 vendors. Price is main concern. Has 3-month timeline.",
-     "evaluating",         "medium", "Send competitive pricing comparison document"),
-    (45, "warm", "contacted",
-     "Interested but not urgent. Will revisit in Q2. Asked for case studies.",
-     "evaluating",         "low",    "Send relevant case studies and follow up in 30 days"),
-    (78, "hot",  "qualified",
-     "Strong buying signals. Budget approved. Needs quick implementation.",
-     "interested",         "high",   "Send proposal and schedule technical call"),
-    (20, "cold", "contacted",
-     "Not the right time. Company restructuring. May revisit in 6 months.",
-     "not_interested",     "low",    "Add to cold reactivation sequence for Q4"),
-    (55, "warm", "new",
-     "Left voicemail twice. Engaged via email. Interested in growth package.",
-     "follow_up_needed",   "medium", "Try WhatsApp contact or connect on LinkedIn"),
+    (
+        82,
+        "hot",
+        "qualified",
+        "Very interested in enterprise plan. Has budget approval. Wants demo next week.",
+        "interested",
+        "high",
+        "Schedule product demo for next Tuesday",
+    ),
+    (
+        65,
+        "warm",
+        "contacted",
+        "Currently evaluating 3 vendors. Price is main concern. Has 3-month timeline.",
+        "evaluating",
+        "medium",
+        "Send competitive pricing comparison document",
+    ),
+    (
+        45,
+        "warm",
+        "contacted",
+        "Interested but not urgent. Will revisit in Q2. Asked for case studies.",
+        "evaluating",
+        "low",
+        "Send relevant case studies and follow up in 30 days",
+    ),
+    (
+        78,
+        "hot",
+        "qualified",
+        "Strong buying signals. Budget approved. Needs quick implementation.",
+        "interested",
+        "high",
+        "Send proposal and schedule technical call",
+    ),
+    (
+        20,
+        "cold",
+        "contacted",
+        "Not the right time. Company restructuring. May revisit in 6 months.",
+        "not_interested",
+        "low",
+        "Add to cold reactivation sequence for Q4",
+    ),
+    (
+        55,
+        "warm",
+        "new",
+        "Left voicemail twice. Engaged via email. Interested in growth package.",
+        "follow_up_needed",
+        "medium",
+        "Try WhatsApp contact or connect on LinkedIn",
+    ),
 ]
 
 INVOICES = [
-    ("AWS Turkey",    "AWS-2024-001",  "incoming", "software",              2400.0, 432.0,  18, "USD",  5),
-    ("Acme Corp",     "ACME-2024-089", "outgoing", "professional_services",15000.0,3000.0, 20, "TRY", 10),
-    ("Google Ads",    "GADS-2024-112", "incoming", "advertising",           5800.0,1160.0, 20, "TRY", 15),
-    ("Microsoft 365", "MS365-2024-003","incoming", "software",               890.0, 178.0, 20, "USD", 20),
-    ("TechSoft A.Ş.", "TS-2024-056",   "outgoing", "software",             22000.0,4400.0, 20, "TRY",  3),
+    ("AWS Turkey", "AWS-2024-001", "incoming", "software", 2400.0, 432.0, 18, "USD", 5),
+    (
+        "Acme Corp",
+        "ACME-2024-089",
+        "outgoing",
+        "professional_services",
+        15000.0,
+        3000.0,
+        20,
+        "TRY",
+        10,
+    ),
+    ("Google Ads", "GADS-2024-112", "incoming", "advertising", 5800.0, 1160.0, 20, "TRY", 15),
+    ("Microsoft 365", "MS365-2024-003", "incoming", "software", 890.0, 178.0, 20, "USD", 20),
+    ("TechSoft A.Ş.", "TS-2024-056", "outgoing", "software", 22000.0, 4400.0, 20, "TRY", 3),
 ]
 
 
@@ -90,7 +185,8 @@ async def seed_contacts(conn: asyncpg.Connection) -> list[uuid.UUID]:
     for full_name, company, email, phone, industry, city, source in CONTACTS:
         existing = await conn.fetchrow(
             "SELECT id FROM contacts WHERE workspace_id=$1 AND email=$2",
-            DEMO_WORKSPACE_ID, email,
+            DEMO_WORKSPACE_ID,
+            email,
         )
         if existing:
             ids.append(existing["id"])
@@ -102,7 +198,14 @@ async def seed_contacts(conn: asyncpg.Connection) -> list[uuid.UUID]:
             VALUES($1,$2,$3,$4,$5,$6,$7,$8)
             RETURNING id
             """,
-            DEMO_WORKSPACE_ID, full_name, company, email, phone, industry, city, source,
+            DEMO_WORKSPACE_ID,
+            full_name,
+            company,
+            email,
+            phone,
+            industry,
+            city,
+            source,
         )
         ids.append(cid)
     return ids
@@ -110,11 +213,12 @@ async def seed_contacts(conn: asyncpg.Connection) -> list[uuid.UUID]:
 
 async def seed_leads(conn: asyncpg.Connection, contact_ids: list[uuid.UUID]) -> list[uuid.UUID]:
     lead_ids: list[uuid.UUID] = []
-    for contact_id, lead in zip(contact_ids, LEADS):
+    for contact_id, lead in zip(contact_ids, LEADS, strict=False):
         score, cat, status, summary, intent, urgency, next_action = lead
         existing = await conn.fetchrow(
             "SELECT id FROM leads WHERE contact_id=$1 AND workspace_id=$2",
-            contact_id, DEMO_WORKSPACE_ID,
+            contact_id,
+            DEMO_WORKSPACE_ID,
         )
         if existing:
             lead_ids.append(existing["id"])
@@ -128,8 +232,15 @@ async def seed_leads(conn: asyncpg.Connection, contact_ids: list[uuid.UUID]) -> 
                    NOW() - ($10::int || ' days')::interval)
             RETURNING id
             """,
-            contact_id, DEMO_WORKSPACE_ID, status, score, cat,
-            summary, intent, urgency, next_action,
+            contact_id,
+            DEMO_WORKSPACE_ID,
+            status,
+            score,
+            cat,
+            summary,
+            intent,
+            urgency,
+            next_action,
             random.randint(0, 14),
         )
         lead_ids.append(lid)
@@ -137,12 +248,12 @@ async def seed_leads(conn: asyncpg.Connection, contact_ids: list[uuid.UUID]) -> 
 
 
 SAMPLE_TRANSCRIPT = [
-    ("SPEAKER_0", "Merhaba, aramanızın sebebi nedir acaba?",                       0,  4),
-    ("SPEAKER_1", "Evet merhaba, ürününüzle ilgili bilgi almak istiyordum.",       4,  9),
-    ("SPEAKER_0", "Tabii, hangi konuda yardımcı olabilirim?",                      9, 13),
-    ("SPEAKER_1", "Fiyatlandırma konusunda daha detaylı bilgi alabilir miyim?",   13, 19),
-    ("SPEAKER_0", "Elbette, size özel bir teklif hazırlayabiliriz.",              19, 24),
-    ("SPEAKER_1", "Harika, bütçemiz var bu konuda ilerleyebiliriz.",              24, 30),
+    ("SPEAKER_0", "Merhaba, aramanızın sebebi nedir acaba?", 0, 4),
+    ("SPEAKER_1", "Evet merhaba, ürününüzle ilgili bilgi almak istiyordum.", 4, 9),
+    ("SPEAKER_0", "Tabii, hangi konuda yardımcı olabilirim?", 9, 13),
+    ("SPEAKER_1", "Fiyatlandırma konusunda daha detaylı bilgi alabilir miyim?", 13, 19),
+    ("SPEAKER_0", "Elbette, size özel bir teklif hazırlayabiliriz.", 19, 24),
+    ("SPEAKER_1", "Harika, bütçemiz var bu konuda ilerleyebiliriz.", 24, 30),
 ]
 
 
@@ -152,10 +263,11 @@ async def seed_calls(
     lead_ids: list[uuid.UUID],
 ) -> list[uuid.UUID]:
     call_ids: list[uuid.UUID] = []
-    for i, (cid, lid) in enumerate(zip(contact_ids[:4], lead_ids[:4])):
+    for i, (cid, lid) in enumerate(zip(contact_ids[:4], lead_ids[:4], strict=False)):
         existing = await conn.fetchrow(
             "SELECT id FROM calls WHERE workspace_id=$1 AND contact_id=$2 LIMIT 1",
-            DEMO_WORKSPACE_ID, cid,
+            DEMO_WORKSPACE_ID,
+            cid,
         )
         if existing:
             call_ids.append(existing["id"])
@@ -174,7 +286,12 @@ async def seed_calls(
                    NOW() - ($5::int || ' days')::interval + ($6::int || ' seconds')::interval,
                    $6, 'manual_upload', true, 'completed', 'completed')
             """,
-            call_id, DEMO_WORKSPACE_ID, cid, lid, days_ago, duration,
+            call_id,
+            DEMO_WORKSPACE_ID,
+            cid,
+            lid,
+            days_ago,
+            duration,
         )
         call_ids.append(call_id)
 
@@ -184,7 +301,11 @@ async def seed_calls(
                 INSERT INTO call_transcripts(call_id, speaker, text, start_time, end_time, confidence)
                 VALUES($1, $2, $3, $4, $5, 0.92)
                 """,
-                call_id, spk, txt, start, end,
+                call_id,
+                spk,
+                txt,
+                start,
+                end,
             )
 
         scores = [82, 65, 78, 55]
@@ -214,14 +335,20 @@ async def seed_calls(
     # Timeline events
     for lid in lead_ids[:4]:
         events = [
-            ("call_made",      "Outbound call completed", "12-minute discovery call completed."),
-            ("email_sent",     "Follow-up email sent",    "Sent pricing document as requested."),
-            ("score_updated",  "Lead score updated",      "AI qualification score updated based on call analysis."),
+            ("call_made", "Outbound call completed", "12-minute discovery call completed."),
+            ("email_sent", "Follow-up email sent", "Sent pricing document as requested."),
+            (
+                "score_updated",
+                "Lead score updated",
+                "AI qualification score updated based on call analysis.",
+            ),
         ]
         for etype, title, desc in events:
             existing = await conn.fetchrow(
                 "SELECT id FROM lead_timeline WHERE lead_id=$1 AND event_type=$2 AND title=$3",
-                lid, etype, title,
+                lid,
+                etype,
+                title,
             )
             if existing:
                 continue
@@ -230,7 +357,10 @@ async def seed_calls(
                 INSERT INTO lead_timeline(lead_id, event_type, title, description, metadata)
                 VALUES($1, $2, $3, $4, '{}'::jsonb)
                 """,
-                lid, etype, title, desc,
+                lid,
+                etype,
+                title,
+                desc,
             )
     return call_ids
 
@@ -240,14 +370,16 @@ async def seed_invoices(conn: asyncpg.Connection) -> int:
     for vendor, num, direction, cat, total, vat, vat_rate, currency, days_back in INVOICES:
         existing = await conn.fetchrow(
             "SELECT id FROM invoices WHERE workspace_id=$1 AND invoice_number=$2",
-            DEMO_WORKSPACE_ID, num,
+            DEMO_WORKSPACE_ID,
+            num,
         )
         if existing:
             continue
         sub = total - vat
         deductible = direction == "incoming"
         tax_impact = (
-            f"KDV mahsup: {vat:.0f} {currency}" if deductible
+            f"KDV mahsup: {vat:.0f} {currency}"
+            if deductible
             else f"KDV beyan edilmeli: {vat:.0f} {currency}"
         )
         await conn.execute(
@@ -259,11 +391,21 @@ async def seed_invoices(conn: asyncpg.Connection) -> int:
                                  extraction_status, confidence_score)
             VALUES($1,$2,$3,'pdf',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'completed',0.91)
             """,
-            uuid.uuid4(), DEMO_WORKSPACE_ID,
+            uuid.uuid4(),
+            DEMO_WORKSPACE_ID,
             f"{vendor.replace(' ', '_')}_invoice.pdf",
             num,
             date.today() - timedelta(days=days_back),
-            vendor, currency, sub, vat, total, direction, cat, vat_rate, vat, deductible,
+            vendor,
+            currency,
+            sub,
+            vat,
+            total,
+            direction,
+            cat,
+            vat_rate,
+            vat,
+            deductible,
             tax_impact,
             f"Fatura analizi tamamlandı. {tax_impact}\n\n⚠️ Bu bir tahmindir. Mali müşavirinize danışın.",
         )
@@ -290,7 +432,9 @@ async def seed_ai_feedback(conn: asyncpg.Connection) -> int:
                        '{"type":"scale","priority":"high"}'::jsonb,
                        '{"action":"applied"}'::jsonb)
                 """,
-                DEMO_WORKSPACE_ID, module, action,
+                DEMO_WORKSPACE_ID,
+                module,
+                action,
             )
             inserted += 1
     return inserted

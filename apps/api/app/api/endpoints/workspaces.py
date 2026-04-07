@@ -1,13 +1,18 @@
 """Workspaces endpoint."""
+
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies.auth import get_current_user
 from app.core.db.database import get_db
-from app.models.models import User, Workspace, Organization, Membership, MemberRole
+from app.models.models import User, Workspace
 from app.schemas.schemas import WorkspaceCreateRequest, WorkspaceResponse
+
 router = APIRouter()
+
 
 @router.post("", response_model=WorkspaceResponse, status_code=201)
 async def create_workspace(
@@ -21,6 +26,7 @@ async def create_workspace(
     await db.commit()
     await db.refresh(ws)
     return ws
+
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace(

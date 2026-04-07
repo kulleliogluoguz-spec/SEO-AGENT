@@ -10,6 +10,7 @@ The legacy `email_automation` router exposes `/contacts`, `/sequences`,
 `/campaigns`, `/health`, `/stats/overview`, `/emails` — none of which collide
 with `/sync-lead/...`, `/draft/...`, or `/trigger-sequence/...`.
 """
+
 from __future__ import annotations
 
 import logging

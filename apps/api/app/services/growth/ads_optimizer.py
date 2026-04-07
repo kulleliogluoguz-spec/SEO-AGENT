@@ -17,29 +17,28 @@ Thresholds (configurable):
 The optimizer never automatically changes budgets or pauses campaigns.
 It only creates recommendations that the user must act on.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
+from app.core.store.audit_store import write_audit_event
 from app.core.store.growth_metrics_store import (
-    get_active_ad_campaigns,
-    append_ad_performance_snapshot,
     add_optimization_recommendation,
-    update_campaign_status,
+    append_ad_performance_snapshot,
+    get_active_ad_campaigns,
     get_campaign_performance_history,
 )
-from app.core.store.audit_store import write_audit_event
 
 logger = logging.getLogger(__name__)
 
 # ── Performance thresholds ────────────────────────────────────────────────────
 
-CTR_LOW_THRESHOLD = 0.005          # 0.5%
-CPC_HIGH_THRESHOLD = 3.00          # $3.00
+CTR_LOW_THRESHOLD = 0.005  # 0.5%
+CPC_HIGH_THRESHOLD = 3.00  # $3.00
 NO_CONVERSION_SPEND_THRESHOLD = 50  # $50 spent with 0 conversions
-LOW_REACH_RATIO = 0.05             # impressions < 5% of expected (based on budget)
-MIN_IMPRESSIONS_FOR_ANALYSIS = 500 # Don't analyze until 500 impressions
+LOW_REACH_RATIO = 0.05  # impressions < 5% of expected (based on budget)
+MIN_IMPRESSIONS_FOR_ANALYSIS = 500  # Don't analyze until 500 impressions
 
 
 def _analyze_and_recommend(
@@ -51,9 +50,9 @@ def _analyze_and_recommend(
     Each recommendation has: issue, suggestion, action_type, urgency.
     """
     recommendations = []
-    user_id = campaign["user_id"]
-    record_id = campaign["id"]
-    platform = campaign["platform"]
+    campaign["user_id"]
+    campaign["id"]
+    campaign["platform"]
 
     impressions = metrics.get("impressions", 0)
     clicks = metrics.get("clicks", 0)
@@ -68,79 +67,89 @@ def _analyze_and_recommend(
 
     # ── Low CTR: creative is not attracting clicks ────────────────────────────
     if impressions >= MIN_IMPRESSIONS_FOR_ANALYSIS and ctr < CTR_LOW_THRESHOLD:
-        recommendations.append({
-            "issue": "low_ctr",
-            "suggestion": (
-                f"CTR is {ctr:.2%} (below 0.5%). "
-                "Your ad creative isn't generating enough clicks. "
-                "Try: (1) stronger headline with a clear value proposition, "
-                "(2) add urgency ('Limited time'), "
-                "(3) test a question-format headline."
-            ),
-            "action_type": "new_creative",
-            "urgency": "high" if ctr < 0.002 else "medium",
-        })
+        recommendations.append(
+            {
+                "issue": "low_ctr",
+                "suggestion": (
+                    f"CTR is {ctr:.2%} (below 0.5%). "
+                    "Your ad creative isn't generating enough clicks. "
+                    "Try: (1) stronger headline with a clear value proposition, "
+                    "(2) add urgency ('Limited time'), "
+                    "(3) test a question-format headline."
+                ),
+                "action_type": "new_creative",
+                "urgency": "high" if ctr < 0.002 else "medium",
+            }
+        )
 
     # ── High CPC: expensive clicks ────────────────────────────────────────────
     if clicks > 10 and cpc > CPC_HIGH_THRESHOLD:
-        recommendations.append({
-            "issue": "high_cpc",
-            "suggestion": (
-                f"CPC is ${cpc:.2f} (above $3.00). "
-                "Each click is costing too much. "
-                "Try: (1) narrow audience to highest-intent segments, "
-                "(2) exclude irrelevant demographics, "
-                "(3) reduce bid cap if using manual bidding."
-            ),
-            "action_type": "new_audience",
-            "urgency": "medium",
-        })
+        recommendations.append(
+            {
+                "issue": "high_cpc",
+                "suggestion": (
+                    f"CPC is ${cpc:.2f} (above $3.00). "
+                    "Each click is costing too much. "
+                    "Try: (1) narrow audience to highest-intent segments, "
+                    "(2) exclude irrelevant demographics, "
+                    "(3) reduce bid cap if using manual bidding."
+                ),
+                "action_type": "new_audience",
+                "urgency": "medium",
+            }
+        )
 
     # ── Spend without conversions ─────────────────────────────────────────────
     if spend >= NO_CONVERSION_SPEND_THRESHOLD and conversions == 0:
-        recommendations.append({
-            "issue": "no_conversions",
-            "suggestion": (
-                f"Spent ${spend:.2f} with 0 conversions. "
-                "Consider: (1) check landing page load speed and mobile experience, "
-                "(2) ensure the CTA on landing page matches the ad promise, "
-                "(3) test a simpler conversion goal (e.g., email capture instead of purchase), "
-                "(4) pause this campaign and create a new one with a revised offer."
-            ),
-            "action_type": "pause",
-            "urgency": "high",
-        })
+        recommendations.append(
+            {
+                "issue": "no_conversions",
+                "suggestion": (
+                    f"Spent ${spend:.2f} with 0 conversions. "
+                    "Consider: (1) check landing page load speed and mobile experience, "
+                    "(2) ensure the CTA on landing page matches the ad promise, "
+                    "(3) test a simpler conversion goal (e.g., email capture instead of purchase), "
+                    "(4) pause this campaign and create a new one with a revised offer."
+                ),
+                "action_type": "pause",
+                "urgency": "high",
+            }
+        )
 
     # ── Good performance: suggest scaling ────────────────────────────────────
     daily_budget = campaign.get("daily_budget_usd", 0)
     if (
-        ctr >= 0.02           # 2%+ CTR
-        and cpc <= 0.50       # $0.50 or less CPC
+        ctr >= 0.02  # 2%+ CTR
+        and cpc <= 0.50  # $0.50 or less CPC
         and conversions > 5
         and daily_budget < 100
     ):
-        recommendations.append({
-            "issue": "scale_opportunity",
-            "suggestion": (
-                f"Strong performance: CTR {ctr:.1%}, CPC ${cpc:.2f}, {conversions} conversions. "
-                f"Consider increasing daily budget from ${daily_budget:.0f} to ${daily_budget * 2:.0f} "
-                "to scale results."
-            ),
-            "action_type": "budget_increase",
-            "urgency": "low",
-        })
+        recommendations.append(
+            {
+                "issue": "scale_opportunity",
+                "suggestion": (
+                    f"Strong performance: CTR {ctr:.1%}, CPC ${cpc:.2f}, {conversions} conversions. "
+                    f"Consider increasing daily budget from ${daily_budget:.0f} to ${daily_budget * 2:.0f} "
+                    "to scale results."
+                ),
+                "action_type": "budget_increase",
+                "urgency": "low",
+            }
+        )
 
     return recommendations
 
 
 # ── Fetch metrics from ad platforms ──────────────────────────────────────────
 
+
 async def _fetch_meta_campaign_metrics(
     user_id: str,
     campaign_id: str,
-) -> Optional[dict]:
+) -> dict | None:
     try:
         from app.services.ads.meta_ads import MetaAdsService
+
         svc = MetaAdsService(user_id=user_id)
         return await svc.get_campaign_insights(campaign_id, date_preset="last_7d")
     except Exception as e:
@@ -151,9 +160,10 @@ async def _fetch_meta_campaign_metrics(
 async def _fetch_google_campaign_metrics(
     user_id: str,
     campaign_id: str,
-) -> Optional[dict]:
+) -> dict | None:
     try:
         from app.services.ads.google_ads import GoogleAdsService
+
         svc = GoogleAdsService(user_id=user_id)
         return await svc.get_campaign_metrics(campaign_id, days=7)
     except Exception as e:
@@ -162,6 +172,7 @@ async def _fetch_google_campaign_metrics(
 
 
 # ── Main optimization loop ────────────────────────────────────────────────────
+
 
 async def run_ads_optimization() -> None:
     """
@@ -172,6 +183,7 @@ async def run_ads_optimization() -> None:
       3. Analyze + create recommendations
     """
     from app.core.store.credential_store import _load as load_creds
+
     try:
         cred_data = load_creds()
         user_ids = list({c["user_id"] for c in cred_data.get("credentials", []) if "user_id" in c})
@@ -222,10 +234,7 @@ async def run_ads_optimization() -> None:
                 recs = _analyze_and_recommend(campaign, metrics)
                 for rec in recs:
                     # Avoid duplicating recommendations with same issue
-                    existing = [
-                        r for r in get_campaign_performance_history(campaign["id"])
-                        # simple dedup: check if same issue was recommended recently
-                    ]
+                    list(get_campaign_performance_history(campaign["id"]))
                     add_optimization_recommendation(
                         user_id=user_id,
                         campaign_record_id=campaign["id"],
@@ -253,14 +262,19 @@ async def run_ads_optimization() -> None:
                 total_campaigns += 1
                 logger.info(
                     "[ads_optimizer] Analyzed %s/%s recs=%d",
-                    platform, campaign_id, len(recs),
+                    platform,
+                    campaign_id,
+                    len(recs),
                 )
 
             except Exception as e:
-                logger.debug("[ads_optimizer] Error processing campaign %s: %s", campaign.get("id"), e)
+                logger.debug(
+                    "[ads_optimizer] Error processing campaign %s: %s", campaign.get("id"), e
+                )
 
     if total_campaigns:
         logger.info(
             "[ads_optimizer] Optimization complete campaigns=%d recommendations=%d",
-            total_campaigns, total_recs,
+            total_campaigns,
+            total_recs,
         )

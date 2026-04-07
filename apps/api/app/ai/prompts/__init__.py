@@ -1,3 +1,10 @@
 """Prompt Registry package."""
-from app.ai.prompts.prompt_registry import PromptRegistry, PromptTemplate, PromptCategory, get_prompt_registry
+
+from app.ai.prompts.prompt_registry import (
+    PromptCategory,
+    PromptRegistry,
+    PromptTemplate,
+    get_prompt_registry,
+)
+
 __all__ = ["PromptRegistry", "PromptTemplate", "PromptCategory", "get_prompt_registry"]

@@ -1,5 +1,5 @@
 """Unit tests for WebCrawlerTool — SSRF protection and URL normalization."""
-import pytest
+
 from app.tools.web_crawler import WebCrawlerTool
 
 
@@ -88,14 +88,16 @@ class TestPageExtraction:
         assert page.status_code == 404
 
     def test_json_ld_extracted(self):
-        html = '''<html><body>
+        html = """<html><body>
             <script type="application/ld+json">{"@type": "Organization", "name": "Acme"}</script>
-        </body></html>'''
+        </body></html>"""
         page = self.crawler._extract_page_data("https://example.com", html, 200)
         assert len(page.structured_data) == 1
         assert page.structured_data[0]["name"] == "Acme"
 
     def test_canonical_url_extracted(self):
-        html = '<html><head><link rel="canonical" href="https://example.com/canonical"></head></html>'
+        html = (
+            '<html><head><link rel="canonical" href="https://example.com/canonical"></head></html>'
+        )
         page = self.crawler._extract_page_data("https://example.com/old-url", html, 200)
         assert page.canonical_url == "https://example.com/canonical"

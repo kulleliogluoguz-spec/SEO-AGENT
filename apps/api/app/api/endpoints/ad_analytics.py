@@ -5,6 +5,7 @@ Complete REST API for the ad analytics dashboard. Uses raw SQL via the
 existing AsyncSession (no ORM models for the new tables — they're queried
 directly through the SQLAlchemy session).
 """
+
 from __future__ import annotations
 
 import json
@@ -71,9 +72,7 @@ def _row_to_dict(row) -> dict:
     return out
 
 
-async def _build_campaign_signal(
-    db: AsyncSession, campaign_row: dict
-) -> CampaignSignal | None:
+async def _build_campaign_signal(db: AsyncSession, campaign_row: dict) -> CampaignSignal | None:
     """Build a CampaignSignal from 30 days of performance data."""
     cid = campaign_row["id"]
     name = campaign_row.get("name") or "Untitled"
@@ -81,19 +80,23 @@ async def _build_campaign_signal(
     start_d = end_d - timedelta(days=30)
 
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT date, spend, revenue, conversions, clicks, impressions,
                        roas, cpa, ctr, frequency
                 FROM ad_performance_daily
                 WHERE campaign_id = :cid AND date BETWEEN :start_d AND :end_d
                 ORDER BY date
                 """
-            ),
-            {"cid": cid, "start_d": start_d, "end_d": end_d},
+                ),
+                {"cid": cid, "start_d": start_d, "end_d": end_d},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     if not rows:
         return None
@@ -118,18 +121,12 @@ async def _build_campaign_signal(
     prev_roas = prev_rev / prev_spend if prev_spend > 0 else 0
     roas_trend = (roas_7 - prev_roas) / prev_roas if prev_roas > 0 else 0
 
-    ctr_avg = (
-        sum(float(r["ctr"] or 0) for r in last_7) / len(last_7) if last_7 else 0
-    )
-    freq_avg = (
-        sum(float(r["frequency"] or 0) for r in last_7) / len(last_7) if last_7 else 0
-    )
+    ctr_avg = sum(float(r["ctr"] or 0) for r in last_7) / len(last_7) if last_7 else 0
+    freq_avg = sum(float(r["frequency"] or 0) for r in last_7) / len(last_7) if last_7 else 0
     impr_7 = sum(int(r["impressions"] or 0) for r in last_7)
 
     daily_budget = float(campaign_row.get("daily_budget") or 0)
-    budget_util = (
-        (spend_7 / 7) / daily_budget if daily_budget > 0 else 0
-    )
+    budget_util = (spend_7 / 7) / daily_budget if daily_budget > 0 else 0
 
     return CampaignSignal(
         campaign_id=str(cid),
@@ -289,9 +286,7 @@ async def sync_account(
     workspace_id = _workspace_id_for(current_user)
     row = (
         await db.execute(
-            text(
-                "SELECT id FROM ad_accounts WHERE id = :id AND workspace_id = :wid"
-            ),
+            text("SELECT id FROM ad_accounts WHERE id = :id AND workspace_id = :wid"),
             {"id": account_id, "wid": workspace_id},
         )
     ).first()
@@ -316,9 +311,7 @@ async def disconnect_account(
     """Soft-delete an ad account connection."""
     workspace_id = _workspace_id_for(current_user)
     result = await db.execute(
-        text(
-            "UPDATE ad_accounts SET is_active = false WHERE id = :id AND workspace_id = :wid"
-        ),
+        text("UPDATE ad_accounts SET is_active = false WHERE id = :id AND workspace_id = :wid"),
         {"id": account_id, "wid": workspace_id},
     )
     await db.commit()
@@ -423,19 +416,23 @@ async def get_campaign_performance(
     start_d = end_d - timedelta(days=days)
 
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT date, impressions, clicks, conversions, spend, revenue,
                        roas, cpa, ctr, cpm, cpc, frequency, reach
                 FROM ad_performance_daily
                 WHERE campaign_id = :cid AND date BETWEEN :s AND :e
                 ORDER BY date
                 """
-            ),
-            {"cid": campaign_id, "s": start_d, "e": end_d},
+                ),
+                {"cid": campaign_id, "s": start_d, "e": end_d},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     series = []
     for r in rows:
@@ -468,18 +465,22 @@ async def analyze_campaign(
     """Full AI analysis of a campaign."""
     workspace_id = _workspace_id_for(current_user)
     row = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT c.*, a.platform, a.workspace_id
                 FROM analytics_ad_campaigns c
                 JOIN ad_accounts a ON c.ad_account_id = a.id
                 WHERE c.id = :cid AND a.workspace_id = :wid
                 """
-            ),
-            {"cid": campaign_id, "wid": workspace_id},
+                ),
+                {"cid": campaign_id, "wid": workspace_id},
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if not row:
         raise HTTPException(404, "Campaign not found")
 
@@ -560,18 +561,22 @@ async def get_forecast(
     end_d = date.today()
     start_d = end_d - timedelta(days=90)
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT date, roas, conversions, spend, cpa
                 FROM ad_performance_daily
                 WHERE campaign_id = :cid AND date BETWEEN :s AND :e
                 ORDER BY date
                 """
-            ),
-            {"cid": campaign_id, "s": start_d, "e": end_d},
+                ),
+                {"cid": campaign_id, "s": start_d, "e": end_d},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     historical = []
     for r in rows:
@@ -737,12 +742,9 @@ async def get_budget_optimization(
     optimal_allocation = result.get("optimal_allocation", {})
 
     # Compute simple expected uplift estimate
-    current_total_revenue = sum(
-        v["spend"] * v["roas"] for v in current_spend.values()
-    )
+    current_total_revenue = sum(v["spend"] * v["roas"] for v in current_spend.values())
     optimal_total_revenue = sum(
-        optimal_allocation.get(cid, 0)
-        * (current_spend[cid]["roas"] if cid in current_spend else 0)
+        optimal_allocation.get(cid, 0) * (current_spend[cid]["roas"] if cid in current_spend else 0)
         for cid in optimal_allocation
     )
     uplift_pct = (
@@ -781,9 +783,7 @@ async def get_budget_optimization(
                 if sum(current_allocation.values()) > 0
                 else 0
             ),
-            "opt_roas": (
-                optimal_total_revenue / total_budget if total_budget > 0 else 0
-            ),
+            "opt_roas": (optimal_total_revenue / total_budget if total_budget > 0 else 0),
             "uplift": uplift_pct,
         },
     )
@@ -959,18 +959,22 @@ async def get_mmm_results(
     """Get latest MMM model results for an account."""
     workspace_id = _workspace_id_for(current_user)
     row = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT * FROM mmm_models
                 WHERE workspace_id = :wid
                 ORDER BY trained_at DESC NULLS LAST, created_at DESC
                 LIMIT 1
                 """
-            ),
-            {"wid": workspace_id},
+                ),
+                {"wid": workspace_id},
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if not row:
         return {
             "has_model": False,
@@ -989,9 +993,10 @@ async def run_scenario(
     workspace_id = _workspace_id_for(current_user)
 
     rows = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT c.id::text AS cid,
                        COALESCE(SUM(p.spend), 0) AS spend_7d,
                        COALESCE(SUM(p.revenue), 0) AS revenue_7d
@@ -1002,10 +1007,13 @@ async def run_scenario(
                 WHERE a.workspace_id = :wid AND a.id = :acc
                 GROUP BY c.id
                 """
-            ),
-            {"wid": workspace_id, "acc": body.account_id},
+                ),
+                {"wid": workspace_id, "acc": body.account_id},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     roas_by_cid = {}
     for r in rows:
@@ -1022,9 +1030,7 @@ async def run_scenario(
     return {
         "scenario_budget": body.scenario_budget,
         "predicted_revenue": round(predicted_revenue, 2),
-        "predicted_roas": round(
-            predicted_revenue / sum(body.scenario_budget.values()), 3
-        )
+        "predicted_roas": round(predicted_revenue / sum(body.scenario_budget.values()), 3)
         if sum(body.scenario_budget.values()) > 0
         else 0,
     }
@@ -1043,15 +1049,16 @@ async def weekly_report(
     workspace_id = _workspace_id_for(current_user)
 
     # Reuse portfolio_summary data structure
-    summary = await portfolio_summary(account_id=account_id, days=7, current_user=current_user, db=db)
-    campaigns = await list_campaigns(
-        account_id=account_id, current_user=current_user, db=db
+    summary = await portfolio_summary(
+        account_id=account_id, days=7, current_user=current_user, db=db
     )
+    campaigns = await list_campaigns(account_id=account_id, current_user=current_user, db=db)
 
     top_recs = (
-        await db.execute(
-            text(
-                """
+        (
+            await db.execute(
+                text(
+                    """
                 SELECT title, description, expected_impact, priority
                 FROM ai_recommendations
                 WHERE workspace_id = :wid AND status = 'pending'
@@ -1061,10 +1068,13 @@ async def weekly_report(
                     created_at DESC
                 LIMIT 3
                 """
-            ),
-            {"wid": workspace_id},
+                ),
+                {"wid": workspace_id},
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     synth = AISynthesisEngine()
     report_text = await synth.generate_weekly_report(
@@ -1106,9 +1116,7 @@ async def download_weekly_pdf(
 
     from app.services.ad_analytics.report_generator import ReportGenerator
 
-    report_data = await weekly_report(
-        account_id=account_id, current_user=current_user, db=db
-    )
+    report_data = await weekly_report(account_id=account_id, current_user=current_user, db=db)
     pdf_path = ReportGenerator().generate_weekly_pdf(report_data, "Acme Growth")
     if not pdf_path:
         raise HTTPException(500, "PDF generation failed — pip install reportlab")

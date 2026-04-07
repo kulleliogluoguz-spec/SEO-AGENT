@@ -10,43 +10,45 @@ Endpoints:
   POST /growth/ads/register            — register a launched campaign for tracking
   POST /growth/ads/recommendations/{id}/dismiss — dismiss a recommendation
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Literal, Optional
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from app.api.dependencies.auth import get_current_user
-from app.core.store.growth_metrics_store import (
-    get_follower_history,
-    get_latest_follower_count,
-    get_follower_delta,
-    get_active_ad_campaigns,
-    get_all_ad_campaigns,
-    get_pending_recommendations,
-    register_ad_campaign,
-    dismiss_recommendation,
-    get_campaign_performance_history,
-)
 from app.core.store.content_metrics_store import (
     get_channel_metrics,
-    get_top_performers,
     get_performance_summary,
+    get_top_performers,
+)
+from app.core.store.growth_experiment_store import create_experiment, get_active_experiment
+from app.core.store.growth_metrics_store import (
+    dismiss_recommendation,
+    get_active_ad_campaigns,
+    get_all_ad_campaigns,
+    get_campaign_performance_history,
+    get_follower_delta,
+    get_follower_history,
+    get_latest_follower_count,
+    get_pending_recommendations,
+    register_ad_campaign,
 )
 from app.core.store.learning_store import (
     get_learning_summary,
-    get_suppressed_strategies,
     get_promoted_strategies,
+    get_suppressed_strategies,
 )
-from app.core.store.growth_experiment_store import get_active_experiment, create_experiment
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 # ─── Follower Timeseries ──────────────────────────────────────────────────────
+
 
 @router.get("/growth/followers/{channel}")
 async def get_follower_timeseries(
@@ -69,19 +71,17 @@ async def get_follower_timeseries(
         "current_followers": current,
         "delta_7d": delta_7d,
         "delta_30d": delta_30d,
-        "points": [
-            {"ts": s["ts"], "count": s["follower_count"]}
-            for s in history
-        ],
+        "points": [{"ts": s["ts"], "count": s["follower_count"]} for s in history],
         "has_data": len(history) > 0,
     }
 
 
 # ─── Post Performance ─────────────────────────────────────────────────────────
 
+
 @router.get("/growth/posts/performance")
 async def get_post_performance(
-    channel: Optional[str] = Query(default=None),
+    channel: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=50),
     user=Depends(get_current_user),
 ):
@@ -96,7 +96,7 @@ async def get_post_performance(
         # Return top performers across all channels
         top = get_top_performers(user_id, limit=limit)
         bottom = sorted(
-            [s for s in get_channel_metrics(user_id, "x", limit=50)],
+            get_channel_metrics(user_id, "x", limit=50),
             key=lambda x: x["engagement_score"],
         )[:5]
         return {
@@ -116,16 +116,18 @@ async def get_post_performance(
         "all_posts": snapshots,
         "avg_engagement_score": (
             round(sum(s["engagement_score"] for s in snapshots) / len(snapshots), 4)
-            if snapshots else 0.0
+            if snapshots
+            else 0.0
         ),
     }
 
 
 # ─── Learning Insights ────────────────────────────────────────────────────────
 
+
 @router.get("/growth/insights")
 async def get_growth_insights(
-    niche: Optional[str] = Query(default=None),
+    niche: str | None = Query(default=None),
     user=Depends(get_current_user),
 ):
     """
@@ -176,28 +178,32 @@ def _generate_next_actions(
     promoted: list[dict],
     suppressed: list[dict],
     perf: dict,
-    niche: Optional[str],
+    niche: str | None,
 ) -> list[dict]:
     """Synthesize actionable next steps from learning data."""
     actions = []
 
     # Promoted patterns → double down
     for p in promoted[:2]:
-        actions.append({
-            "action": "double_down",
-            "description": f"More {p['strategy_type']} content — {p['success_rate']:.0%} success rate",
-            "evidence": p.get("note", ""),
-            "priority": "high",
-        })
+        actions.append(
+            {
+                "action": "double_down",
+                "description": f"More {p['strategy_type']} content — {p['success_rate']:.0%} success rate",
+                "evidence": p.get("note", ""),
+                "priority": "high",
+            }
+        )
 
     # Suppressed patterns → avoid
     for s in suppressed[:2]:
-        actions.append({
-            "action": "avoid",
-            "description": f"Reduce {s['strategy_type']} content — {s['failure_rate']:.0%} failure rate",
-            "evidence": s.get("note", ""),
-            "priority": "medium",
-        })
+        actions.append(
+            {
+                "action": "avoid",
+                "description": f"Reduce {s['strategy_type']} content — {s['failure_rate']:.0%} failure rate",
+                "evidence": s.get("note", ""),
+                "priority": "medium",
+            }
+        )
 
     # If no data yet, suggest starting actions
     if not actions:
@@ -219,17 +225,20 @@ def _generate_next_actions(
     # If avg engagement is low, suggest hooks
     avg_score = perf.get("avg_engagement_score", 0.0)
     if avg_score < 0.05 and perf.get("total_posts_measured", 0) >= 5:
-        actions.append({
-            "action": "optimize_hooks",
-            "description": "Engagement is below 5% — test stronger opening hooks",
-            "evidence": f"Current avg engagement score: {avg_score:.2%}",
-            "priority": "high",
-        })
+        actions.append(
+            {
+                "action": "optimize_hooks",
+                "description": "Engagement is below 5% — test stronger opening hooks",
+                "evidence": f"Current avg engagement score: {avg_score:.2%}",
+                "priority": "high",
+            }
+        )
 
     return actions[:5]
 
 
 # ─── Full Dashboard ───────────────────────────────────────────────────────────
+
 
 def _shape_post_perf(snap: dict) -> dict:
     """Transform a content_metrics snapshot to the PostPerf shape the frontend expects."""
@@ -287,7 +296,11 @@ async def get_growth_dashboard(
     # Post performance
     recent_posts = get_channel_metrics(user_id, channel, limit=20)
     top_posts_raw = get_top_performers(user_id, channel=channel, limit=5)
-    worst_posts_raw = sorted(recent_posts, key=lambda x: x["engagement_score"])[:3] if len(recent_posts) >= 3 else []
+    worst_posts_raw = (
+        sorted(recent_posts, key=lambda x: x["engagement_score"])[:3]
+        if len(recent_posts) >= 3
+        else []
+    )
 
     # Active experiment — auto-create a default if none exists so Generate Posts works
     exp = get_active_experiment(user_id)
@@ -316,8 +329,7 @@ async def get_growth_dashboard(
             "delta_30d": delta_30d,
             "has_data": len(follower_history) > 0,
             "points": [
-                {"date": s["ts"][:10], "value": s["follower_count"]}
-                for s in follower_history
+                {"date": s["ts"][:10], "value": s["follower_count"]} for s in follower_history
             ],
         },
         # Post lists — matches PostPerf interface
@@ -335,18 +347,22 @@ async def get_growth_dashboard(
             "niche": niche,
             "stage": exp.get("stage"),
             "posts_drafted": exp.get("posts_drafted", 0),
-        } if exp else None,
+        }
+        if exp
+        else None,
         # Summary stats at root level
         "posts_measured": len(recent_posts),
         "avg_engagement_rate": (
             round(sum(p["engagement_score"] for p in recent_posts) / len(recent_posts), 4)
-            if recent_posts else 0.0
+            if recent_posts
+            else 0.0
         ),
         "strategy_success_rate": learning.get("success_rate") or 0.0,
     }
 
 
 # ─── Ads Summary ─────────────────────────────────────────────────────────────
+
 
 @router.get("/growth/ads/summary")
 async def get_ads_summary(user=Depends(get_current_user)):
@@ -372,9 +388,9 @@ class RegisterCampaignRequest(BaseModel):
     objective: str
     daily_budget_usd: float
     landing_page_url: str
-    ad_set_id: Optional[str] = None
-    ad_group_id: Optional[str] = None
-    ad_id: Optional[str] = None
+    ad_set_id: str | None = None
+    ad_group_id: str | None = None
+    ad_id: str | None = None
 
 
 @router.post("/growth/ads/register")

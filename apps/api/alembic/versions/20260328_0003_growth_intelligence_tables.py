@@ -92,7 +92,9 @@ def upgrade() -> None:
         ),
         sa.Column("source_type", sa.String(64), nullable=False, index=True),
         sa.Column("source_url", sa.Text, nullable=False),
-        sa.Column("content_hash", sa.String(64), nullable=False),  # SHA-256, for dedup (index created below)
+        sa.Column(
+            "content_hash", sa.String(64), nullable=False
+        ),  # SHA-256, for dedup (index created below)
         sa.Column("title", sa.Text, server_default=""),
         sa.Column("author", sa.String(255), server_default=""),
         sa.Column("raw_text", sa.Text, nullable=False),

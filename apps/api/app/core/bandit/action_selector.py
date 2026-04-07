@@ -31,25 +31,25 @@ Safety rules:
   - Maximum confidence cap: 0.9 (never 100% sure)
   - All selections logged for propensity scoring
 """
+
 from __future__ import annotations
 
 import json
 import math
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "bandit_store.json"
 
-EPSILON = 0.2          # Exploration rate (20% random, 80% greedy)
-MIN_OBSERVATIONS = 3   # Minimum before exploitation
-UCB_ALPHA = 1.0        # UCB confidence width
+EPSILON = 0.2  # Exploration rate (20% random, 80% greedy)
+MIN_OBSERVATIONS = 3  # Minimum before exploitation
+UCB_ALPHA = 1.0  # UCB confidence width
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _load() -> dict:
@@ -71,12 +71,15 @@ def _save(data: dict) -> None:
 
 # ── Arm statistics ─────────────────────────────────────────────────────────────
 
+
 def _arm_key(action_type: str, action_value: str, context_niche: str) -> str:
     return f"{context_niche}:{action_type}:{action_value}"
 
 
 def _get_arm(data: dict, key: str) -> dict:
-    return data["arm_stats"].get(key, {"n": 0, "total_reward": 0.0, "mean_reward": 0.0, "ucb": float("inf")})
+    return data["arm_stats"].get(
+        key, {"n": 0, "total_reward": 0.0, "mean_reward": 0.0, "ucb": float("inf")}
+    )
 
 
 def _update_arm(data: dict, key: str, reward: float) -> None:
@@ -95,11 +98,12 @@ def _update_arm(data: dict, key: str, reward: float) -> None:
 
 # ── Action selection ──────────────────────────────────────────────────────────
 
+
 def select_action(
     action_type: str,
     candidates: list[str],
     context_niche: str,
-    context_extra: Optional[dict] = None,
+    context_extra: dict | None = None,
     model_version: str = "epsilon_greedy_v1",
 ) -> dict:
     """
@@ -143,7 +147,11 @@ def select_action(
     # Compute confidence for selected arm
     sel_key = _arm_key(action_type, selected, context_niche)
     sel_arm = _get_arm(data, sel_key)
-    confidence = min(0.9, max(0.1, sel_arm["mean_reward"] * 0.9 + 0.1)) if sel_arm["n"] >= MIN_OBSERVATIONS else 0.1
+    confidence = (
+        min(0.9, max(0.1, sel_arm["mean_reward"] * 0.9 + 0.1))
+        if sel_arm["n"] >= MIN_OBSERVATIONS
+        else 0.1
+    )
 
     # Log selection
     log_entry = {
@@ -190,7 +198,7 @@ def record_reward(
     selection_id: str,
     reward: float,
     reward_type: str = "binary",  # binary | continuous | roas | cac_proxy
-) -> Optional[dict]:
+) -> dict | None:
     """
     Record the reward for a previous action selection.
 
@@ -242,8 +250,8 @@ def get_arm_summary(action_type: str, context_niche: str) -> dict:
 
 
 def get_selection_log(
-    action_type: Optional[str] = None,
-    context_niche: Optional[str] = None,
+    action_type: str | None = None,
+    context_niche: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
     """Return recent action selections for audit/debugging."""

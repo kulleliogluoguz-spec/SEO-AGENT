@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -39,7 +40,7 @@ class VLLMProvider(BaseProvider):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -116,11 +117,13 @@ class VLLMProvider(BaseProvider):
                     args = json.loads(args)
                 except json.JSONDecodeError:
                     args = {"raw": args}
-            tool_calls.append(ToolCall(
-                id=tc.get("id", ""),
-                name=fn.get("name", ""),
-                arguments=args,
-            ))
+            tool_calls.append(
+                ToolCall(
+                    id=tc.get("id", ""),
+                    name=fn.get("name", ""),
+                    arguments=args,
+                )
+            )
 
         finish = choice.get("finish_reason", "stop")
         return AIMessage(

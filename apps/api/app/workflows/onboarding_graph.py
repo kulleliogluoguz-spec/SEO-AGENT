@@ -17,11 +17,11 @@ Graph structure:
 Human-in-the-loop checkpoints are inserted before any action that
 exceeds the workspace autonomy level.
 """
+
 import uuid
-from typing import Annotated, TypedDict
+from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
 
 from app.agents.base import AgentRunContext
 from app.agents.layer1.site_onboarding import (
@@ -30,8 +30,8 @@ from app.agents.layer1.site_onboarding import (
 )
 from app.agents.layer4.technical_seo import TechnicalSEOAuditAgent, TechnicalSEOInput
 
-
 # ─── Graph State ──────────────────────────────────────────────────────────────
+
 
 class OnboardingState(TypedDict):
     site_id: str
@@ -59,6 +59,7 @@ class OnboardingState(TypedDict):
 
 
 # ─── Node Functions ───────────────────────────────────────────────────────────
+
 
 async def node_onboard_site(state: OnboardingState) -> dict:
     """Run site onboarding agent (domain + robots + initial product intel)."""
@@ -107,8 +108,14 @@ async def node_seo_audit(state: OnboardingState) -> dict:
 
     # Use demo pages if no real crawl data
     pages = state.get("crawl_pages") or [
-        {"url": state["url"], "title": "Homepage", "meta_description": None,
-         "h1": "Welcome", "word_count": 450, "status_code": 200},
+        {
+            "url": state["url"],
+            "title": "Homepage",
+            "meta_description": None,
+            "h1": "Welcome",
+            "word_count": 450,
+            "status_code": 200,
+        },
     ]
 
     result = await agent.run(
@@ -147,6 +154,7 @@ async def node_finalize(state: OnboardingState) -> dict:
 
 
 # ─── Graph Definition ─────────────────────────────────────────────────────────
+
 
 def build_onboarding_graph() -> StateGraph:
     """

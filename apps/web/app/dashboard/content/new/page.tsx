@@ -190,7 +190,7 @@ export default function NewContentPage() {
         </div>
         <h2 className="text-xl font-bold text-gray-900">Content brief created</h2>
         <p className="text-sm text-gray-500">
-          Your brief for "<span className="font-medium text-gray-700">{topic}</span>" has been added to the content queue.
+          Your brief for &ldquo;<span className="font-medium text-gray-700">{topic}</span>&rdquo; has been added to the content queue.
         </p>
         <div className="flex items-center justify-center gap-3 pt-2">
           <Link href="/dashboard/content" className="btn-primary">View Content Queue</Link>
@@ -243,7 +243,7 @@ export default function NewContentPage() {
                     <p className="font-semibold text-sm text-gray-900">{opp.theme}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{opp.description}</p>
                     {opp.hook_ideas?.length > 0 && (
-                      <p className="text-xs text-violet-600 mt-1.5 italic">"{opp.hook_ideas[0]}"</p>
+                      <p className="text-xs text-violet-600 mt-1.5 italic">&ldquo;{opp.hook_ideas[0]}&rdquo;</p>
                     )}
                   </div>
                   <span className="text-xs text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full flex-shrink-0">

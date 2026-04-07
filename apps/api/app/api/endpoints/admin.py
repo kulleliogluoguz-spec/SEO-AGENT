@@ -2,6 +2,7 @@
 Admin endpoints: system health, feature flags, agent registry summary.
 Superuser-only.
 """
+
 import platform
 import sys
 
@@ -49,7 +50,8 @@ async def feature_flags(current_user: User = Depends(require_superuser)) -> dict
 @router.get("/agents", summary="Agent registry summary")
 async def agent_registry(current_user: User = Depends(require_superuser)) -> dict:
     """Superuser: summary of all registered agents by layer."""
-    from app.agents.registry import REGISTRY_BY_LAYER, AGENT_REGISTRY
+    from app.agents.registry import AGENT_REGISTRY, REGISTRY_BY_LAYER
+
     return {
         "total": len(AGENT_REGISTRY),
         "by_layer": {

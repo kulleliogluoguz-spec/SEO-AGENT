@@ -4,7 +4,9 @@ Slack Notifier Connector.
 Sends notifications for approvals, reports, and alerts.
 MOCK mode logs to console. REAL mode uses Slack API.
 """
+
 import structlog
+
 from app.core.config.settings import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -29,9 +31,18 @@ class SlackConnector:
             return True
         return await self._send_message(
             blocks=[
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"*Approval Required:* {title}"}},
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*Approval Required:* {title}"},
+                },
                 {"type": "section", "text": {"type": "mrkdwn", "text": description}},
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"Risk: *{risk_level}* | <{approval_url}|Review>"}},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Risk: *{risk_level}* | <{approval_url}|Review>",
+                    },
+                },
             ]
         )
 
@@ -41,8 +52,14 @@ class SlackConnector:
             return True
         return await self._send_message(
             blocks=[
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"📊 *Report ready:* {report_title}"}},
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"<{report_url}|View Report>"}},
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"📊 *Report ready:* {report_title}"},
+                },
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"<{report_url}|View Report>"},
+                },
             ]
         )
 
@@ -51,6 +68,7 @@ class SlackConnector:
             logger.warning("slack.no_token_configured")
             return False
         import httpx
+
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.post(

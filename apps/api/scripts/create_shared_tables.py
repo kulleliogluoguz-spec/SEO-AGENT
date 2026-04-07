@@ -12,6 +12,7 @@ Usage:
     DATABASE_URL='postgresql+asyncpg://aicmo:aicmo_dev@localhost:5432/aicmo' \
         python3 scripts/create_shared_tables.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -218,8 +219,15 @@ async def create_tables() -> None:
             "SELECT tablename FROM pg_tables WHERE schemaname='public' "
             "AND tablename = ANY($1::text[]) ORDER BY tablename",
             [
-                "contacts", "leads", "lead_timeline", "ai_feedback", "ai_memory",
-                "phase2_calls", "call_transcripts", "call_analysis", "invoices",
+                "contacts",
+                "leads",
+                "lead_timeline",
+                "ai_feedback",
+                "ai_memory",
+                "phase2_calls",
+                "call_transcripts",
+                "call_analysis",
+                "invoices",
             ],
         )
         for r in rows:

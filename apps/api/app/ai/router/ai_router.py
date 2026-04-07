@@ -19,7 +19,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from app.ai.providers.base import AIMessage, AIRequest, FinishReason
 from app.ai.providers.provider_manager import get_provider_manager
@@ -37,12 +37,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RoutingPolicy:
     """Configurable routing policy."""
+
     # Deployment mode
     profile: DeploymentProfile = DeploymentProfile.LOCAL
 
     # Cost limits
     max_cost_per_request: float = 0.10  # USD
-    prefer_free: bool = True            # Prefer self-hosted (cost=0) models
+    prefer_free: bool = True  # Prefer self-hosted (cost=0) models
 
     # Latency limits
     max_latency_ms: int = 30000
@@ -52,7 +53,7 @@ class RoutingPolicy:
     fallback_to_anthropic: bool = True
 
     # Shadow mode
-    enable_shadow: bool = False          # Run shadow models in parallel for eval
+    enable_shadow: bool = False  # Run shadow models in parallel for eval
 
     # Role overrides (force a specific model for a role)
     role_overrides: dict[str, str] = field(default_factory=dict)
@@ -61,12 +62,13 @@ class RoutingPolicy:
 @dataclass
 class RoutingDecision:
     """The result of a routing decision."""
+
     model_id: str
-    model_card: Optional[ModelCard]
+    model_card: ModelCard | None
     provider: str
     reason: str
-    fallback_model_id: Optional[str] = None
-    shadow_model_id: Optional[str] = None
+    fallback_model_id: str | None = None
+    shadow_model_id: str | None = None
     routing_latency_ms: float = 0.0
 
 
@@ -76,7 +78,7 @@ class AIRouter:
     Selects the best model and provider based on the routing policy.
     """
 
-    def __init__(self, policy: Optional[RoutingPolicy] = None) -> None:
+    def __init__(self, policy: RoutingPolicy | None = None) -> None:
         self.policy = policy or self._default_policy()
         self._call_count = 0
         self._error_count = 0
@@ -122,7 +124,9 @@ class AIRouter:
         if request.model_id:
             card = registry.get(request.model_id)
             if card and card.enabled:
-                fallback = self._find_fallback(request.role) if self.policy.enable_fallback else None
+                fallback = (
+                    self._find_fallback(request.role) if self.policy.enable_fallback else None
+                )
                 return RoutingDecision(
                     model_id=request.model_id,
                     model_card=card,
@@ -160,7 +164,8 @@ class AIRouter:
         if required_caps:
             all_models = registry.list_for_profile(self.policy.profile)
             filtered = [
-                m for m in all_models
+                m
+                for m in all_models
                 if all(m.has_capability(cap) for cap in required_caps) and not m.is_fallback
             ]
             if filtered:
@@ -205,7 +210,7 @@ class AIRouter:
             routing_latency_ms=(time.time() - start) * 1000,
         )
 
-    def _select_best(self, candidates: list[ModelCard]) -> Optional[ModelCard]:
+    def _select_best(self, candidates: list[ModelCard]) -> ModelCard | None:
         """
         Select the best model from candidates using a scoring function.
 
@@ -240,7 +245,7 @@ class AIRouter:
         candidates.sort(key=score, reverse=True)
         return candidates[0]
 
-    def _find_fallback(self, role: Optional[str]) -> Optional[str]:
+    def _find_fallback(self, role: str | None) -> str | None:
         if not self.policy.enable_fallback:
             return None
         registry = get_model_registry()
@@ -260,7 +265,7 @@ class AIRouter:
             return "claude-sonnet-4"
         return None
 
-    def _find_shadow(self, role: AIRole) -> Optional[str]:
+    def _find_shadow(self, role: AIRole) -> str | None:
         registry = get_model_registry()
         candidates = registry.list_for_role(role)
         shadows = [m for m in candidates if m.shadow_mode]
@@ -330,7 +335,7 @@ class AIRouter:
 
 
 # Singleton
-_router: Optional[AIRouter] = None
+_router: AIRouter | None = None
 
 
 def get_ai_router() -> AIRouter:

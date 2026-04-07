@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
+from app.ai.providers.anthropic_provider import AnthropicProvider
 from app.ai.providers.base import AIMessage, AIRequest, BaseProvider
 from app.ai.providers.ollama_provider import OllamaProvider
 from app.ai.providers.vllm_provider import VLLMProvider
-from app.ai.providers.anthropic_provider import AnthropicProvider
-from app.ai.registry.model_registry import ModelProvider, get_model_registry
+from app.ai.registry.model_registry import get_model_registry
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +53,10 @@ class ProviderManager:
         self._initialized = True
         logger.info(f"ProviderManager initialized with providers: {list(self._providers.keys())}")
 
-    def get_provider(self, provider_name: str) -> Optional[BaseProvider]:
+    def get_provider(self, provider_name: str) -> BaseProvider | None:
         return self._providers.get(provider_name)
 
-    def get_provider_for_model(self, model_id: str) -> Optional[BaseProvider]:
+    def get_provider_for_model(self, model_id: str) -> BaseProvider | None:
         """Look up the model in the registry and return its provider."""
         registry = get_model_registry()
         card = registry.get(model_id)
@@ -95,7 +95,7 @@ class ProviderManager:
     async def complete_with_fallback(
         self,
         request: AIRequest,
-        fallback_model_id: Optional[str] = None,
+        fallback_model_id: str | None = None,
     ) -> AIMessage:
         """Try primary model, fall back on failure."""
         result = await self.complete(request)
@@ -152,7 +152,7 @@ class ProviderManager:
 
 
 # Singleton
-_manager: Optional[ProviderManager] = None
+_manager: ProviderManager | None = None
 
 
 async def get_provider_manager() -> ProviderManager:

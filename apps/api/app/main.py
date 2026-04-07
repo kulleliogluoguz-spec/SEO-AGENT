@@ -27,21 +27,21 @@ from app.api.endpoints import (
 )
 from app.api.endpoints.ad_analytics import router as ad_analytics_router
 from app.api.endpoints.ads_connectors import router as ads_connectors_router
-from app.api.endpoints.ai_learning import router as ai_learning_router
-from app.api.endpoints.calling import router as calling_router
-from app.api.endpoints.calling_compat import router as calling_compat_router
-from app.api.endpoints.email_bridge import router as email_bridge_router
-from app.api.endpoints.email_bridge_compat import router as email_bridge_compat_router
-from app.api.endpoints.finance import router as finance_router
 from app.api.endpoints.ads_launch import router as ads_launch_router
 from app.api.endpoints.ai_admin import router as ai_router
+from app.api.endpoints.ai_learning import router as ai_learning_router
 from app.api.endpoints.autonomy import router as autonomy_router
 from app.api.endpoints.brand import router as brand_router
+from app.api.endpoints.calling import router as calling_router
+from app.api.endpoints.calling_compat import router as calling_compat_router
 from app.api.endpoints.calls import router as calls_router
 from app.api.endpoints.campaigns import router as campaigns_router
 from app.api.endpoints.content_queue import router as content_queue_router
 from app.api.endpoints.crm import router as crm_router
 from app.api.endpoints.email_automation import router as email_router
+from app.api.endpoints.email_bridge import router as email_bridge_router
+from app.api.endpoints.email_bridge_compat import router as email_bridge_compat_router
+from app.api.endpoints.finance import router as finance_router
 from app.api.endpoints.geo import router as geo_router
 from app.api.endpoints.growth_dashboard import router as growth_dashboard_router
 from app.api.endpoints.growth_experiments import router as growth_experiments_router

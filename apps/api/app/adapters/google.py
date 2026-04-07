@@ -21,13 +21,13 @@ GAQL (Google Ads Query Language):
   SELECT ... FROM ... WHERE ... ORDER BY ... LIMIT ...
   Used for all reporting queries.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -96,7 +96,8 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         """Build auth + developer token headers."""
         headers = {
             "Authorization": f"Bearer {self.credentials.access_token}",
-            "developer-token": self.credentials.developer_token or os.environ.get("GOOGLE_DEVELOPER_TOKEN", ""),
+            "developer-token": self.credentials.developer_token
+            or os.environ.get("GOOGLE_DEVELOPER_TOKEN", ""),
             "Content-Type": "application/json",
         }
         # If using a manager account, add login-customer-id
@@ -136,7 +137,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
                     msg = err.get("error", {}).get("message", resp.text[:200])
                 except Exception:
                     msg = resp.text[:200]
-                raise GoogleAdsAPIError(f"Google Ads API error: {msg}", status_code=resp.status_code)
+                raise GoogleAdsAPIError(
+                    f"Google Ads API error: {msg}", status_code=resp.status_code
+                )
 
             data = resp.json()
             all_rows.extend(data.get("results", []))
@@ -167,7 +170,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
                         msg += f" | {error.get('message', '')}"
             except Exception:
                 msg = resp.text[:300]
-            raise GoogleAdsAPIError(f"Mutate {resource} failed: {msg}", status_code=resp.status_code)
+            raise GoogleAdsAPIError(
+                f"Mutate {resource} failed: {msg}", status_code=resp.status_code
+            )
 
         return resp.json()
 
@@ -203,13 +208,17 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             )
 
         try:
-            resp = httpx.post(GOOGLE_TOKEN_URL, data={
-                "code": code,
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code",
-            }, timeout=_TIMEOUT)
+            resp = httpx.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+                timeout=_TIMEOUT,
+            )
             data = resp.json()
         except httpx.RequestError as e:
             raise GoogleAdsAPIError(f"Network error during token exchange: {e}")
@@ -233,8 +242,11 @@ class GoogleAdsAdapter(BaseAdsAdapter):
                 "Add prompt=consent to auth URL to force a new grant."
             )
 
-        self._log("exchange_code", status="success",
-                  response_summary={"has_refresh_token": bool(refresh_token), "expires_in": expires_in})
+        self._log(
+            "exchange_code",
+            status="success",
+            response_summary={"has_refresh_token": bool(refresh_token), "expires_in": expires_in},
+        )
 
         return AdapterCredentials(
             platform="google",
@@ -261,12 +273,16 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             )
 
         try:
-            resp = httpx.post(GOOGLE_TOKEN_URL, data={
-                "grant_type": "refresh_token",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": self.credentials.refresh_token,
-            }, timeout=_TIMEOUT)
+            resp = httpx.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": self.credentials.refresh_token,
+                },
+                timeout=_TIMEOUT,
+            )
             data = resp.json()
         except httpx.RequestError as e:
             raise GoogleAdsAPIError(f"Token refresh network error: {e}")
@@ -280,8 +296,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         expires_in = data.get("expires_in", 3600)
         expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
 
-        self._log("refresh_access_token", status="success",
-                  response_summary={"expires_in": expires_in})
+        self._log(
+            "refresh_access_token", status="success", response_summary={"expires_in": expires_in}
+        )
 
         return AdapterCredentials(
             platform="google",
@@ -311,8 +328,11 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             resp = httpx.get(url, headers=self._headers(), timeout=_TIMEOUT)
             if resp.status_code == 200:
                 data = resp.json()
-                self._log("verify_credentials", status="success",
-                          response_summary={"customer_count": len(data.get("resourceNames", []))})
+                self._log(
+                    "verify_credentials",
+                    status="success",
+                    response_summary={"customer_count": len(data.get("resourceNames", []))},
+                )
                 return AdapterStatus.AUTH_VERIFIED
             return AdapterStatus.ERROR
         except Exception as e:
@@ -336,7 +356,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError(f"Network error listing customers: {e}")
 
         if resp.status_code != 200:
-            raise GoogleAdsAPIError(f"Failed to list customers: {resp.text[:200]}", resp.status_code)
+            raise GoogleAdsAPIError(
+                f"Failed to list customers: {resp.text[:200]}", resp.status_code
+            )
 
         data = resp.json()
         resource_names = data.get("resourceNames", [])
@@ -345,31 +367,41 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         for rn in resource_names[:20]:  # Limit to avoid quota exhaustion
             customer_id = rn.split("/")[-1]
             try:
-                rows = self._gaql(customer_id,
+                rows = self._gaql(
+                    customer_id,
                     "SELECT customer.id, customer.descriptive_name, customer.currency_code, "
                     "customer.time_zone, customer.status, customer.manager "
-                    "FROM customer LIMIT 1"
+                    "FROM customer LIMIT 1",
                 )
                 if rows:
                     c = rows[0].get("customer", {})
-                    accounts.append({
-                        "id": str(c.get("id", customer_id)),
-                        "name": c.get("descriptiveName", f"Customer {customer_id}"),
-                        "currency": c.get("currencyCode", "USD"),
-                        "timezone": c.get("timeZone", "UTC"),
-                        "status": c.get("status", "UNKNOWN"),
-                        "is_manager": c.get("manager", False),
-                    })
+                    accounts.append(
+                        {
+                            "id": str(c.get("id", customer_id)),
+                            "name": c.get("descriptiveName", f"Customer {customer_id}"),
+                            "currency": c.get("currencyCode", "USD"),
+                            "timezone": c.get("timeZone", "UTC"),
+                            "status": c.get("status", "UNKNOWN"),
+                            "is_manager": c.get("manager", False),
+                        }
+                    )
             except GoogleAdsAPIError as e:
                 # Some accounts may not be accessible for GAQL
-                accounts.append({
-                    "id": customer_id,
-                    "name": f"Customer {customer_id}",
-                    "error": str(e),
-                })
+                accounts.append(
+                    {
+                        "id": customer_id,
+                        "name": f"Customer {customer_id}",
+                        "error": str(e),
+                    }
+                )
 
-        self._log("list_ad_accounts", "account", None, "success",
-                  response_summary={"count": len(accounts)})
+        self._log(
+            "list_ad_accounts",
+            "account",
+            None,
+            "success",
+            response_summary={"count": len(accounts)},
+        )
         return accounts
 
     def get_account_info(self) -> dict:
@@ -379,10 +411,11 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         if not customer_id:
             raise GoogleAdsAPIError("No account_id linked")
 
-        rows = self._gaql(customer_id,
+        rows = self._gaql(
+            customer_id,
             "SELECT customer.id, customer.descriptive_name, customer.currency_code, "
             "customer.time_zone, customer.status, customer.optimization_score "
-            "FROM customer LIMIT 1"
+            "FROM customer LIMIT 1",
         )
         if not rows:
             raise GoogleAdsAPIError(f"No data returned for customer {customer_id}")
@@ -400,7 +433,7 @@ class GoogleAdsAdapter(BaseAdsAdapter):
 
     # ── Campaigns ─────────────────────────────────────────────────────────────
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """GAQL SELECT from campaign table."""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         customer_id = self.credentials.account_id
@@ -411,7 +444,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         if status_filter:
             where_clause += f" AND campaign.status = '{status_filter}'"
 
-        rows = self._gaql(customer_id, f"""
+        rows = self._gaql(
+            customer_id,
+            f"""
             SELECT
                 campaign.id,
                 campaign.name,
@@ -424,26 +459,34 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             {where_clause}
             ORDER BY campaign.name
             LIMIT 100
-        """)
+        """,
+        )
 
         campaigns = []
         for row in rows:
             c = row.get("campaign", {})
             b = row.get("campaignBudget", {})
             daily_micros = b.get("amountMicros", 0)
-            campaigns.append({
-                "id": str(c.get("id")),
-                "name": c.get("name"),
-                "status": c.get("status"),
-                "type": c.get("advertisingChannelType"),
-                "daily_budget_usd": round(int(daily_micros) / 1_000_000, 2),
-                "start_date": c.get("startDate"),
-                "end_date": c.get("endDate"),
-                "platform": "google",
-            })
+            campaigns.append(
+                {
+                    "id": str(c.get("id")),
+                    "name": c.get("name"),
+                    "status": c.get("status"),
+                    "type": c.get("advertisingChannelType"),
+                    "daily_budget_usd": round(int(daily_micros) / 1_000_000, 2),
+                    "start_date": c.get("startDate"),
+                    "end_date": c.get("endDate"),
+                    "platform": "google",
+                }
+            )
 
-        self._log("list_campaigns", "campaign", None, "success",
-                  response_summary={"count": len(campaigns)})
+        self._log(
+            "list_campaigns",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(campaigns)},
+        )
         return campaigns
 
     def create_campaign(self, draft: CampaignDraft) -> dict:
@@ -459,13 +502,19 @@ class GoogleAdsAdapter(BaseAdsAdapter):
 
         # Step 1: Create campaign budget
         budget_micros = int(draft.budget_daily_usd * 1_000_000)
-        budget_result = self._mutate(customer_id, "campaignBudgets", [{
-            "create": {
-                "name": f"{draft.name} Budget",
-                "amountMicros": str(budget_micros),
-                "deliveryMethod": "STANDARD",
-            }
-        }])
+        budget_result = self._mutate(
+            customer_id,
+            "campaignBudgets",
+            [
+                {
+                    "create": {
+                        "name": f"{draft.name} Budget",
+                        "amountMicros": str(budget_micros),
+                        "deliveryMethod": "STANDARD",
+                    }
+                }
+            ],
+        )
 
         budget_resource_name = budget_result.get("results", [{}])[0].get("resourceName", "")
         if not budget_resource_name:
@@ -496,9 +545,14 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         campaign_resource_name = campaign_result.get("results", [{}])[0].get("resourceName", "")
         campaign_id = campaign_resource_name.split("/")[-1] if campaign_resource_name else ""
 
-        self._log("create_campaign", "campaign", campaign_id, "success",
-                  request_summary={"name": draft.name, "channel": channel_type, "status": "PAUSED"},
-                  response_summary={"resource_name": campaign_resource_name})
+        self._log(
+            "create_campaign",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"name": draft.name, "channel": channel_type, "status": "PAUSED"},
+            response_summary={"resource_name": campaign_resource_name},
+        )
 
         return {
             "id": campaign_id,
@@ -513,7 +567,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
 
     def update_campaign_status(self, campaign_id: str, status: str) -> dict:
         """Update campaign status via mutate. ENABLED requires APPROVAL_GATE stage."""
-        google_status = {"ACTIVE": "ENABLED", "PAUSED": "PAUSED", "DELETED": "REMOVED"}.get(status, status)
+        google_status = {"ACTIVE": "ENABLED", "PAUSED": "PAUSED", "DELETED": "REMOVED"}.get(
+            status, status
+        )
         if google_status == "ENABLED":
             self._require_stage(AdapterCapabilityStage.APPROVAL_GATE)
         self._require_stage(AdapterCapabilityStage.DRAFT_CREATE)
@@ -523,13 +579,24 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError("No account linked")
 
         resource_name = f"customers/{customer_id}/campaigns/{campaign_id}"
-        result = self._mutate(customer_id, "campaigns", [{
-            "update": {"resourceName": resource_name, "status": google_status},
-            "updateMask": "status",
-        }])
+        self._mutate(
+            customer_id,
+            "campaigns",
+            [
+                {
+                    "update": {"resourceName": resource_name, "status": google_status},
+                    "updateMask": "status",
+                }
+            ],
+        )
 
-        self._log("update_campaign_status", "campaign", campaign_id, "success",
-                  request_summary={"status": google_status})
+        self._log(
+            "update_campaign_status",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"status": google_status},
+        )
         return {"id": campaign_id, "status": google_status, "resource_name": resource_name}
 
     def update_campaign_budget(self, campaign_id: str, daily_budget_usd: float) -> dict:
@@ -540,9 +607,10 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError("No account linked")
 
         # First get the budget resource name from the campaign
-        rows = self._gaql(customer_id,
+        rows = self._gaql(
+            customer_id,
             f"SELECT campaign.id, campaign_budget.resource_name FROM campaign "
-            f"WHERE campaign.id = {campaign_id} LIMIT 1"
+            f"WHERE campaign.id = {campaign_id} LIMIT 1",
         )
         if not rows:
             raise GoogleAdsAPIError(f"Campaign {campaign_id} not found")
@@ -552,13 +620,24 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError(f"No budget resource name found for campaign {campaign_id}")
 
         budget_micros = int(daily_budget_usd * 1_000_000)
-        self._mutate(customer_id, "campaignBudgets", [{
-            "update": {"resourceName": budget_rn, "amountMicros": str(budget_micros)},
-            "updateMask": "amount_micros",
-        }])
+        self._mutate(
+            customer_id,
+            "campaignBudgets",
+            [
+                {
+                    "update": {"resourceName": budget_rn, "amountMicros": str(budget_micros)},
+                    "updateMask": "amount_micros",
+                }
+            ],
+        )
 
-        self._log("update_campaign_budget", "campaign", campaign_id, "success",
-                  request_summary={"daily_budget_usd": daily_budget_usd})
+        self._log(
+            "update_campaign_budget",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"daily_budget_usd": daily_budget_usd},
+        )
         return {"id": campaign_id, "daily_budget_usd": daily_budget_usd}
 
     # ── Audiences ─────────────────────────────────────────────────────────────
@@ -570,26 +649,34 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         if not customer_id:
             raise GoogleAdsAPIError("No account linked")
 
-        rows = self._gaql(customer_id,
+        rows = self._gaql(
+            customer_id,
             "SELECT user_list.id, user_list.name, user_list.membership_status, "
             "user_list.size_for_search, user_list.size_for_display, user_list.type "
-            "FROM user_list WHERE user_list.membership_status = 'OPEN' LIMIT 100"
+            "FROM user_list WHERE user_list.membership_status = 'OPEN' LIMIT 100",
         )
 
         audiences = []
         for row in rows:
             ul = row.get("userList", {})
-            audiences.append({
-                "id": str(ul.get("id")),
-                "name": ul.get("name"),
-                "type": ul.get("type"),
-                "size_search": ul.get("sizeForSearch"),
-                "size_display": ul.get("sizeForDisplay"),
-                "status": ul.get("membershipStatus"),
-            })
+            audiences.append(
+                {
+                    "id": str(ul.get("id")),
+                    "name": ul.get("name"),
+                    "type": ul.get("type"),
+                    "size_search": ul.get("sizeForSearch"),
+                    "size_display": ul.get("sizeForDisplay"),
+                    "status": ul.get("membershipStatus"),
+                }
+            )
 
-        self._log("list_audiences", "audience", None, "success",
-                  response_summary={"count": len(audiences)})
+        self._log(
+            "list_audiences",
+            "audience",
+            None,
+            "success",
+            response_summary={"count": len(audiences)},
+        )
         return audiences
 
     def create_audience(self, draft: AudienceDraft) -> dict:
@@ -612,13 +699,14 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         resource_name = result.get("results", [{}])[0].get("resourceName", "")
         list_id = resource_name.split("/")[-1] if resource_name else ""
 
-        self._log("create_audience", "audience", list_id, "success",
-                  request_summary={"name": draft.name})
+        self._log(
+            "create_audience", "audience", list_id, "success", request_summary={"name": draft.name}
+        )
         return {"id": list_id, "resource_name": resource_name, "name": draft.name}
 
     # ── Creatives ─────────────────────────────────────────────────────────────
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GAQL SELECT from ad_group_ad."""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         customer_id = self.credentials.account_id
@@ -629,25 +717,35 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         if campaign_id:
             where += f" AND campaign.id = {campaign_id}"
 
-        rows = self._gaql(customer_id, f"""
+        rows = self._gaql(
+            customer_id,
+            f"""
             SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type,
                    ad_group_ad.ad.final_urls, ad_group_ad.status
             FROM ad_group_ad {where} LIMIT 50
-        """)
+        """,
+        )
 
         creatives = []
         for row in rows:
             ad = row.get("adGroupAd", {}).get("ad", {})
-            creatives.append({
-                "id": str(ad.get("id")),
-                "name": ad.get("name"),
-                "type": ad.get("type"),
-                "final_urls": ad.get("finalUrls", []),
-                "status": row.get("adGroupAd", {}).get("status"),
-            })
+            creatives.append(
+                {
+                    "id": str(ad.get("id")),
+                    "name": ad.get("name"),
+                    "type": ad.get("type"),
+                    "final_urls": ad.get("finalUrls", []),
+                    "status": row.get("adGroupAd", {}).get("status"),
+                }
+            )
 
-        self._log("list_creatives", "creative", None, "success",
-                  response_summary={"count": len(creatives)})
+        self._log(
+            "list_creatives",
+            "creative",
+            None,
+            "success",
+            response_summary={"count": len(creatives)},
+        )
         return creatives
 
     def create_creative(self, draft: CreativeDraft) -> dict:
@@ -660,11 +758,12 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         if not customer_id:
             raise GoogleAdsAPIError("No account linked")
 
-        ad_group_id = draft.__dict__.get("ad_group_id") or self.credentials.extra.get("default_ad_group_id")
+        ad_group_id = draft.__dict__.get("ad_group_id") or self.credentials.extra.get(
+            "default_ad_group_id"
+        )
         if not ad_group_id:
             raise GoogleAdsAPIError(
-                "ad_group_id required to create RSA. "
-                "Create an AdGroup first and provide its ID."
+                "ad_group_id required to create RSA. " "Create an AdGroup first and provide its ID."
             )
 
         ad_group_rn = f"customers/{customer_id}/adGroups/{ad_group_id}"
@@ -693,8 +792,13 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         resource_name = result.get("results", [{}])[0].get("resourceName", "")
         ad_id = resource_name.split("~")[-1] if resource_name else ""
 
-        self._log("create_creative", "creative", ad_id, "success",
-                  request_summary={"name": draft.name, "ad_group_id": ad_group_id})
+        self._log(
+            "create_creative",
+            "creative",
+            ad_id,
+            "success",
+            request_summary={"name": draft.name, "ad_group_id": ad_group_id},
+        )
         return {
             "id": ad_id,
             "resource_name": resource_name,
@@ -711,7 +815,7 @@ class GoogleAdsAdapter(BaseAdsAdapter):
         campaign_ids: list[str],
         date_start: str,
         date_end: str,
-        breakdown: Optional[str] = None,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GAQL query for campaign-level metrics with date range filter.
@@ -723,7 +827,9 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError("No account linked")
 
         id_list = ", ".join(campaign_ids)
-        rows = self._gaql(customer_id, f"""
+        rows = self._gaql(
+            customer_id,
+            f"""
             SELECT
                 campaign.id,
                 campaign.name,
@@ -741,7 +847,8 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             FROM campaign
             WHERE campaign.id IN ({id_list})
               AND segments.date BETWEEN '{date_start}' AND '{date_end}'
-        """)
+        """,
+        )
 
         metrics = []
         for row in rows:
@@ -754,27 +861,34 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             clicks = int(m.get("clicks", 0))
             impressions = int(m.get("impressions", 0))
 
-            metrics.append(CampaignMetrics(
-                campaign_id=str(c.get("id")),
-                platform="google",
-                date=date_start,
-                impressions=impressions,
-                clicks=clicks,
-                spend_usd=round(spend, 4),
-                conversions=int(conversions),
-                revenue_usd=round(revenue, 2),
-                cpm_usd=round(float(m.get("averageCpm", 0)) / 1_000_000, 4),
-                cpc_usd=round(float(m.get("averageCpc", 0)) / 1_000_000, 4),
-                ctr_pct=round(float(m.get("ctr", 0)) * 100, 4),
-                roas=round(revenue / spend, 3) if spend > 0 else 0.0,
-                cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
-                video_views=int(m.get("videoViews", 0)),
-                video_completion_rate=round(float(m.get("videoViewRate", 0)), 4),
-                raw=row,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=str(c.get("id")),
+                    platform="google",
+                    date=date_start,
+                    impressions=impressions,
+                    clicks=clicks,
+                    spend_usd=round(spend, 4),
+                    conversions=int(conversions),
+                    revenue_usd=round(revenue, 2),
+                    cpm_usd=round(float(m.get("averageCpm", 0)) / 1_000_000, 4),
+                    cpc_usd=round(float(m.get("averageCpc", 0)) / 1_000_000, 4),
+                    ctr_pct=round(float(m.get("ctr", 0)) * 100, 4),
+                    roas=round(revenue / spend, 3) if spend > 0 else 0.0,
+                    cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
+                    video_views=int(m.get("videoViews", 0)),
+                    video_completion_rate=round(float(m.get("videoViewRate", 0)), 4),
+                    raw=row,
+                )
+            )
 
-        self._log("pull_campaign_metrics", "campaign", None, "success",
-                  response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"})
+        self._log(
+            "pull_campaign_metrics",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"},
+        )
         return metrics
 
     def pull_ad_metrics(
@@ -790,14 +904,17 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             raise GoogleAdsAPIError("No account linked")
 
         id_list = ", ".join(ad_ids)
-        rows = self._gaql(customer_id, f"""
+        rows = self._gaql(
+            customer_id,
+            f"""
             SELECT ad_group_ad.ad.id, ad_group_ad.ad.name,
                    metrics.impressions, metrics.clicks, metrics.cost_micros,
                    metrics.conversions, metrics.conversion_value, metrics.ctr
             FROM ad_group_ad
             WHERE ad_group_ad.ad.id IN ({id_list})
               AND segments.date BETWEEN '{date_start}' AND '{date_end}'
-        """)
+        """,
+        )
 
         metrics = []
         for row in rows:
@@ -808,21 +925,24 @@ class GoogleAdsAdapter(BaseAdsAdapter):
             conversions = float(m.get("conversions", 0))
             revenue = float(m.get("conversionValue", 0))
 
-            metrics.append(CampaignMetrics(
-                campaign_id=str(ad.get("id", "")),
-                platform="google",
-                date=date_start,
-                impressions=int(m.get("impressions", 0)),
-                clicks=int(m.get("clicks", 0)),
-                spend_usd=round(spend, 4),
-                conversions=int(conversions),
-                revenue_usd=round(revenue, 2),
-                ctr_pct=round(float(m.get("ctr", 0)) * 100, 4),
-                roas=round(revenue / spend, 3) if spend > 0 else 0.0,
-                cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
-                raw=row,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=str(ad.get("id", "")),
+                    platform="google",
+                    date=date_start,
+                    impressions=int(m.get("impressions", 0)),
+                    clicks=int(m.get("clicks", 0)),
+                    spend_usd=round(spend, 4),
+                    conversions=int(conversions),
+                    revenue_usd=round(revenue, 2),
+                    ctr_pct=round(float(m.get("ctr", 0)) * 100, 4),
+                    roas=round(revenue / spend, 3) if spend > 0 else 0.0,
+                    cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
+                    raw=row,
+                )
+            )
 
-        self._log("pull_ad_metrics", "ad", None, "success",
-                  response_summary={"count": len(metrics)})
+        self._log(
+            "pull_ad_metrics", "ad", None, "success", response_summary={"count": len(metrics)}
+        )
         return metrics

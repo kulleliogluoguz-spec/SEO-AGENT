@@ -5,6 +5,7 @@ NOTE: prefix is `/api/v1/calling` to avoid colliding with the legacy
 `/api/v1/calls` endpoint that uses JSON-file storage. The frontend pages
 under `/dashboard/calls/*` consume this new module via the `calling` prefix.
 """
+
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,6 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -61,7 +61,7 @@ def _row_to_dict(row) -> dict:
 # ─── CONTACTS ──────────────────────────────────────────────────────────────
 @router.get("/contacts")
 async def list_contacts(
-    search: Optional[str] = None,
+    search: str | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -110,8 +110,8 @@ async def create_contact(
 # ─── LEADS ─────────────────────────────────────────────────────────────────
 @router.get("/leads")
 async def list_leads(
-    status: Optional[str] = None,
-    category: Optional[str] = None,
+    status: str | None = None,
+    category: str | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -208,7 +208,7 @@ async def initiate_call(
 @router.post("/upload")
 async def upload_call(
     file: UploadFile = File(...),
-    contact_id: Optional[str] = None,
+    contact_id: str | None = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -221,9 +221,7 @@ async def upload_call(
     engine = CallEngine(db, _wid(current_user))
     result = await engine.upload_recording(call_id, tmp_path, contact_id=contact_id)
     if "error" not in result:
-        background_tasks.add_task(
-            _bg_process_upload, call_id, result["recording_path"]
-        )
+        background_tasks.add_task(_bg_process_upload, call_id, result["recording_path"])
     return result
 
 
@@ -242,8 +240,8 @@ async def _bg_process_upload(call_id: str, recording_path: str) -> None:
 
 @router.get("")
 async def list_calls(
-    contact_id: Optional[str] = None,
-    lead_id: Optional[str] = None,
+    contact_id: str | None = None,
+    lead_id: str | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -282,15 +280,11 @@ async def get_transcript(
     db: AsyncSession = Depends(get_db),
 ):
     r = await db.execute(
-        text(
-            "SELECT * FROM call_transcripts WHERE call_id=:cid ORDER BY start_time"
-        ),
+        text("SELECT * FROM call_transcripts WHERE call_id=:cid ORDER BY start_time"),
         {"cid": call_id},
     )
     segs = [_row_to_dict(row) for row in r.fetchall()]
-    ar = await db.execute(
-        text("SELECT * FROM call_analysis WHERE call_id=:cid"), {"cid": call_id}
-    )
+    ar = await db.execute(text("SELECT * FROM call_analysis WHERE call_id=:cid"), {"cid": call_id})
     row = ar.fetchone()
     return {
         "call_id": call_id,
@@ -306,9 +300,7 @@ async def reanalyze(
     db: AsyncSession = Depends(get_db),
 ):
     r = await db.execute(
-        text(
-            "SELECT * FROM call_transcripts WHERE call_id=:cid ORDER BY start_time"
-        ),
+        text("SELECT * FROM call_transcripts WHERE call_id=:cid ORDER BY start_time"),
         {"cid": call_id},
     )
     segs = [_row_to_dict(row) for row in r.fetchall()]
@@ -322,9 +314,7 @@ async def reanalyze(
 @router.get("/twiml/{call_id}")
 async def get_twiml(call_id: str):
     engine = CallEngine(None, "")
-    return Response(
-        content=engine.get_twiml_response(call_id), media_type="application/xml"
-    )
+    return Response(content=engine.get_twiml_response(call_id), media_type="application/xml")
 
 
 @router.post("/recording-webhook/{call_id}")

@@ -4,6 +4,7 @@ Call Engine — manages call lifecycle across Twilio/Manual Upload.
 Writes to the `calls` table (renamed to avoid clash with the legacy
 JSON-file-based `calls` endpoint that already ships with the platform).
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,6 @@ import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,7 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class CallEngine:
-    def __init__(self, db: Optional[AsyncSession], workspace_id: str):
+    def __init__(self, db: AsyncSession | None, workspace_id: str):
         self.db = db
         self.workspace_id = workspace_id
 
@@ -33,8 +33,8 @@ class CallEngine:
         self,
         to_phone: str,
         from_phone: str,
-        contact_id: Optional[str] = None,
-        lead_id: Optional[str] = None,
+        contact_id: str | None = None,
+        lead_id: str | None = None,
         record: bool = True,
     ) -> dict:
         try:
@@ -78,9 +78,7 @@ class CallEngine:
                 status_callback=f"{webhook}/api/v1/calling/status-webhook/{call_id}",
             )
             await self.db.execute(
-                text(
-                    "UPDATE calls SET provider_call_id=:sid, started_at=NOW() WHERE id=:id"
-                ),
+                text("UPDATE calls SET provider_call_id=:sid, started_at=NOW() WHERE id=:id"),
                 {"sid": call.sid, "id": call_id},
             )
             await self.db.commit()
@@ -136,6 +134,7 @@ class CallEngine:
             )
             await self.db.commit()
             import asyncio
+
             asyncio.create_task(self._process_async(call_id, str(dest)))
         except Exception as e:
             logger.error(f"Recording download failed for {call_id}: {e}")
@@ -155,8 +154,8 @@ class CallEngine:
         self,
         call_id: str,
         file_path: str,
-        contact_id: Optional[str] = None,
-        lead_id: Optional[str] = None,
+        contact_id: str | None = None,
+        lead_id: str | None = None,
     ) -> dict:
         dest = RECORDINGS_DIR / f"{call_id}.wav"
         try:

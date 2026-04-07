@@ -1,5 +1,7 @@
 """Evaluation harness regression tests."""
+
 import pytest
+
 from app.evaluations.harness import get_benchmark_harness
 
 
@@ -15,8 +17,12 @@ class TestEvaluationHarness:
     async def test_recommendation_quality_checks_evidence(self):
         """Recommendations without evidence should fail quality check."""
         import uuid
-        from app.agents.layer12.rec_quality import RecommendationQualityAgent, RecommendationQualityInput
+
         from app.agents.base import AgentRunContext
+        from app.agents.layer12.rec_quality import (
+            RecommendationQualityAgent,
+            RecommendationQualityInput,
+        )
 
         agent = RecommendationQualityAgent()
         ctx = AgentRunContext(demo_mode=True)
@@ -45,8 +51,12 @@ class TestEvaluationHarness:
     async def test_recommendation_quality_passes_for_complete_rec(self):
         """Well-formed recommendations should pass quality check."""
         import uuid
-        from app.agents.layer12.rec_quality import RecommendationQualityAgent, RecommendationQualityInput
+
         from app.agents.base import AgentRunContext
+        from app.agents.layer12.rec_quality import (
+            RecommendationQualityAgent,
+            RecommendationQualityInput,
+        )
 
         agent = RecommendationQualityAgent()
         ctx = AgentRunContext(demo_mode=True)
@@ -61,7 +71,11 @@ class TestEvaluationHarness:
                     "have 20-30% lower CTR than pages with optimized descriptions."
                 ),
                 evidence=[
-                    {"type": "crawl", "url": "https://example.com/pricing", "finding": "No meta description found"}
+                    {
+                        "type": "crawl",
+                        "url": "https://example.com/pricing",
+                        "finding": "No meta description found",
+                    }
                 ],
                 proposed_action="Add: <meta name='description' content='Acme SaaS pricing — simple monthly plans starting at $49. Free trial available.'>",
                 impact_score=0.7,

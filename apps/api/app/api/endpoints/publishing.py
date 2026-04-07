@@ -7,24 +7,24 @@ GET  /api/v1/publishing/connections                — all channel connection st
 GET  /api/v1/publishing/audit                      — recent audit log events
 GET  /api/v1/publishing/summary                    — compact publish stats
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.dependencies.auth import get_current_user
+from app.core.store.audit_store import get_publish_summary, get_recent_events
 from app.core.store.content_queue_store import (
     get_draft,
     mark_post_published,
-    mark_post_failed,
     schedule_post,
 )
-from app.core.store.audit_store import get_recent_events, get_publish_summary
-from app.services.publishers import get_publisher, PUBLISHER_REGISTRY
+from app.services.publishers import PUBLISHER_REGISTRY, get_publisher
 from app.services.publishers.base import PublisherStatus
 
 logger = logging.getLogger(__name__)
@@ -35,10 +35,11 @@ SUPPORTED_CHANNELS = list(PUBLISHER_REGISTRY.keys())
 
 class PublishNowRequest(BaseModel):
     channel: str
-    caption_override: Optional[str] = None
+    caption_override: str | None = None
 
 
 # ─── Validate Connection ──────────────────────────────────────────────────────
+
 
 @router.post("/publishing/validate-connection/{channel}")
 async def validate_connection(channel: str, user=Depends(get_current_user)):
@@ -72,7 +73,12 @@ async def get_all_connections(user=Depends(get_current_user)):
         try:
             pub = get_publisher(ch, str(user.id))
             st = await pub.check_status()
-            return {"channel": ch, "status": st.value, "ready": st == PublisherStatus.READY, "message": _status_message(st, ch)}
+            return {
+                "channel": ch,
+                "status": st.value,
+                "ready": st == PublisherStatus.READY,
+                "message": _status_message(st, ch),
+            }
         except Exception as e:
             return {"channel": ch, "status": "unavailable", "ready": False, "message": str(e)}
 
@@ -86,6 +92,7 @@ async def get_all_connections(user=Depends(get_current_user)):
 
 
 # ─── Publish Now ─────────────────────────────────────────────────────────────
+
 
 @router.post("/publishing/publish-now/{draft_id}")
 async def publish_now(
@@ -105,7 +112,7 @@ async def publish_now(
     if draft.get("status") not in ("approved", "generated", "needs_review", "scheduled"):
         raise HTTPException(
             status_code=400,
-            detail=f"Draft status '{draft.get('status')}' cannot be published. Must be approved or generated."
+            detail=f"Draft status '{draft.get('status')}' cannot be published. Must be approved or generated.",
         )
 
     text = body.caption_override or draft.get("generated_text", "")
@@ -122,12 +129,13 @@ async def publish_now(
     if result.success:
         # Create a scheduled post entry and mark it published immediately
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             post_entry = schedule_post(
                 draft_id=draft_id,
                 user_id=str(user.id),
                 channel=body.channel,
-                scheduled_at=datetime.now(timezone.utc).isoformat(),
+                scheduled_at=datetime.now(UTC).isoformat(),
                 caption_override=body.caption_override,
             )
             if post_entry:
@@ -154,11 +162,12 @@ async def publish_now(
 
 # ─── Audit Log ───────────────────────────────────────────────────────────────
 
+
 @router.get("/publishing/audit")
 async def get_audit_log(
     limit: int = 50,
-    channel: Optional[str] = None,
-    action_prefix: Optional[str] = None,
+    channel: str | None = None,
+    action_prefix: str | None = None,
     user=Depends(get_current_user),
 ):
     """Return recent audit events for the current user, newest first."""
@@ -179,6 +188,7 @@ async def get_publishing_summary(user=Depends(get_current_user)):
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def _status_message(status: PublisherStatus, channel: str) -> str:
     messages = {

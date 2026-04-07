@@ -16,14 +16,20 @@ Campaign hierarchy:
 
 Best for: B2B lead generation, thought leadership, ABM.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.adapters.base import (
-    AdapterCapabilityStage, AdapterCredentials, AdapterStatus,
-    AudienceDraft, BaseAdsAdapter, CampaignDraft, CampaignMetrics, CreativeDraft,
+    AdapterCapabilityStage,
+    AdapterCredentials,
+    AdapterStatus,
+    AudienceDraft,
+    BaseAdsAdapter,
+    CampaignDraft,
+    CampaignMetrics,
+    CreativeDraft,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,7 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
 
     def get_auth_url(self, redirect_uri: str, state: str) -> str:
         from urllib.parse import urlencode
+
         params = {
             "response_type": "code",
             "client_id": self.credentials.client_id,
@@ -67,7 +74,9 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
         return f"{LINKEDIN_AUTH_URL}?{urlencode(params)}"
 
     def exchange_code(self, code: str, redirect_uri: str) -> AdapterCredentials:
-        raise NotImplementedError("Implement: POST to LINKEDIN_TOKEN_URL with grant_type=authorization_code")
+        raise NotImplementedError(
+            "Implement: POST to LINKEDIN_TOKEN_URL with grant_type=authorization_code"
+        )
 
     def refresh_access_token(self) -> AdapterCredentials:
         raise NotImplementedError("LinkedIn tokens are 60 days. Implement refresh flow.")
@@ -86,7 +95,7 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adAccountsV2/{account_id}")
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """GET /adCampaignsV2?q=search&account={account_id}"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adCampaignsV2")
@@ -118,7 +127,7 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
     def create_audience(self, draft: AudienceDraft) -> dict:
         raise NotImplementedError("Implement: POST /customAudiences")
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GET /adCreativesV2?q=search&campaign={campaign_urn}"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adCreativesV2")
@@ -133,7 +142,11 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
         raise NotImplementedError("Implement: POST /adCreativesV2")
 
     def pull_campaign_metrics(
-        self, campaign_ids: list[str], date_start: str, date_end: str, breakdown: Optional[str] = None,
+        self,
+        campaign_ids: list[str],
+        date_start: str,
+        date_end: str,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GET /adAnalyticsV2?q=analytics&pivot=CAMPAIGN&dateRange=...
@@ -142,6 +155,8 @@ class LinkedInAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adAnalyticsV2 for campaigns")
 
-    def pull_ad_metrics(self, ad_ids: list[str], date_start: str, date_end: str) -> list[CampaignMetrics]:
+    def pull_ad_metrics(
+        self, ad_ids: list[str], date_start: str, date_end: str
+    ) -> list[CampaignMetrics]:
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /adAnalyticsV2 for ads")

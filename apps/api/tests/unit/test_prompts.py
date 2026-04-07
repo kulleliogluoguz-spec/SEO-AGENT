@@ -1,5 +1,7 @@
 """Unit tests for the prompt registry."""
+
 import pytest
+
 from app.prompts.registry.prompts import (
     PROMPT_REGISTRY,
     get_prompt,

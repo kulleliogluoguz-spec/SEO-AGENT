@@ -27,8 +27,8 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
-from urllib.parse import urljoin, urlparse
+from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -38,11 +38,13 @@ logger = logging.getLogger(__name__)
 
 # ── Result Types ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class GEOCheckResult:
     """Result of a single GEO check."""
+
     check_name: str
-    score: float              # 0-100
+    score: float  # 0-100
     passed: bool
     evidence: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
@@ -53,6 +55,7 @@ class GEOCheckResult:
 @dataclass
 class GEOAuditResult:
     """Complete GEO audit result for a site."""
+
     site_url: str
     overall_score: float
     citability_score: float
@@ -74,21 +77,22 @@ class GEOAuditResult:
 
 # ── AI Crawler User-Agent patterns ────────────────────────────────────────────
 AI_CRAWLERS = [
-    "GPTBot",           # OpenAI
-    "ChatGPT-User",     # OpenAI ChatGPT
-    "Claude-Web",       # Anthropic
-    "ClaudeBot",        # Anthropic
-    "PerplexityBot",    # Perplexity
-    "Googlebot",        # Google (for AI Overviews)
+    "GPTBot",  # OpenAI
+    "ChatGPT-User",  # OpenAI ChatGPT
+    "Claude-Web",  # Anthropic
+    "ClaudeBot",  # Anthropic
+    "PerplexityBot",  # Perplexity
+    "Googlebot",  # Google (for AI Overviews)
     "Google-Extended",  # Google AI training
-    "Bingbot",          # Bing (Copilot)
-    "CCBot",            # Common Crawl (used by many AI companies)
-    "anthropic-ai",     # Anthropic
-    "cohere-ai",        # Cohere
+    "Bingbot",  # Bing (Copilot)
+    "CCBot",  # Common Crawl (used by many AI companies)
+    "anthropic-ai",  # Anthropic
+    "cohere-ai",  # Cohere
 ]
 
 
 # ── GEO Auditor ───────────────────────────────────────────────────────────────
+
 
 class GEOAuditor:
     """
@@ -101,7 +105,7 @@ class GEOAuditor:
     def __init__(
         self,
         http_timeout: float = 30.0,
-        llm_client: Any = None,          # Optional: local LLM for content analysis
+        llm_client: Any = None,  # Optional: local LLM for content analysis
     ) -> None:
         self.http_timeout = http_timeout
         self.llm_client = llm_client
@@ -152,17 +156,25 @@ class GEOAuditor:
         all_recommendations = []
         for check in checks:
             for issue in check.issues:
-                all_issues.append({
-                    "check": check.check_name,
-                    "issue": issue,
-                    "severity": "high" if check.score < 40 else "medium" if check.score < 70 else "low",
-                })
+                all_issues.append(
+                    {
+                        "check": check.check_name,
+                        "issue": issue,
+                        "severity": "high"
+                        if check.score < 40
+                        else "medium"
+                        if check.score < 70
+                        else "low",
+                    }
+                )
             for rec in check.recommendations:
-                all_recommendations.append({
-                    "check": check.check_name,
-                    "recommendation": rec,
-                    "impact": "high" if check.score < 40 else "medium",
-                })
+                all_recommendations.append(
+                    {
+                        "check": check.check_name,
+                        "recommendation": rec,
+                        "impact": "high" if check.score < 40 else "medium",
+                    }
+                )
 
         # Sort recommendations by impact
         all_recommendations.sort(key=lambda r: 0 if r["impact"] == "high" else 1)
@@ -187,7 +199,7 @@ class GEOAuditor:
             duration_seconds=round(time.time() - start, 2),
         )
 
-    async def _fetch_key_pages(self, site_url: str) -> dict[str, Optional[str]]:
+    async def _fetch_key_pages(self, site_url: str) -> dict[str, str | None]:
         """Fetch homepage, robots.txt, llms.txt, and sitemap in parallel."""
         urls = {
             "homepage": site_url,
@@ -196,12 +208,14 @@ class GEOAuditor:
             "sitemap": urljoin(site_url, "/sitemap.xml"),
         }
 
-        async def fetch_one(key: str, url: str) -> tuple[str, Optional[str]]:
+        async def fetch_one(key: str, url: str) -> tuple[str, str | None]:
             try:
                 async with httpx.AsyncClient(
                     timeout=self.http_timeout,
                     follow_redirects=True,
-                    headers={"User-Agent": "AIGrowthOS/1.0 (GEO-audit; +https://github.com/ai-growth-os)"},
+                    headers={
+                        "User-Agent": "AIGrowthOS/1.0 (GEO-audit; +https://github.com/ai-growth-os)"
+                    },
                 ) as client:
                     r = await client.get(url)
                     if r.status_code == 200:
@@ -223,11 +237,13 @@ class GEOAuditor:
             check.score = 0.0
             check.passed = False
             check.issues.append("No llms.txt file found")
-            check.recommendations.extend([
-                "Create /llms.txt following the llms.txt specification",
-                "Include: company name, product description, key URLs, usage policy",
-                "See https://llmstxt.org for the specification",
-            ])
+            check.recommendations.extend(
+                [
+                    "Create /llms.txt following the llms.txt specification",
+                    "Include: company name, product description, key URLs, usage policy",
+                    "See https://llmstxt.org for the specification",
+                ]
+            )
             check.metadata["present"] = False
             return check
 
@@ -240,7 +256,9 @@ class GEOAuditor:
         quality_signals = {
             "has_description": any(kw in content_lower for kw in ["#", "description", "about"]),
             "has_links": "http" in content_lower,
-            "has_product_info": any(kw in content_lower for kw in ["product", "service", "feature"]),
+            "has_product_info": any(
+                kw in content_lower for kw in ["product", "service", "feature"]
+            ),
             "has_contact": any(kw in content_lower for kw in ["contact", "email", "support"]),
             "reasonable_length": 100 < len(content) < 10000,
         }
@@ -295,14 +313,18 @@ class GEOAuditor:
         elif len(blocked_crawlers) < len(AI_CRAWLERS) / 2:
             check.score = 60.0
             check.passed = True
-            check.evidence.append(f"{len(blocked_crawlers)} AI crawlers blocked: {', '.join(blocked_crawlers)}")
+            check.evidence.append(
+                f"{len(blocked_crawlers)} AI crawlers blocked: {', '.join(blocked_crawlers)}"
+            )
             check.recommendations.append(
                 f"Consider allowing these AI crawlers for better discoverability: {', '.join(blocked_crawlers)}"
             )
         else:
             check.score = 20.0
             check.passed = False
-            check.issues.append(f"Majority of AI crawlers are blocked ({len(blocked_crawlers)}/{len(AI_CRAWLERS)})")
+            check.issues.append(
+                f"Majority of AI crawlers are blocked ({len(blocked_crawlers)}/{len(AI_CRAWLERS)})"
+            )
             check.recommendations.append(
                 "Review robots.txt AI crawler restrictions — blocking AI crawlers limits discoverability in AI search"
             )
@@ -314,17 +336,13 @@ class GEOAuditor:
     def _is_crawler_blocked(self, robots_txt: str, crawler_name: str) -> bool:
         """Check if a specific crawler is blocked in robots.txt."""
         lines = robots_txt.lower().split("\n")
-        current_agents = []
         in_relevant_block = False
 
         for line in lines:
             line = line.strip()
             if line.startswith("user-agent:"):
                 agent = line.replace("user-agent:", "").strip()
-                current_agents = [agent]
-                in_relevant_block = (
-                    agent == "*" or crawler_name.lower() in agent
-                )
+                in_relevant_block = agent == "*" or crawler_name.lower() in agent
             elif line.startswith("disallow:") and in_relevant_block:
                 disallow_path = line.replace("disallow:", "").strip()
                 if disallow_path == "/" or disallow_path == "/*":
@@ -349,11 +367,13 @@ class GEOAuditor:
             check.score = 0.0
             check.passed = False
             check.issues.append("No JSON-LD structured data found on homepage")
-            check.recommendations.extend([
-                "Add JSON-LD structured data (Organization, Product, WebSite schemas)",
-                "Use schema.org/Organization to establish brand identity for AI systems",
-                "Add FAQ schema on key landing pages for AI-extractable answers",
-            ])
+            check.recommendations.extend(
+                [
+                    "Add JSON-LD structured data (Organization, Product, WebSite schemas)",
+                    "Use schema.org/Organization to establish brand identity for AI systems",
+                    "Add FAQ schema on key landing pages for AI-extractable answers",
+                ]
+            )
             check.metadata["schema_types"] = []
             return check
 
@@ -382,7 +402,9 @@ class GEOAuditor:
 
         check.score = min(score, 100.0)
         check.passed = check.score >= 50
-        check.evidence.append(f"Found {len(schema_scripts)} JSON-LD blocks: {', '.join(schema_types)}")
+        check.evidence.append(
+            f"Found {len(schema_scripts)} JSON-LD blocks: {', '.join(schema_types)}"
+        )
 
         if "Organization" not in schema_types:
             check.recommendations.append(
@@ -489,9 +511,7 @@ class GEOAuditor:
             r"\bwhat is\b",
             r"\bhow (to|does|it works)\b",
         ]
-        answer_matches = sum(
-            1 for p in answer_patterns if re.search(p, text.lower())
-        )
+        answer_matches = sum(1 for p in answer_patterns if re.search(p, text.lower()))
         if answer_matches >= 2:
             score += 20.0
             check.evidence.append("Content contains answer-structured fragments")
@@ -573,9 +593,7 @@ class GEOAuditor:
             score += 15.0
             check.evidence.append(f"Logo alt text: {logo_alt}")
         else:
-            check.recommendations.append(
-                "Add descriptive alt text to logo image with brand name"
-            )
+            check.recommendations.append("Add descriptive alt text to logo image with brand name")
 
         if h1_text:
             score += 15.0

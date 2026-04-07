@@ -1,20 +1,21 @@
 """
 ContentService — business logic for content brief and generation.
 """
+
 import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import ContentAsset, ContentStatus, User
+from app.agents.base import AgentRunContext
 from app.agents.layer8.content_agents import (
     ContentBriefAgent,
     ContentBriefInput,
     LongFormWriterAgent,
     LongFormWriterInput,
 )
-from app.agents.base import AgentRunContext
 from app.core.config.settings import get_settings
+from app.models.models import ContentAsset, ContentStatus, User
 
 settings = get_settings()
 
@@ -27,6 +28,7 @@ class ContentService:
         if not settings.anthropic_api_key:
             return None
         import anthropic
+
         return anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def create_brief(
@@ -69,7 +71,9 @@ class ContentService:
 
         # Determine workspace from site
         from sqlalchemy import select
+
         from app.models.models import Site
+
         site_result = await self._db.execute(select(Site).where(Site.id == site_id))
         site = site_result.scalar_one_or_none()
         workspace_id = site.workspace_id if site else uuid.uuid4()
@@ -95,16 +99,18 @@ class ContentService:
     ) -> ContentAsset:
         """Generate content from an existing brief asset."""
         from sqlalchemy import select
-        result = await self._db.execute(
-            select(ContentAsset).where(ContentAsset.id == brief_id)
-        )
+
+        result = await self._db.execute(select(ContentAsset).where(ContentAsset.id == brief_id))
         brief_asset = result.scalar_one_or_none()
         if not brief_asset:
             raise ValueError(f"Brief {brief_id} not found")
 
         # Reconstruct brief object
         from app.agents.layer8.content_agents import ContentBriefOutput
-        brief_obj = ContentBriefOutput.model_validate(brief_asset.brief) if brief_asset.brief else None
+
+        brief_obj = (
+            ContentBriefOutput.model_validate(brief_asset.brief) if brief_asset.brief else None
+        )
 
         llm = self._get_llm_client()
         agent = LongFormWriterAgent(llm_client=llm)

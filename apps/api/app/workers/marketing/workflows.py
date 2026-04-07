@@ -3,25 +3,25 @@ Marketing Execution Workflows — Temporal Definitions
 Durable workflows for: content generation pipeline, campaign execution,
 scheduled publishing, performance tracking, content repurposing.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
 # ─── Workflow Input/Output Types ─────────────────────────────────────────────
 
+
 @dataclass
 class ContentPipelineInput:
     workspace_id: str
     topic: str
     channels: list[str]
-    campaign_id: Optional[str] = None
+    campaign_id: str | None = None
     funnel_stage: str = "awareness"
     tone: str = "professional"
     key_points: list[str] = None
@@ -33,7 +33,7 @@ class PublishWorkflowInput:
     workspace_id: str
     content_item_id: str
     channel: str
-    scheduled_at: Optional[str] = None
+    scheduled_at: str | None = None
     timezone: str = "UTC"
 
 
@@ -52,7 +52,7 @@ class RepurposeWorkflowInput:
     workspace_id: str
     source_text: str
     source_type: str = "blog_post"
-    source_id: Optional[str] = None
+    source_id: str | None = None
     target_channels: list[str] = None
 
 
@@ -68,10 +68,11 @@ class PerformanceTrackingInput:
 #  CONTENT GENERATION PIPELINE WORKFLOW
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class ContentGenerationPipelineWorkflow:
     """
     Workflow: Topic → Generate → Compliance Check → Auto/Manual Approval → Queue
-    
+
     Steps:
     1. Generate content for each channel
     2. Run compliance check
@@ -81,7 +82,9 @@ class ContentGenerationPipelineWorkflow:
     """
 
     async def run(self, input: ContentPipelineInput) -> dict:
-        logger.info(f"[ContentPipeline] Starting for topic='{input.topic}' channels={input.channels}")
+        logger.info(
+            f"[ContentPipeline] Starting for topic='{input.topic}' channels={input.channels}"
+        )
 
         from app.services.marketing.service import marketing_service
 
@@ -119,10 +122,11 @@ class ContentGenerationPipelineWorkflow:
 #  SCHEDULED PUBLISHING WORKFLOW
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class ScheduledPublishWorkflow:
     """
     Workflow: Wait until scheduled time → Final compliance check → Publish → Track
-    
+
     Steps:
     1. Wait until scheduled_at
     2. Re-run compliance check
@@ -166,10 +170,11 @@ class ScheduledPublishWorkflow:
 #  CAMPAIGN EXECUTION WORKFLOW
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class CampaignExecutionWorkflow:
     """
     Workflow: Plan → Generate Calendar → Create Content → Queue Approvals → Schedule
-    
+
     Full campaign lifecycle as a durable workflow.
     """
 
@@ -210,6 +215,7 @@ class CampaignExecutionWorkflow:
 #  CONTENT REPURPOSING WORKFLOW
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class RepurposeWorkflow:
     """
     Workflow: Source content → Extract key points → Generate per channel → Compliance → Queue
@@ -238,6 +244,7 @@ class RepurposeWorkflow:
 # ═════════════════════════════════════════════════════════════════════════════
 #  PERFORMANCE TRACKING WORKFLOW
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class PerformanceTrackingWorkflow:
     """

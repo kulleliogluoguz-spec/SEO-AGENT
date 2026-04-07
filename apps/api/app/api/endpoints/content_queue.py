@@ -11,14 +11,14 @@ Routes:
   GET  /api/v1/content-queue/scheduled          — list scheduled posts
   POST /api/v1/content-queue/drafts/{id}/archive
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies.auth import get_current_user
+from app.core.store.autonomy_store import is_auto_publish_allowed
 from app.core.store.content_queue_store import (
     create_draft,
     get_draft,
@@ -26,47 +26,49 @@ from app.core.store.content_queue_store import (
     list_scheduled_posts,
     schedule_post,
     transition_status,
-    update_draft_text,
 )
-from app.core.store.autonomy_store import is_auto_publish_allowed
 
 router = APIRouter(prefix="/content-queue", tags=["content-queue"])
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
+
 class DraftCreate(BaseModel):
     title: str
     content_type: str
     topic: str
     generated_text: str
-    niche: Optional[str] = None
-    trend_keyword: Optional[str] = None
-    objective: Optional[str] = None
-    channels: Optional[list[str]] = None
+    niche: str | None = None
+    trend_keyword: str | None = None
+    objective: str | None = None
+    channels: list[str] | None = None
 
 
 class ScheduleRequest(BaseModel):
     channel: str
     scheduled_at: str = Field(..., description="ISO 8601 datetime, e.g. 2025-04-01T14:00:00Z")
-    caption_override: Optional[str] = None
+    caption_override: str | None = None
 
 
 class RejectRequest(BaseModel):
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+
 @router.get("/drafts")
 async def list_content_drafts(
-    status: Optional[str] = None,
-    content_type: Optional[str] = None,
+    status: str | None = None,
+    content_type: str | None = None,
     limit: int = 50,
     current_user=Depends(get_current_user),
 ) -> dict:
     """List content drafts for the current user, optionally filtered by status or type."""
-    drafts = list_drafts(str(current_user.id), status=status, content_type=content_type, limit=limit)
+    drafts = list_drafts(
+        str(current_user.id), status=status, content_type=content_type, limit=limit
+    )
     # Group by status for summary
     status_counts: dict[str, int] = {}
     for d in drafts:
@@ -145,7 +147,9 @@ async def reject_draft(
     if draft.get("status") in ("published", "archived"):
         raise HTTPException(status_code=400, detail=f"Cannot reject a {draft.get('status')} draft.")
 
-    updated = transition_status(draft_id, "needs_review", actor=str(current_user.id), reason=payload.reason)
+    updated = transition_status(
+        draft_id, "needs_review", actor=str(current_user.id), reason=payload.reason
+    )
     return {"draft": updated, "message": "Draft sent back for revision."}
 
 
@@ -191,7 +195,11 @@ async def schedule_draft(
         "auto_publish_enabled": auto_ok,
         "message": (
             f"Post scheduled for {payload.channel} at {payload.scheduled_at}. "
-            + ("Will publish automatically." if auto_ok else "Awaiting manual publish confirmation.")
+            + (
+                "Will publish automatically."
+                if auto_ok
+                else "Awaiting manual publish confirmation."
+            )
         ),
     }
 
@@ -212,7 +220,7 @@ async def archive_draft(
 
 @router.get("/scheduled")
 async def list_scheduled(
-    status: Optional[str] = None,
+    status: str | None = None,
     current_user=Depends(get_current_user),
 ) -> dict:
     """List scheduled posts for the current user."""
@@ -227,13 +235,26 @@ async def queue_summary(current_user=Depends(get_current_user)) -> dict:
     Used by command center and Growth Engine.
     """
     from app.core.store.content_queue_store import _load
+
     data = _load()
     user_id = str(current_user.id)
 
     drafts = [d for d in data.get("content_drafts", []) if d.get("user_id") == user_id]
     posts = [p for p in data.get("scheduled_posts", []) if p.get("user_id") == user_id]
 
-    counts = {s: 0 for s in ["generated", "needs_review", "approved", "scheduled", "publishing", "published", "failed", "archived"]}
+    counts = {
+        s: 0
+        for s in [
+            "generated",
+            "needs_review",
+            "approved",
+            "scheduled",
+            "publishing",
+            "published",
+            "failed",
+            "archived",
+        ]
+    }
     for d in drafts:
         counts[d.get("status", "generated")] = counts.get(d.get("status", "generated"), 0) + 1
 

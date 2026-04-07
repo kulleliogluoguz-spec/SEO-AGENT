@@ -18,14 +18,14 @@ video or use the TikTok Text API (available in v2.0+) where available.
 Reference:
   https://developers.tiktok.com/doc/content-posting-api-reference-manage-posts
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
-from app.services.publishers.base import PublisherService, PublishResult, PublisherStatus
+from app.services.publishers.base import PublisherService, PublisherStatus, PublishResult
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ REQUIRED_SCOPES = {"video.upload", "video.publish"}
 class TikTokPublisher(PublisherService):
     channel = "tiktok"
 
-    def _get_creds(self) -> Optional[dict]:
+    def _get_creds(self) -> dict | None:
         return self._load_credentials()
 
     async def check_status(self) -> PublisherStatus:
@@ -70,8 +70,8 @@ class TikTokPublisher(PublisherService):
     async def publish_text_post(
         self,
         text: str,
-        reply_to_id: Optional[str] = None,
-        schedule_at: Optional[str] = None,
+        reply_to_id: str | None = None,
+        schedule_at: str | None = None,
     ) -> PublishResult:
         """
         TikTok does not natively support text-only posts via the Content API.
@@ -91,7 +91,7 @@ class TikTokPublisher(PublisherService):
         self,
         caption: str,
         video_url: str,
-        open_id: Optional[str] = None,
+        open_id: str | None = None,
     ) -> PublishResult:
         """
         Publish a video to TikTok using the direct_post flow.
@@ -99,7 +99,9 @@ class TikTokPublisher(PublisherService):
         """
         cred = self._get_creds()
         if not cred:
-            result = PublishResult.fail("No TikTok credentials. Connect your account in Connections.")
+            result = PublishResult.fail(
+                "No TikTok credentials. Connect your account in Connections."
+            )
             self._audit("video_post", result)
             return result
 
@@ -147,7 +149,9 @@ class TikTokPublisher(PublisherService):
 
                 if resp.status_code == 429:
                     retry_after = int(resp.headers.get("Retry-After", 3600))
-                    result = PublishResult.fail("TikTok rate limit reached", rate_limited=True, retry_after=retry_after)
+                    result = PublishResult.fail(
+                        "TikTok rate limit reached", rate_limited=True, retry_after=retry_after
+                    )
                     self._audit("video_post", result)
                     return result
 
@@ -170,7 +174,7 @@ class TikTokPublisher(PublisherService):
             self._audit("video_post", result)
             return result
 
-    async def get_post_metrics(self, post_id: str) -> Optional[dict]:
+    async def get_post_metrics(self, post_id: str) -> dict | None:
         """Fetch TikTok video stats."""
         cred = self._get_creds()
         if not cred:
@@ -183,7 +187,14 @@ class TikTokPublisher(PublisherService):
                     headers={"Authorization": f"Bearer {token}"},
                     json={
                         "filters": {"video_ids": [post_id]},
-                        "fields": ["id", "play_count", "like_count", "comment_count", "share_count", "view_count"],
+                        "fields": [
+                            "id",
+                            "play_count",
+                            "like_count",
+                            "comment_count",
+                            "share_count",
+                            "view_count",
+                        ],
                     },
                 )
                 if resp.status_code == 200:

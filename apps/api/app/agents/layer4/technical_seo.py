@@ -4,6 +4,7 @@ TechnicalSEOAuditAgent — Layer 4
 Audits crawled pages for technical SEO issues and produces
 structured recommendations with impact/effort/confidence scoring.
 """
+
 import uuid
 from typing import ClassVar
 
@@ -61,72 +62,84 @@ class TechnicalSEOAuditAgent(LLMAgent[TechnicalSEOInput, TechnicalSEOOutput]):
         # Missing titles
         missing_title = [p["url"] for p in pages if not p.get("title")]
         if missing_title:
-            issues.append(SEOIssue(
-                issue_type="missing_title",
-                severity="critical",
-                affected_count=len(missing_title),
-                affected_urls=missing_title[:10],
-                description="Pages missing <title> tags",
-                recommendation="Add unique, descriptive title tags to all pages",
-                impact_score=0.9,
-                effort_score=0.3,
-            ))
+            issues.append(
+                SEOIssue(
+                    issue_type="missing_title",
+                    severity="critical",
+                    affected_count=len(missing_title),
+                    affected_urls=missing_title[:10],
+                    description="Pages missing <title> tags",
+                    recommendation="Add unique, descriptive title tags to all pages",
+                    impact_score=0.9,
+                    effort_score=0.3,
+                )
+            )
 
         # Missing meta descriptions
         missing_meta = [p["url"] for p in pages if not p.get("meta_description")]
         if missing_meta:
-            issues.append(SEOIssue(
-                issue_type="missing_meta_description",
-                severity="high",
-                affected_count=len(missing_meta),
-                affected_urls=missing_meta[:10],
-                description="Pages missing meta description tags",
-                recommendation="Add unique meta descriptions targeting relevant queries",
-                impact_score=0.7,
-                effort_score=0.3,
-            ))
+            issues.append(
+                SEOIssue(
+                    issue_type="missing_meta_description",
+                    severity="high",
+                    affected_count=len(missing_meta),
+                    affected_urls=missing_meta[:10],
+                    description="Pages missing meta description tags",
+                    recommendation="Add unique meta descriptions targeting relevant queries",
+                    impact_score=0.7,
+                    effort_score=0.3,
+                )
+            )
 
         # Missing H1
         missing_h1 = [p["url"] for p in pages if not p.get("h1")]
         if missing_h1:
-            issues.append(SEOIssue(
-                issue_type="missing_h1",
-                severity="high",
-                affected_count=len(missing_h1),
-                affected_urls=missing_h1[:10],
-                description="Pages missing H1 heading",
-                recommendation="Ensure each page has exactly one H1 tag with primary keyword",
-                impact_score=0.7,
-                effort_score=0.2,
-            ))
+            issues.append(
+                SEOIssue(
+                    issue_type="missing_h1",
+                    severity="high",
+                    affected_count=len(missing_h1),
+                    affected_urls=missing_h1[:10],
+                    description="Pages missing H1 heading",
+                    recommendation="Ensure each page has exactly one H1 tag with primary keyword",
+                    impact_score=0.7,
+                    effort_score=0.2,
+                )
+            )
 
         # Thin content (under 300 words)
-        thin = [p["url"] for p in pages if p.get("word_count", 0) < 300 and p.get("status_code") == 200]
+        thin = [
+            p["url"] for p in pages if p.get("word_count", 0) < 300 and p.get("status_code") == 200
+        ]
         if thin:
-            issues.append(SEOIssue(
-                issue_type="thin_content",
-                severity="medium",
-                affected_count=len(thin),
-                affected_urls=thin[:10],
-                description=f"{len(thin)} pages have fewer than 300 words",
-                recommendation="Expand thin content or consolidate into stronger pages",
-                impact_score=0.6,
-                effort_score=0.6,
-            ))
+            issues.append(
+                SEOIssue(
+                    issue_type="thin_content",
+                    severity="medium",
+                    affected_count=len(thin),
+                    affected_urls=thin[:10],
+                    description=f"{len(thin)} pages have fewer than 300 words",
+                    recommendation="Expand thin content or consolidate into stronger pages",
+                    impact_score=0.6,
+                    effort_score=0.6,
+                )
+            )
 
         # Broken links (4xx responses)
         broken = [p["url"] for p in pages if p.get("status_code", 200) in (404, 410)]
         if broken:
-            issues.append(SEOIssue(
-                issue_type="broken_pages",
-                severity="critical",
-                affected_count=len(broken),
-                affected_urls=broken[:10],
-                description=f"{len(broken)} pages returning 4xx status codes",
-                recommendation="Fix or redirect broken pages; remove internal links to them",
-                impact_score=0.85,
-                effort_score=0.4,
-            ))
+            issues.append(
+                SEOIssue(
+                    issue_type="broken_pages",
+                    severity="critical",
+                    affected_count=len(broken),
+                    affected_urls=broken[:10],
+                    description=f"{len(broken)} pages returning 4xx status codes",
+                    recommendation="Fix or redirect broken pages; remove internal links to them",
+                    impact_score=0.85,
+                    effort_score=0.4,
+                )
+            )
 
         # Compute health score
         critical_count = sum(1 for i in issues if i.severity == "critical")

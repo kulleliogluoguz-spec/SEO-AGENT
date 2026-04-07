@@ -7,11 +7,11 @@ Connects growth data to customer relationships.
 """
 
 import os
+
 import httpx
+from dotenv import load_dotenv
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -50,20 +50,22 @@ async def graphql(query: str, variables: dict = None) -> dict:
 
 # ─── Models ───────────────────────────────────────────────────────────────────
 
+
 class PersonCreate(BaseModel):
     name: str
-    email: Optional[str] = ""
-    company: Optional[str] = ""
-    source: Optional[str] = "organic"
+    email: str | None = ""
+    company: str | None = ""
+    source: str | None = "organic"
 
 
 class CompanyCreate(BaseModel):
     name: str
-    domain: Optional[str] = ""
-    industry: Optional[str] = ""
+    domain: str | None = ""
+    industry: str | None = ""
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
+
 
 @router.get("/health")
 async def check_health():
@@ -79,9 +81,17 @@ async def check_health():
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{TWENTY_URL}/healthz")
             if r.status_code not in (200, 404):
-                return {"status": "offline", "twenty_url": "http://localhost:3333", "hint": "cd apps/twenty && docker compose up -d"}
+                return {
+                    "status": "offline",
+                    "twenty_url": "http://localhost:3333",
+                    "hint": "cd apps/twenty && docker compose up -d",
+                }
     except Exception:
-        return {"status": "offline", "twenty_url": "http://localhost:3333", "hint": "cd apps/twenty && docker compose up -d"}
+        return {
+            "status": "offline",
+            "twenty_url": "http://localhost:3333",
+            "hint": "cd apps/twenty && docker compose up -d",
+        }
 
     result = await graphql("{ people(filter: {}) { totalCount } }")
     if "errors" not in result:
@@ -89,7 +99,11 @@ async def check_health():
             "status": "connected",
             "twenty_url": "http://localhost:3333",
         }
-    return {"status": "error", "details": result.get("errors"), "twenty_url": "http://localhost:3333"}
+    return {
+        "status": "error",
+        "details": result.get("errors"),
+        "twenty_url": "http://localhost:3333",
+    }
 
 
 @router.get("/stats/overview")
@@ -109,6 +123,7 @@ async def get_crm_overview():
 
 
 # ─── Contacts (People) ────────────────────────────────────────────────────────
+
 
 @router.get("/contacts")
 async def list_contacts(limit: int = 50):
@@ -138,13 +153,15 @@ async def list_contacts(limit: int = 50):
     for edge in edges:
         node = edge.get("node", {})
         name = node.get("name", {})
-        contacts.append({
-            "id": node.get("id"),
-            "name": f"{name.get('firstName', '')} {name.get('lastName', '')}".strip(),
-            "email": node.get("emails", {}).get("primaryEmail", ""),
-            "company": (node.get("company") or {}).get("name", ""),
-            "created": node.get("createdAt", ""),
-        })
+        contacts.append(
+            {
+                "id": node.get("id"),
+                "name": f"{name.get('firstName', '')} {name.get('lastName', '')}".strip(),
+                "email": node.get("emails", {}).get("primaryEmail", ""),
+                "company": (node.get("company") or {}).get("name", ""),
+                "created": node.get("createdAt", ""),
+            }
+        )
 
     return {
         "total": result.get("data", {}).get("people", {}).get("totalCount", 0),
@@ -183,11 +200,14 @@ async def create_contact(person: PersonCreate):
         "id": cid,
         "name": person.name,
         "email": person.email,
-        "twenty_url": f"http://localhost:3333/objects/people/{cid}" if cid else "http://localhost:3333",
+        "twenty_url": f"http://localhost:3333/objects/people/{cid}"
+        if cid
+        else "http://localhost:3333",
     }
 
 
 # ─── Companies ────────────────────────────────────────────────────────────────
+
 
 @router.get("/companies")
 async def list_companies(limit: int = 50):
@@ -255,11 +275,14 @@ async def create_company(company: CompanyCreate):
         "success": bool(cid),
         "id": cid,
         "name": company.name,
-        "twenty_url": f"http://localhost:3333/objects/companies/{cid}" if cid else "http://localhost:3333",
+        "twenty_url": f"http://localhost:3333/objects/companies/{cid}"
+        if cid
+        else "http://localhost:3333",
     }
 
 
 # ─── Opportunities (Deals) ────────────────────────────────────────────────────
+
 
 @router.get("/opportunities")
 async def list_opportunities(limit: int = 50):
@@ -290,15 +313,17 @@ async def list_opportunities(limit: int = 50):
     for e in edges:
         node = e["node"]
         amount = node.get("amount") or {}
-        deals.append({
-            "id": node["id"],
-            "name": node["name"],
-            "amount": (amount.get("amountMicros", 0) or 0) / 1_000_000,
-            "currency": amount.get("currencyCode", "USD"),
-            "stage": node.get("stage"),
-            "close_date": node.get("closeDate"),
-            "created": node.get("createdAt"),
-        })
+        deals.append(
+            {
+                "id": node["id"],
+                "name": node["name"],
+                "amount": (amount.get("amountMicros", 0) or 0) / 1_000_000,
+                "currency": amount.get("currencyCode", "USD"),
+                "stage": node.get("stage"),
+                "close_date": node.get("closeDate"),
+                "created": node.get("createdAt"),
+            }
+        )
 
     return {
         "total": result.get("data", {}).get("opportunities", {}).get("totalCount", 0),
@@ -307,6 +332,7 @@ async def list_opportunities(limit: int = 50):
 
 
 # ─── Growth → CRM Sync ────────────────────────────────────────────────────────
+
 
 @router.post("/sync/from-outreach")
 async def sync_outreach_to_crm(
@@ -322,7 +348,9 @@ async def sync_outreach_to_crm(
     """
     company_result = await create_company(CompanyCreate(name=prospect_company))
     person_result = await create_contact(
-        PersonCreate(name=prospect_name, email=prospect_email, company=prospect_company, source=source)
+        PersonCreate(
+            name=prospect_name, email=prospect_email, company=prospect_company, source=source
+        )
     )
 
     cid = person_result.get("id")
@@ -330,6 +358,8 @@ async def sync_outreach_to_crm(
         "success": bool(cid),
         "contact_id": cid,
         "company_id": company_result.get("id"),
-        "twenty_contact_url": f"http://localhost:3333/objects/people/{cid}" if cid else "http://localhost:3333",
+        "twenty_contact_url": f"http://localhost:3333/objects/people/{cid}"
+        if cid
+        else "http://localhost:3333",
         "channel": outreach_channel,
     }

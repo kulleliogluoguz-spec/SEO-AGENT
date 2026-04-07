@@ -2,11 +2,14 @@
 Integration tests for core API endpoints.
 Uses SQLite in-memory via conftest fixtures — no external DB required.
 """
+
 import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.models import Workspace, Recommendation, RecommendationStatus
+
+from app.models.models import Recommendation, RecommendationStatus, Workspace
 
 
 class TestHealthEndpoints:
@@ -32,11 +35,14 @@ class TestHealthEndpoints:
 class TestAuthRegisterLogin:
     @pytest.mark.asyncio
     async def test_register_creates_user(self, client: AsyncClient):
-        r = await client.post("/api/v1/auth/register", json={
-            "email": "newuser@test.com",
-            "password": "NewUser1234!",
-            "full_name": "New User",
-        })
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "NewUser1234!",
+                "full_name": "New User",
+            },
+        )
         assert r.status_code == 201
         data = r.json()
         assert data["email"] == "newuser@test.com"
@@ -52,19 +58,33 @@ class TestAuthRegisterLogin:
 
     @pytest.mark.asyncio
     async def test_register_weak_password_returns_422(self, client: AsyncClient):
-        r = await client.post("/api/v1/auth/register", json={
-            "email": "weak@test.com", "password": "short", "full_name": "Weak",
-        })
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "weak@test.com",
+                "password": "short",
+                "full_name": "Weak",
+            },
+        )
         assert r.status_code == 422
 
     @pytest.mark.asyncio
     async def test_login_returns_tokens(self, client: AsyncClient):
-        await client.post("/api/v1/auth/register", json={
-            "email": "logintest@test.com", "password": "LoginTest1!", "full_name": "Login",
-        })
-        r = await client.post("/api/v1/auth/login", json={
-            "email": "logintest@test.com", "password": "LoginTest1!",
-        })
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "logintest@test.com",
+                "password": "LoginTest1!",
+                "full_name": "Login",
+            },
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "logintest@test.com",
+                "password": "LoginTest1!",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert "access_token" in data
@@ -74,19 +94,32 @@ class TestAuthRegisterLogin:
 
     @pytest.mark.asyncio
     async def test_login_wrong_password_returns_401(self, client: AsyncClient):
-        await client.post("/api/v1/auth/register", json={
-            "email": "badpass@test.com", "password": "Correct1234!", "full_name": "Bad",
-        })
-        r = await client.post("/api/v1/auth/login", json={
-            "email": "badpass@test.com", "password": "WrongPassword1!",
-        })
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "badpass@test.com",
+                "password": "Correct1234!",
+                "full_name": "Bad",
+            },
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "badpass@test.com",
+                "password": "WrongPassword1!",
+            },
+        )
         assert r.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_unknown_email_returns_401(self, client: AsyncClient):
-        r = await client.post("/api/v1/auth/login", json={
-            "email": "nobody@test.com", "password": "Password1!",
-        })
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "nobody@test.com",
+                "password": "Password1!",
+            },
+        )
         assert r.status_code == 401
 
     @pytest.mark.asyncio
@@ -125,7 +158,10 @@ class TestSiteEndpoints:
         self, client: AsyncClient, auth_headers, demo_user, db_session: AsyncSession
     ):
         from sqlalchemy import select
-        ws = (await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))).scalar_one()
+
+        ws = (
+            await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))
+        ).scalar_one()
         r = await client.post(
             f"/api/v1/sites?workspace_id={ws.id}",
             json={"url": "not-a-url"},
@@ -138,7 +174,10 @@ class TestSiteEndpoints:
         self, client: AsyncClient, auth_headers, demo_user, db_session: AsyncSession
     ):
         from sqlalchemy import select
-        ws = (await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))).scalar_one()
+
+        ws = (
+            await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))
+        ).scalar_one()
         r = await client.post(
             f"/api/v1/sites?workspace_id={ws.id}",
             json={"url": "https://new-site-test.com", "max_pages": 5},
@@ -154,10 +193,15 @@ class TestSiteEndpoints:
         self, client: AsyncClient, auth_headers, demo_user, db_session: AsyncSession
     ):
         from sqlalchemy import select
-        ws = (await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))).scalar_one()
+
+        ws = (
+            await db_session.execute(select(Workspace).where(Workspace.slug == "test-workspace"))
+        ).scalar_one()
         payload = {"url": "https://dup-check.com", "max_pages": 5}
         await client.post(f"/api/v1/sites?workspace_id={ws.id}", json=payload, headers=auth_headers)
-        r = await client.post(f"/api/v1/sites?workspace_id={ws.id}", json=payload, headers=auth_headers)
+        r = await client.post(
+            f"/api/v1/sites?workspace_id={ws.id}", json=payload, headers=auth_headers
+        )
         assert r.status_code == 409
 
     @pytest.mark.asyncio
@@ -166,9 +210,7 @@ class TestSiteEndpoints:
         assert r.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_list_sites_returns_paginated(
-        self, client: AsyncClient, auth_headers, demo_site
-    ):
+    async def test_list_sites_returns_paginated(self, client: AsyncClient, auth_headers, demo_site):
         r = await client.get(
             f"/api/v1/sites?workspace_id={demo_site.workspace_id}",
             headers=auth_headers,
@@ -207,8 +249,10 @@ class TestRecommendationEndpoints:
             category="technical_seo",
             summary="Page missing title tag",
             rationale="Titles improve CTR significantly",
-            impact_score=0.8, effort_score=0.1,
-            confidence_score=0.95, urgency_score=0.9,
+            impact_score=0.8,
+            effort_score=0.1,
+            confidence_score=0.95,
+            urgency_score=0.9,
             priority_score=0.88,
             status=RecommendationStatus.PENDING,
         )
@@ -238,11 +282,17 @@ class TestRecommendationEndpoints:
     ):
         rec = Recommendation(
             id=uuid.uuid4(),
-            site_id=demo_site.id, workspace_id=demo_site.workspace_id,
-            title="Test rec", category="technical_seo",
-            summary="Summary", rationale="Rationale",
-            impact_score=0.5, effort_score=0.5, confidence_score=0.5,
-            urgency_score=0.5, priority_score=0.5,
+            site_id=demo_site.id,
+            workspace_id=demo_site.workspace_id,
+            title="Test rec",
+            category="technical_seo",
+            summary="Summary",
+            rationale="Rationale",
+            impact_score=0.5,
+            effort_score=0.5,
+            confidence_score=0.5,
+            urgency_score=0.5,
+            priority_score=0.5,
             status=RecommendationStatus.PENDING,
         )
         db_session.add(rec)
@@ -259,11 +309,7 @@ class TestRecommendationEndpoints:
 
 class TestApprovalEndpoints:
     @pytest.mark.asyncio
-    async def test_list_approvals_returns_empty(
-        self, client: AsyncClient, auth_headers, demo_site
-    ):
-        from app.models.models import Workspace
-        from sqlalchemy import select
+    async def test_list_approvals_returns_empty(self, client: AsyncClient, auth_headers, demo_site):
         r = await client.get(
             f"/api/v1/approvals?workspace_id={demo_site.workspace_id}",
             headers=auth_headers,
@@ -274,9 +320,7 @@ class TestApprovalEndpoints:
 
 class TestContentEndpoints:
     @pytest.mark.asyncio
-    async def test_list_content_returns_empty(
-        self, client: AsyncClient, auth_headers, demo_site
-    ):
+    async def test_list_content_returns_empty(self, client: AsyncClient, auth_headers, demo_site):
         r = await client.get(
             f"/api/v1/content?workspace_id={demo_site.workspace_id}",
             headers=auth_headers,

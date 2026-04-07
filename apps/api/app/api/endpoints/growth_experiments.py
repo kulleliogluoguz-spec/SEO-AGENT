@@ -10,30 +10,30 @@ POST /api/v1/growth/experiments/{id}/snapshot       — record performance snaps
 POST /api/v1/growth/experiments/{id}/pause          — pause experiment
 POST /api/v1/growth/experiments/{id}/resume         — resume experiment
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import random
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.dependencies.auth import get_current_user
+from app.core.store.content_queue_store import create_draft
 from app.core.store.growth_experiment_store import (
-    create_experiment,
-    get_experiment,
-    get_active_experiment,
-    get_user_experiments,
-    update_experiment,
-    record_performance_snapshot,
-    set_experiment_stage,
+    VALID_AD_MODES,
     VALID_GOALS,
     VALID_POSTING_MODES,
-    VALID_AD_MODES,
+    create_experiment,
+    get_active_experiment,
+    get_experiment,
+    get_user_experiments,
+    record_performance_snapshot,
+    set_experiment_stage,
+    update_experiment,
 )
-from app.core.store.content_queue_store import create_draft
 from app.core.store.learning_store import get_promoted_strategies, get_suppressed_strategies
 from app.services.trend_intelligence import get_or_refresh_trends
 
@@ -43,18 +43,19 @@ router = APIRouter()
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
+
 class ExperimentCreateRequest(BaseModel):
     niche: str
     goal: str = "followers"
     posting_mode: str = "review"
     ad_mode: str = "off"
-    x_username: Optional[str] = None
-    brand_voice: Optional[str] = None
-    target_audience: Optional[str] = None
-    content_themes: Optional[list[str]] = None
+    x_username: str | None = None
+    brand_voice: str | None = None
+    target_audience: str | None = None
+    content_themes: list[str] | None = None
     daily_post_target: int = 3
     followers_at_start: int = 0
-    website_url: Optional[str] = None
+    website_url: str | None = None
 
 
 class GeneratePostsRequest(BaseModel):
@@ -115,12 +116,36 @@ def _build_growth_strategy(niche: str, goal: str, posting_mode: str, daily_targe
     }.get(daily_target, f"{daily_target} posts/day")
 
     goal_tactics = {
-        "followers": ["Engage in reply chains daily", "Follow 20-30 accounts/day in niche", "Pin best-performing thread"],
-        "profile_visits": ["Use strong hooks", "Post threads (not single tweets)", "Tease content series"],
-        "website_clicks": ["Include URL in 1 of every 3 posts", "Add link to bio immediately", "Mention site in threads"],
-        "signups": ["Use social proof", "Highlight benefits over features", "Create urgency with limited offer"],
-        "leads": ["Direct message responders", "Offer free resource in bio link", "Use CTA in every 3rd post"],
-        "traffic": ["Share blog excerpts with link", "Repurpose top content as threads", "Quote tweet with commentary"],
+        "followers": [
+            "Engage in reply chains daily",
+            "Follow 20-30 accounts/day in niche",
+            "Pin best-performing thread",
+        ],
+        "profile_visits": [
+            "Use strong hooks",
+            "Post threads (not single tweets)",
+            "Tease content series",
+        ],
+        "website_clicks": [
+            "Include URL in 1 of every 3 posts",
+            "Add link to bio immediately",
+            "Mention site in threads",
+        ],
+        "signups": [
+            "Use social proof",
+            "Highlight benefits over features",
+            "Create urgency with limited offer",
+        ],
+        "leads": [
+            "Direct message responders",
+            "Offer free resource in bio link",
+            "Use CTA in every 3rd post",
+        ],
+        "traffic": [
+            "Share blog excerpts with link",
+            "Repurpose top content as threads",
+            "Quote tweet with commentary",
+        ],
     }
 
     return {
@@ -172,6 +197,7 @@ def _weighted_content_types(mix: dict, count: int) -> list[str]:
     Deterministic seed based on count for reproducibility in tests.
     """
     import random as _random
+
     types = list(mix.keys())
     weights = [max(mix[t], 1) for t in types]
 
@@ -200,6 +226,7 @@ def _generate_post_idea(niche: str, trend_topic: str, content_type: str) -> str:
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
+
 @router.post("/growth/experiments")
 async def create_growth_experiment(
     body: ExperimentCreateRequest,
@@ -215,9 +242,13 @@ async def create_growth_experiment(
     if body.goal not in VALID_GOALS:
         raise HTTPException(status_code=400, detail=f"Invalid goal. Must be one of: {VALID_GOALS}")
     if body.posting_mode not in VALID_POSTING_MODES:
-        raise HTTPException(status_code=400, detail=f"Invalid posting_mode. Must be one of: {VALID_POSTING_MODES}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid posting_mode. Must be one of: {VALID_POSTING_MODES}"
+        )
     if body.ad_mode not in VALID_AD_MODES:
-        raise HTTPException(status_code=400, detail=f"Invalid ad_mode. Must be one of: {VALID_AD_MODES}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid ad_mode. Must be one of: {VALID_AD_MODES}"
+        )
 
     # Build strategy
     strategy = _build_growth_strategy(
@@ -250,9 +281,7 @@ async def create_growth_experiment(
     # Fetch trends async (non-blocking — best effort)
     trend_signals = []
     try:
-        trend_signals = await asyncio.wait_for(
-            get_or_refresh_trends(body.niche), timeout=10.0
-        )
+        trend_signals = await asyncio.wait_for(get_or_refresh_trends(body.niche), timeout=10.0)
     except Exception:
         pass
 
@@ -265,7 +294,11 @@ async def create_growth_experiment(
     for i in range(5):
         content_type = content_types[i]
         trend_signal = trend_signals[i] if i < len(trend_signals) else None
-        trend_topic = trend_signal.get("keyword") or trend_signal.get("topic") or body.niche if trend_signal else body.niche
+        trend_topic = (
+            trend_signal.get("keyword") or trend_signal.get("topic") or body.niche
+            if trend_signal
+            else body.niche
+        )
         trend_id = trend_signal.get("id") if trend_signal else None
         text = _generate_post_idea(body.niche, trend_topic, content_type)
 
@@ -280,13 +313,15 @@ async def create_growth_experiment(
             channels=["x"],
             objective=f"growth_experiment:{experiment['id']}",
         )
-        drafts_created.append({
-            "id": draft["id"],
-            "title": draft.get("title"),
-            "content_type": content_type,
-            "trend_topic": trend_topic,
-            "trend_id": trend_id,
-        })
+        drafts_created.append(
+            {
+                "id": draft["id"],
+                "title": draft.get("title"),
+                "content_type": content_type,
+                "trend_topic": trend_topic,
+                "trend_id": trend_id,
+            }
+        )
 
     update_experiment(experiment["id"], str(user.id), {"posts_drafted": 5})
 
@@ -347,9 +382,7 @@ async def generate_posts(
 
     trend_signals = []
     try:
-        trend_signals = await asyncio.wait_for(
-            get_or_refresh_trends(exp["niche"]), timeout=10.0
-        )
+        trend_signals = await asyncio.wait_for(get_or_refresh_trends(exp["niche"]), timeout=10.0)
     except Exception:
         pass
 
@@ -362,7 +395,11 @@ async def generate_posts(
     for i in range(count):
         content_type = content_types[i]
         trend_signal = trend_signals[i % len(trend_signals)] if trend_signals else None
-        trend_topic = trend_signal.get("keyword") or trend_signal.get("topic") or exp["niche"] if trend_signal else exp["niche"]
+        trend_topic = (
+            trend_signal.get("keyword") or trend_signal.get("topic") or exp["niche"]
+            if trend_signal
+            else exp["niche"]
+        )
         trend_id = trend_signal.get("id") if trend_signal else None
         text = _generate_post_idea(exp["niche"], trend_topic, content_type)
 
@@ -377,13 +414,15 @@ async def generate_posts(
             channels=["x"],
             objective=f"growth_experiment:{experiment_id}",
         )
-        drafts_created.append({
-            "id": draft["id"],
-            "title": draft.get("title"),
-            "content_type": content_type,
-            "trend_topic": trend_topic,
-            "trend_id": trend_id,
-        })
+        drafts_created.append(
+            {
+                "id": draft["id"],
+                "title": draft.get("title"),
+                "content_type": content_type,
+                "trend_topic": trend_topic,
+                "trend_id": trend_id,
+            }
+        )
 
     # Update drafted count
     new_count = exp.get("posts_drafted", 0) + count
@@ -394,10 +433,7 @@ async def generate_posts(
         "count": len(drafts_created),
         "trend_signals_used": len(trend_signals),
         "content_mix_used": content_mix,
-        "learning_applied": any(
-            content_mix.get(ct, 0) != base_mix.get(ct, 0)
-            for ct in base_mix
-        ),
+        "learning_applied": any(content_mix.get(ct, 0) != base_mix.get(ct, 0) for ct in base_mix),
         "message": f"Generated {len(drafts_created)} posts. Review them in your Content Queue.",
     }
 
@@ -465,9 +501,7 @@ INSTAGRAM_CONTENT_MIX = {
     "general": {"carousel": 35, "reel_concept": 30, "caption": 25, "story": 10},
 }
 
-INSTAGRAM_GOALS = [
-    "followers", "reach", "profile_visits", "website_clicks", "saves", "engagement"
-]
+INSTAGRAM_GOALS = ["followers", "reach", "profile_visits", "website_clicks", "saves", "engagement"]
 
 
 def _build_instagram_strategy(niche: str, goal: str, posting_mode: str, daily_target: int) -> dict:
@@ -479,12 +513,36 @@ def _build_instagram_strategy(niche: str, goal: str, posting_mode: str, daily_ta
     }.get(daily_target, f"{daily_target} posts/day — high-velocity mode")
 
     goal_tactics = {
-        "followers": ["Post Reels daily — Reels reach non-followers", "Use 5-8 niche-relevant hashtags", "Reply to comments within 1 hour"],
-        "reach": ["Prioritize Reels and carousels over single images", "Post at peak times (8-9am, 12-1pm, 7-9pm)", "Use trending audio on Reels"],
-        "profile_visits": ["Strong hook in first 3 seconds of Reels", "CTA: 'Visit my profile for more'", "Consistent visual style"],
-        "website_clicks": ["Add link to bio + Story CTA 'link in bio'", "Story swipe-up if 10k+ followers", "Carousel last slide = CTA to website"],
-        "saves": ["Carousels with educational content", "Lists and frameworks people want to refer back to", "How-to content with numbered steps"],
-        "engagement": ["Ask questions in captions", "Polls and questions in Stories", "Collab posts with niche accounts"],
+        "followers": [
+            "Post Reels daily — Reels reach non-followers",
+            "Use 5-8 niche-relevant hashtags",
+            "Reply to comments within 1 hour",
+        ],
+        "reach": [
+            "Prioritize Reels and carousels over single images",
+            "Post at peak times (8-9am, 12-1pm, 7-9pm)",
+            "Use trending audio on Reels",
+        ],
+        "profile_visits": [
+            "Strong hook in first 3 seconds of Reels",
+            "CTA: 'Visit my profile for more'",
+            "Consistent visual style",
+        ],
+        "website_clicks": [
+            "Add link to bio + Story CTA 'link in bio'",
+            "Story swipe-up if 10k+ followers",
+            "Carousel last slide = CTA to website",
+        ],
+        "saves": [
+            "Carousels with educational content",
+            "Lists and frameworks people want to refer back to",
+            "How-to content with numbered steps",
+        ],
+        "engagement": [
+            "Ask questions in captions",
+            "Polls and questions in Stories",
+            "Collab posts with niche accounts",
+        ],
     }
 
     return {
@@ -519,13 +577,13 @@ class InstagramExperimentCreateRequest(BaseModel):
     niche: str
     goal: str = "followers"
     posting_mode: str = "review"
-    ig_handle: Optional[str] = None
-    brand_voice: Optional[str] = None
-    target_audience: Optional[str] = None
+    ig_handle: str | None = None
+    brand_voice: str | None = None
+    target_audience: str | None = None
     daily_post_target: int = 2
     followers_at_start: int = 0
-    website_url: Optional[str] = None
-    visual_style: Optional[str] = None
+    website_url: str | None = None
+    visual_style: str | None = None
 
 
 @router.post("/growth/experiments/instagram")
@@ -563,19 +621,21 @@ async def create_instagram_experiment(
         followers_at_start=body.followers_at_start,
         website_url=body.website_url,
     )
-    update_experiment(experiment["id"], str(user.id), {
-        "growth_strategy": strategy,
-        "channel": "instagram",
-        "ig_handle": body.ig_handle,
-    })
+    update_experiment(
+        experiment["id"],
+        str(user.id),
+        {
+            "growth_strategy": strategy,
+            "channel": "instagram",
+            "ig_handle": body.ig_handle,
+        },
+    )
     experiment["growth_strategy"] = strategy
     experiment["channel"] = "instagram"
 
     trend_signals = []
     try:
-        trend_signals = await asyncio.wait_for(
-            get_or_refresh_trends(body.niche), timeout=10.0
-        )
+        trend_signals = await asyncio.wait_for(get_or_refresh_trends(body.niche), timeout=10.0)
     except Exception:
         pass
 
@@ -585,7 +645,11 @@ async def create_instagram_experiment(
 
     for i in range(5):
         content_type = content_types[i % len(content_types)]
-        trend_topic = (trend_signals[i].get("keyword") or trend_signals[i].get("topic") or body.niche) if i < len(trend_signals) else body.niche
+        trend_topic = (
+            (trend_signals[i].get("keyword") or trend_signals[i].get("topic") or body.niche)
+            if i < len(trend_signals)
+            else body.niche
+        )
         text = _generate_instagram_post_idea(body.niche, trend_topic, content_type)
 
         draft = create_draft(
@@ -597,12 +661,14 @@ async def create_instagram_experiment(
             channels=["instagram"],
             objective=f"ig_experiment:{experiment['id']}",
         )
-        drafts_created.append({
-            "id": draft["id"],
-            "title": draft.get("title"),
-            "content_type": content_type,
-            "trend_topic": trend_topic,
-        })
+        drafts_created.append(
+            {
+                "id": draft["id"],
+                "title": draft.get("title"),
+                "content_type": content_type,
+                "trend_topic": trend_topic,
+            }
+        )
 
     update_experiment(experiment["id"], str(user.id), {"posts_drafted": 5})
 
@@ -648,9 +714,7 @@ async def generate_instagram_posts(
     count = min(body.count, 10)
     trend_signals = []
     try:
-        trend_signals = await asyncio.wait_for(
-            get_or_refresh_trends(exp["niche"]), timeout=10.0
-        )
+        trend_signals = await asyncio.wait_for(get_or_refresh_trends(exp["niche"]), timeout=10.0)
     except Exception:
         pass
 
@@ -660,7 +724,15 @@ async def generate_instagram_posts(
 
     for i in range(count):
         content_type = content_types[i % len(content_types)]
-        trend_topic = (trend_signals[i % len(trend_signals)].get("keyword") or trend_signals[i % len(trend_signals)].get("topic") or exp["niche"]) if trend_signals else exp["niche"]
+        trend_topic = (
+            (
+                trend_signals[i % len(trend_signals)].get("keyword")
+                or trend_signals[i % len(trend_signals)].get("topic")
+                or exp["niche"]
+            )
+            if trend_signals
+            else exp["niche"]
+        )
         text = _generate_instagram_post_idea(exp["niche"], trend_topic, content_type)
 
         draft = create_draft(
@@ -672,12 +744,14 @@ async def generate_instagram_posts(
             channels=["instagram"],
             objective=f"ig_experiment:{experiment_id}",
         )
-        drafts_created.append({
-            "id": draft["id"],
-            "title": draft.get("title"),
-            "content_type": content_type,
-            "trend_topic": trend_topic,
-        })
+        drafts_created.append(
+            {
+                "id": draft["id"],
+                "title": draft.get("title"),
+                "content_type": content_type,
+                "trend_topic": trend_topic,
+            }
+        )
 
     new_count = exp.get("posts_drafted", 0) + count
     update_experiment(experiment_id, str(user.id), {"posts_drafted": new_count})

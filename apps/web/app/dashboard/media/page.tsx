@@ -298,7 +298,7 @@ export default function MediaPlanPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 mb-0.5">{t.test}</p>
-                <p className="text-xs text-gray-500 italic mb-1.5">"{t.hypothesis}"</p>
+                <p className="text-xs text-gray-500 italic mb-1.5">&ldquo;{t.hypothesis}&rdquo;</p>
                 <div className="flex items-center gap-1">
                   <Zap size={10} className="text-amber-500" />
                   <span className="text-[10px] text-amber-700 font-medium">Run for {t.duration}</span>

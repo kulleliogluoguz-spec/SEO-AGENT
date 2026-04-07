@@ -11,18 +11,24 @@ POST /api/v1/ads-connectors/{platform}/link-account — link a specific ad accou
 All writes are gated. No campaigns are created or published from these endpoints.
 Campaign creation lives under /api/v1/campaigns (future).
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
 
-from app.api.dependencies.auth import get_current_user
-from app.adapters.base import AdapterCapabilityStage, AdapterCredentials, AdapterStatus
 from app.adapters import ADAPTER_REGISTRY
+from app.adapters.base import AdapterCapabilityStage, AdapterCredentials
+from app.api.dependencies.auth import get_current_user
 from app.core.store.credential_store import (
-    store_credential, get_credential, delete_credential, list_credentials,
-    link_account, get_linked_accounts, unlink_account, get_platform_stage,
+    delete_credential,
+    get_credential,
+    get_linked_accounts,
+    get_platform_stage,
+    link_account,
+    list_credentials,
+    store_credential,
+    unlink_account,
 )
 
 router = APIRouter()
@@ -35,7 +41,15 @@ PLATFORM_META = {
         "description": "Run ads on Facebook Feed, Instagram Feed, Reels, Stories, and Audience Network.",
         "icon": "meta",
         "best_for": ["ecommerce", "fashion", "beauty", "fitness", "food", "general"],
-        "ad_formats": ["Image", "Video", "Carousel", "Stories", "Reels", "Collection", "Dynamic Product"],
+        "ad_formats": [
+            "Image",
+            "Video",
+            "Carousel",
+            "Stories",
+            "Reels",
+            "Collection",
+            "Dynamic Product",
+        ],
         "min_daily_budget_usd": 1.0,
         "docs_url": "https://developers.facebook.com/docs/marketing-apis",
         "app_review_required": True,
@@ -57,7 +71,13 @@ PLATFORM_META = {
         "description": "In-Feed Video, Spark Ads, TopView, and Branded Hashtag Challenges.",
         "icon": "tiktok",
         "best_for": ["fashion", "beauty", "fitness", "food", "creator", "ecommerce"],
-        "ad_formats": ["In-Feed Video", "Spark Ads", "TopView", "Brand Takeover", "Hashtag Challenge"],
+        "ad_formats": [
+            "In-Feed Video",
+            "Spark Ads",
+            "TopView",
+            "Brand Takeover",
+            "Hashtag Challenge",
+        ],
         "min_daily_budget_usd": 20.0,
         "docs_url": "https://ads.tiktok.com/marketing_api/docs",
         "app_review_required": True,
@@ -68,7 +88,13 @@ PLATFORM_META = {
         "description": "Sponsored Content, Message Ads, Lead Gen Forms, and Dynamic Ads for B2B.",
         "icon": "linkedin",
         "best_for": ["b2b", "tech"],
-        "ad_formats": ["Sponsored Content", "Message Ads", "Lead Gen Forms", "Dynamic Ads", "Text Ads"],
+        "ad_formats": [
+            "Sponsored Content",
+            "Message Ads",
+            "Lead Gen Forms",
+            "Dynamic Ads",
+            "Text Ads",
+        ],
         "min_daily_budget_usd": 10.0,
         "docs_url": "https://learn.microsoft.com/en-us/linkedin/marketing/",
         "app_review_required": True,
@@ -100,6 +126,7 @@ PLATFORM_META = {
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class AuthUrlRequest(BaseModel):
     redirect_uri: str
     state: str = "default"
@@ -107,16 +134,18 @@ class AuthUrlRequest(BaseModel):
 
 class ConnectRequest(BaseModel):
     """Exchange OAuth2 authorization code for access token."""
+
     code: str
     redirect_uri: str
 
 
 class TokenDirectRequest(BaseModel):
     """For platforms that support direct token input (e.g. long-lived tokens)."""
+
     access_token: str
-    refresh_token: Optional[str] = None
-    expires_at: Optional[str] = None
-    scope: Optional[str] = None
+    refresh_token: str | None = None
+    expires_at: str | None = None
+    scope: str | None = None
 
 
 class LinkAccountRequest(BaseModel):
@@ -132,6 +161,7 @@ class DisconnectRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _planning_adapter(platform: str):
     """Return a planning-only adapter instance (no credentials required)."""
     if platform not in ADAPTER_REGISTRY:
@@ -143,6 +173,7 @@ def _planning_adapter(platform: str):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("")
 async def list_connectors(current_user=Depends(get_current_user)) -> dict:
     """
@@ -150,7 +181,7 @@ async def list_connectors(current_user=Depends(get_current_user)) -> dict:
     capability stage, and platform metadata.
     """
     user_id = str(current_user.id)
-    user_creds = {c["platform"]: c for c in list_credentials(user_id)}
+    {c["platform"]: c for c in list_credentials(user_id)}
     user_accounts = {}
     for acct in get_linked_accounts(user_id):
         user_accounts.setdefault(acct["platform"], []).append(acct)
@@ -164,7 +195,9 @@ async def list_connectors(current_user=Depends(get_current_user)) -> dict:
 
         # Override stage from credential store if more advanced
         stage_order = ["planning", "credentials_set", "auth_verified", "account_linked"]
-        if real_stage in stage_order and stage_order.index(real_stage) > stage_order.index(capability["stage"]):
+        if real_stage in stage_order and stage_order.index(real_stage) > stage_order.index(
+            capability["stage"]
+        ):
             display_stage = real_stage
         else:
             display_stage = capability["stage"]
@@ -173,27 +206,31 @@ async def list_connectors(current_user=Depends(get_current_user)) -> dict:
         if is_connected:
             connected_count += 1
 
-        platforms.append({
-            "platform": key,
-            "name": meta["name"],
-            "description": meta["description"],
-            "icon": meta["icon"],
-            "best_for": meta["best_for"],
-            "ad_formats": meta["ad_formats"],
-            "min_daily_budget_usd": meta["min_daily_budget_usd"],
-            "docs_url": meta["docs_url"],
-            "app_review_required": meta["app_review_required"],
-            "app_review_note": meta["app_review_note"],
-            "stage": display_stage,
-            "is_connected": is_connected,
-            "linked_accounts": user_accounts.get(key, []),
-            "can_read": is_connected or real_stage == "auth_verified",
-            "can_create_drafts": is_connected,
-            "can_publish": False,  # always requires approval
-            "requires_approval_to_publish": True,
-            "next_step": capability["next_step"] if not is_connected else "Ready to create campaign drafts.",
-            "required_scopes": capability["required_scopes"],
-        })
+        platforms.append(
+            {
+                "platform": key,
+                "name": meta["name"],
+                "description": meta["description"],
+                "icon": meta["icon"],
+                "best_for": meta["best_for"],
+                "ad_formats": meta["ad_formats"],
+                "min_daily_budget_usd": meta["min_daily_budget_usd"],
+                "docs_url": meta["docs_url"],
+                "app_review_required": meta["app_review_required"],
+                "app_review_note": meta["app_review_note"],
+                "stage": display_stage,
+                "is_connected": is_connected,
+                "linked_accounts": user_accounts.get(key, []),
+                "can_read": is_connected or real_stage == "auth_verified",
+                "can_create_drafts": is_connected,
+                "can_publish": False,  # always requires approval
+                "requires_approval_to_publish": True,
+                "next_step": capability["next_step"]
+                if not is_connected
+                else "Ready to create campaign drafts.",
+                "required_scopes": capability["required_scopes"],
+            }
+        )
     return {
         "platforms": platforms,
         "total": len(platforms),
@@ -232,12 +269,13 @@ async def get_auth_url(
         raise HTTPException(status_code=404, detail=f"Platform '{platform}' not supported.")
 
     import os
+
     client_id = os.getenv(f"{platform.upper()}_CLIENT_ID")
     if not client_id:
         raise HTTPException(
             status_code=422,
             detail=f"{platform.upper()}_CLIENT_ID is not set in environment. "
-                   f"Add your {PLATFORM_META[platform]['name']} app credentials to the server .env file.",
+            f"Add your {PLATFORM_META[platform]['name']} app credentials to the server .env file.",
         )
 
     cls = ADAPTER_REGISTRY[platform]
@@ -271,6 +309,7 @@ async def connect_platform(
         raise HTTPException(status_code=404, detail=f"Platform '{platform}' not supported.")
 
     import os
+
     client_id = os.getenv(f"{platform.upper()}_CLIENT_ID")
     client_secret = os.getenv(f"{platform.upper()}_CLIENT_SECRET")
     if not client_id or not client_secret:
@@ -278,7 +317,11 @@ async def connect_platform(
             status_code=422,
             detail={
                 "message": f"{PLATFORM_META[platform]['name']} OAuth credentials not configured on server.",
-                "missing": [v for v in [f"{platform.upper()}_CLIENT_ID", f"{platform.upper()}_CLIENT_SECRET"] if not os.getenv(v)],
+                "missing": [
+                    v
+                    for v in [f"{platform.upper()}_CLIENT_ID", f"{platform.upper()}_CLIENT_SECRET"]
+                    if not os.getenv(v)
+                ],
                 "next_step": f"Add {platform.upper()}_CLIENT_ID and {platform.upper()}_CLIENT_SECRET to server .env file.",
             },
         )
@@ -286,9 +329,13 @@ async def connect_platform(
     # Call platform adapter to exchange code
     try:
         cls = ADAPTER_REGISTRY[platform]
-        creds = AdapterCredentials(platform=platform, client_id=client_id, client_secret=client_secret)
+        creds = AdapterCredentials(
+            platform=platform, client_id=client_id, client_secret=client_secret
+        )
         adapter = cls(credentials=creds, stage=AdapterCapabilityStage.READ_REPORT)
-        token_data = await adapter.exchange_code(code=payload.code, redirect_uri=payload.redirect_uri)
+        token_data = await adapter.exchange_code(
+            code=payload.code, redirect_uri=payload.redirect_uri
+        )
     except NotImplementedError:
         raise HTTPException(
             status_code=501,
@@ -308,7 +355,11 @@ async def connect_platform(
         refresh_token=token_data.get("refresh_token"),
         expires_at=token_data.get("expires_at"),
         scope=token_data.get("scope"),
-        extra={k: v for k, v in token_data.items() if k not in ("access_token", "refresh_token", "expires_at", "scope")},
+        extra={
+            k: v
+            for k, v in token_data.items()
+            if k not in ("access_token", "refresh_token", "expires_at", "scope")
+        },
     )
 
     return {
@@ -361,7 +412,10 @@ async def disconnect_platform(
     deleted = delete_credential(str(current_user.id), platform)
     if not deleted:
         raise HTTPException(404, f"No credentials found for platform '{platform}'.")
-    return {"platform": platform, "message": f"{PLATFORM_META[platform]['name']} disconnected. Credentials removed."}
+    return {
+        "platform": platform,
+        "message": f"{PLATFORM_META[platform]['name']} disconnected. Credentials removed.",
+    }
 
 
 @router.get("/{platform}/accounts")
@@ -476,45 +530,176 @@ async def unlink_ad_account(
 
 # ── Setup step guides ─────────────────────────────────────────────────────────
 
+
 def _setup_steps(platform: str) -> list[dict]:
     steps_map = {
         "meta": [
-            {"step": 1, "title": "Create a Meta Developer App", "detail": "Go to developers.facebook.com/apps and create a Business app type.", "url": "https://developers.facebook.com/apps"},
-            {"step": 2, "title": "Add Marketing API product", "detail": "In your app dashboard, add the 'Marketing API' product and enable required permissions.", "url": "https://developers.facebook.com/docs/marketing-apis/get-started"},
-            {"step": 3, "title": "Submit for App Review", "detail": "Submit ads_management and ads_read for review. Basic access available immediately for testing with developer account.", "url": "https://developers.facebook.com/docs/app-review"},
-            {"step": 4, "title": "Set environment variables", "detail": "Add FACEBOOK_APP_ID and FACEBOOK_APP_SECRET to your server .env file.", "url": None},
-            {"step": 5, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/meta/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Create a Meta Developer App",
+                "detail": "Go to developers.facebook.com/apps and create a Business app type.",
+                "url": "https://developers.facebook.com/apps",
+            },
+            {
+                "step": 2,
+                "title": "Add Marketing API product",
+                "detail": "In your app dashboard, add the 'Marketing API' product and enable required permissions.",
+                "url": "https://developers.facebook.com/docs/marketing-apis/get-started",
+            },
+            {
+                "step": 3,
+                "title": "Submit for App Review",
+                "detail": "Submit ads_management and ads_read for review. Basic access available immediately for testing with developer account.",
+                "url": "https://developers.facebook.com/docs/app-review",
+            },
+            {
+                "step": 4,
+                "title": "Set environment variables",
+                "detail": "Add FACEBOOK_APP_ID and FACEBOOK_APP_SECRET to your server .env file.",
+                "url": None,
+            },
+            {
+                "step": 5,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/meta/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
         "google": [
-            {"step": 1, "title": "Apply for a Developer Token", "detail": "Sign in to Google Ads Manager and apply for a developer token under API Center.", "url": "https://ads.google.com/home/tools/manager-accounts/"},
-            {"step": 2, "title": "Create OAuth2 credentials", "detail": "Go to Google Cloud Console, create an OAuth2 client ID for web application.", "url": "https://console.cloud.google.com/"},
-            {"step": 3, "title": "Enable Google Ads API", "detail": "Enable the Google Ads API in your Google Cloud project.", "url": "https://console.cloud.google.com/apis/library/googleads.googleapis.com"},
-            {"step": 4, "title": "Set environment variables", "detail": "Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_DEVELOPER_TOKEN to .env.", "url": None},
-            {"step": 5, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/google/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Apply for a Developer Token",
+                "detail": "Sign in to Google Ads Manager and apply for a developer token under API Center.",
+                "url": "https://ads.google.com/home/tools/manager-accounts/",
+            },
+            {
+                "step": 2,
+                "title": "Create OAuth2 credentials",
+                "detail": "Go to Google Cloud Console, create an OAuth2 client ID for web application.",
+                "url": "https://console.cloud.google.com/",
+            },
+            {
+                "step": 3,
+                "title": "Enable Google Ads API",
+                "detail": "Enable the Google Ads API in your Google Cloud project.",
+                "url": "https://console.cloud.google.com/apis/library/googleads.googleapis.com",
+            },
+            {
+                "step": 4,
+                "title": "Set environment variables",
+                "detail": "Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_DEVELOPER_TOKEN to .env.",
+                "url": None,
+            },
+            {
+                "step": 5,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/google/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
         "tiktok": [
-            {"step": 1, "title": "Create TikTok for Business developer account", "detail": "Register at developers.tiktok.com with your TikTok for Business account.", "url": "https://developers.tiktok.com/"},
-            {"step": 2, "title": "Create an app and apply for Marketing API access", "detail": "Submit Marketing API application. Review typically takes 3–7 business days.", "url": "https://ads.tiktok.com/marketing_api/docs"},
-            {"step": 3, "title": "Set environment variables", "detail": "Add TIKTOK_CLIENT_ID and TIKTOK_CLIENT_SECRET to .env.", "url": None},
-            {"step": 4, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/tiktok/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Create TikTok for Business developer account",
+                "detail": "Register at developers.tiktok.com with your TikTok for Business account.",
+                "url": "https://developers.tiktok.com/",
+            },
+            {
+                "step": 2,
+                "title": "Create an app and apply for Marketing API access",
+                "detail": "Submit Marketing API application. Review typically takes 3–7 business days.",
+                "url": "https://ads.tiktok.com/marketing_api/docs",
+            },
+            {
+                "step": 3,
+                "title": "Set environment variables",
+                "detail": "Add TIKTOK_CLIENT_ID and TIKTOK_CLIENT_SECRET to .env.",
+                "url": None,
+            },
+            {
+                "step": 4,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/tiktok/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
         "linkedin": [
-            {"step": 1, "title": "Create a LinkedIn developer application", "detail": "Go to linkedin.com/developers and create an app associated with a LinkedIn Page.", "url": "https://www.linkedin.com/developers/apps"},
-            {"step": 2, "title": "Apply for Marketing Developer Platform access", "detail": "Request MDP partnership access. Review typically takes 1–4 weeks.", "url": "https://business.linkedin.com/marketing-solutions/marketing-partners/become-a-partner/marketing-developer-program"},
-            {"step": 3, "title": "Set environment variables", "detail": "Add LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET to .env.", "url": None},
-            {"step": 4, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/linkedin/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Create a LinkedIn developer application",
+                "detail": "Go to linkedin.com/developers and create an app associated with a LinkedIn Page.",
+                "url": "https://www.linkedin.com/developers/apps",
+            },
+            {
+                "step": 2,
+                "title": "Apply for Marketing Developer Platform access",
+                "detail": "Request MDP partnership access. Review typically takes 1–4 weeks.",
+                "url": "https://business.linkedin.com/marketing-solutions/marketing-partners/become-a-partner/marketing-developer-program",
+            },
+            {
+                "step": 3,
+                "title": "Set environment variables",
+                "detail": "Add LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET to .env.",
+                "url": None,
+            },
+            {
+                "step": 4,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/linkedin/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
         "pinterest": [
-            {"step": 1, "title": "Create a Pinterest Business account", "detail": "Convert to or create a Pinterest Business account.", "url": "https://business.pinterest.com/"},
-            {"step": 2, "title": "Register a developer app", "detail": "Go to developers.pinterest.com and create an app. ads:read and ads:write are available without extended review.", "url": "https://developers.pinterest.com/"},
-            {"step": 3, "title": "Set environment variables", "detail": "Add PINTEREST_CLIENT_ID and PINTEREST_CLIENT_SECRET to .env.", "url": None},
-            {"step": 4, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/pinterest/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Create a Pinterest Business account",
+                "detail": "Convert to or create a Pinterest Business account.",
+                "url": "https://business.pinterest.com/",
+            },
+            {
+                "step": 2,
+                "title": "Register a developer app",
+                "detail": "Go to developers.pinterest.com and create an app. ads:read and ads:write are available without extended review.",
+                "url": "https://developers.pinterest.com/",
+            },
+            {
+                "step": 3,
+                "title": "Set environment variables",
+                "detail": "Add PINTEREST_CLIENT_ID and PINTEREST_CLIENT_SECRET to .env.",
+                "url": None,
+            },
+            {
+                "step": 4,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/pinterest/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
         "snap": [
-            {"step": 1, "title": "Create a Snapchat Business account", "detail": "Register at business.snapchat.com.", "url": "https://business.snapchat.com/"},
-            {"step": 2, "title": "Apply for Marketing API access", "detail": "Apply at kit.snapchat.com. Business and developer accounts must be linked.", "url": "https://kit.snapchat.com/"},
-            {"step": 3, "title": "Set environment variables", "detail": "Add SNAP_CLIENT_ID and SNAP_CLIENT_SECRET to .env.", "url": None},
-            {"step": 4, "title": "Connect via OAuth", "detail": "Use POST /api/v1/ads-connectors/snap/auth-url to start the OAuth flow.", "url": None},
+            {
+                "step": 1,
+                "title": "Create a Snapchat Business account",
+                "detail": "Register at business.snapchat.com.",
+                "url": "https://business.snapchat.com/",
+            },
+            {
+                "step": 2,
+                "title": "Apply for Marketing API access",
+                "detail": "Apply at kit.snapchat.com. Business and developer accounts must be linked.",
+                "url": "https://kit.snapchat.com/",
+            },
+            {
+                "step": 3,
+                "title": "Set environment variables",
+                "detail": "Add SNAP_CLIENT_ID and SNAP_CLIENT_SECRET to .env.",
+                "url": None,
+            },
+            {
+                "step": 4,
+                "title": "Connect via OAuth",
+                "detail": "Use POST /api/v1/ads-connectors/snap/auth-url to start the OAuth flow.",
+                "url": None,
+            },
         ],
     }
     return steps_map.get(platform, [])

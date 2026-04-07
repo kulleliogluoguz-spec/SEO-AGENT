@@ -1,7 +1,9 @@
 """Unit tests for PolicyGateAgent."""
+
 import pytest
-from app.agents.layer0.policy_gate import PolicyGateAgent, PolicyCheckInput
+
 from app.agents.base import AgentRunContext
+from app.agents.layer0.policy_gate import PolicyCheckInput, PolicyGateAgent
 
 
 class TestPolicyGateAgent:
@@ -68,7 +70,9 @@ class TestPolicyGateAgent:
         agent = PolicyGateAgent()
         ctx = AgentRunContext(autonomy_level=4)
         result = await agent.run(
-            PolicyCheckInput(action_type="generate_fake_review", action_description="Fake testimonial"),
+            PolicyCheckInput(
+                action_type="generate_fake_review", action_description="Fake testimonial"
+            ),
             ctx,
         )
         assert result.success
@@ -79,6 +83,7 @@ class TestComplianceGuardian:
     @pytest.mark.asyncio
     async def test_flags_deceptive_guarantee(self):
         from app.agents.layer0.compliance import ComplianceGuardianAgent, ComplianceInput
+
         agent = ComplianceGuardianAgent()
         ctx = AgentRunContext(demo_mode=True)
         result = await agent.run(
@@ -96,6 +101,7 @@ class TestComplianceGuardian:
     @pytest.mark.asyncio
     async def test_community_channel_requires_review(self):
         from app.agents.layer0.compliance import ComplianceGuardianAgent, ComplianceInput
+
         agent = ComplianceGuardianAgent()
         ctx = AgentRunContext(demo_mode=True)
         result = await agent.run(
@@ -114,6 +120,7 @@ class TestComplianceGuardian:
     @pytest.mark.asyncio
     async def test_clean_content_passes(self):
         from app.agents.layer0.compliance import ComplianceGuardianAgent, ComplianceInput
+
         agent = ComplianceGuardianAgent()
         ctx = AgentRunContext(demo_mode=True)
         result = await agent.run(

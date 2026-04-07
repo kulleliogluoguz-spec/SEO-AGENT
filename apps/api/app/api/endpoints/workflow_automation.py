@@ -11,12 +11,12 @@ Pre-built workflows:
 3. Weekly Scorecard → Auto-generate every Monday
 """
 
-import os
 import base64
+import os
+
 import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, List, Dict
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["workflow-automation"])
 
@@ -73,20 +73,22 @@ async def trigger_webhook(webhook_path: str, data: dict) -> dict:
 
 # ─── Models ───────────────────────────────────────────────────────────────────
 
+
 class WorkflowTrigger(BaseModel):
     workflow_name: str
-    data: Dict
+    data: dict
 
 
 class AutomationRule(BaseModel):
     name: str
     trigger: str
-    condition: Optional[str] = ""
-    actions: List[str]
+    condition: str | None = ""
+    actions: list[str]
     enabled: bool = True
 
 
 # ─── Health & Status ──────────────────────────────────────────────────────────
+
 
 @router.get("/health")
 async def check_n8n_health():
@@ -128,6 +130,7 @@ async def get_overview():
 
 
 # ─── Pre-built Workflows ──────────────────────────────────────────────────────
+
 
 @router.post("/setup/contact-automation")
 async def setup_contact_automation():
@@ -189,9 +192,7 @@ async def setup_contact_automation():
             "New Contact Webhook": {
                 "main": [[{"node": "Add to Mautic", "type": "main", "index": 0}]]
             },
-            "Add to Mautic": {
-                "main": [[{"node": "Wait 1 Minute", "type": "main", "index": 0}]]
-            },
+            "Add to Mautic": {"main": [[{"node": "Wait 1 Minute", "type": "main", "index": 0}]]},
             "Wait 1 Minute": {
                 "main": [[{"node": "Trigger Welcome Sequence", "type": "main", "index": 0}]]
             },
@@ -206,7 +207,9 @@ async def setup_contact_automation():
         "workflow_name": "New Contact → Mautic + Welcome Email",
         "webhook_url": "http://localhost:5678/webhook/new-contact",
         "test_command": 'curl -X POST http://localhost:5678/webhook/new-contact -H "Content-Type: application/json" -d \'{"email":"test@example.com","firstname":"Test","business_type":"saas"}\'',
-        "n8n_url": f"http://localhost:5678/workflow/{workflow_id}" if workflow_id else "http://localhost:5678",
+        "n8n_url": f"http://localhost:5678/workflow/{workflow_id}"
+        if workflow_id
+        else "http://localhost:5678",
     }
 
 
@@ -266,9 +269,7 @@ async def setup_content_auto_score():
             "Content Generated Webhook": {
                 "main": [[{"node": "Score Content", "type": "main", "index": 0}]]
             },
-            "Score Content": {
-                "main": [[{"node": "Check Score > 80", "type": "main", "index": 0}]]
-            },
+            "Score Content": {"main": [[{"node": "Check Score > 80", "type": "main", "index": 0}]]},
         },
     }
 
@@ -277,7 +278,9 @@ async def setup_content_auto_score():
         "success": "id" in result,
         "workflow_id": result.get("id"),
         "webhook_url": "http://localhost:5678/webhook/content-generated",
-        "n8n_url": f"http://localhost:5678/workflow/{result.get('id')}" if result.get("id") else "http://localhost:5678",
+        "n8n_url": f"http://localhost:5678/workflow/{result.get('id')}"
+        if result.get("id")
+        else "http://localhost:5678",
     }
 
 
@@ -295,11 +298,7 @@ async def setup_weekly_scorecard():
                 "typeVersion": 1,
                 "position": [250, 300],
                 "parameters": {
-                    "rule": {
-                        "interval": [
-                            {"field": "cronExpression", "expression": "0 9 * * 1"}
-                        ]
-                    }
+                    "rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * 1"}]}
                 },
             },
             {
@@ -329,7 +328,9 @@ async def setup_weekly_scorecard():
         "success": "id" in result,
         "workflow_id": result.get("id"),
         "schedule": "Every Monday at 9:00 AM",
-        "n8n_url": f"http://localhost:5678/workflow/{result.get('id')}" if result.get("id") else "http://localhost:5678",
+        "n8n_url": f"http://localhost:5678/workflow/{result.get('id')}"
+        if result.get("id")
+        else "http://localhost:5678",
     }
 
 
@@ -353,24 +354,33 @@ async def setup_all_workflows():
 
 # ─── Manual Triggers ─────────────────────────────────────────────────────────
 
+
 @router.post("/trigger/new-contact")
 async def trigger_new_contact(email: str, firstname: str = "", business_type: str = "saas"):
     """Manually trigger the new contact workflow."""
-    return await trigger_webhook("new-contact", {
-        "email": email,
-        "firstname": firstname,
-        "business_type": business_type,
-    })
+    return await trigger_webhook(
+        "new-contact",
+        {
+            "email": email,
+            "firstname": firstname,
+            "business_type": business_type,
+        },
+    )
 
 
 @router.post("/trigger/content-score")
-async def trigger_content_score(content: str, content_type: str = "tweet", business_type: str = "saas"):
+async def trigger_content_score(
+    content: str, content_type: str = "tweet", business_type: str = "saas"
+):
     """Manually trigger the content scoring workflow."""
-    return await trigger_webhook("content-generated", {
-        "content": content,
-        "content_type": content_type,
-        "business_type": business_type,
-    })
+    return await trigger_webhook(
+        "content-generated",
+        {
+            "content": content,
+            "content_type": content_type,
+            "business_type": business_type,
+        },
+    )
 
 
 @router.get("/executions")

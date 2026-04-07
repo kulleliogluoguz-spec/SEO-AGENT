@@ -2,6 +2,7 @@
 Rule-Based + Statistical Decision Engine
 Analyzes campaign performance signals and emits actionable recommendations.
 """
+
 from __future__ import annotations
 
 import logging
@@ -206,9 +207,7 @@ class DecisionEngine:
                 Recommendation(
                     type="increase_budget",
                     priority="high",
-                    title=(
-                        f"Budget constrained: {s.campaign_name} hitting daily cap"
-                    ),
+                    title=(f"Budget constrained: {s.campaign_name} hitting daily cap"),
                     description=(
                         f"Campaign is hitting its budget cap with {s.roas_7d:.2f}x "
                         "ROAS. Increasing budget could unlock more profitable conversions."
@@ -272,8 +271,7 @@ class DecisionEngine:
                         "Recommend increasing budget by 30-50%."
                     ),
                     expected_impact=(
-                        f"Estimated ${s.spend_7d * 0.4:.0f} additional profitable "
-                        "spend per week"
+                        f"Estimated ${s.spend_7d * 0.4:.0f} additional profitable " "spend per week"
                     ),
                     action_data={
                         "action": "increase_budget",
@@ -350,9 +348,7 @@ class DecisionEngine:
 
     # ── Portfolio-level allocation ───────────────────────────────────────────
 
-    def compute_portfolio_allocation(
-        self, campaigns: list[dict], total_budget: float
-    ) -> dict:
+    def compute_portfolio_allocation(self, campaigns: list[dict], total_budget: float) -> dict:
         """
         Redistribute total budget across campaigns based on ROAS efficiency.
         Returns {campaign_id: recommended_spend}.
@@ -371,10 +367,7 @@ class DecisionEngine:
 
         if total_weight == 0:
             n = len(df)
-            return {
-                str(row["campaign_id"]): round(total_budget / n, 2)
-                for _, row in df.iterrows()
-            }
+            return {str(row["campaign_id"]): round(total_budget / n, 2) for _, row in df.iterrows()}
 
         allocation = {}
         for _, row in df.iterrows():

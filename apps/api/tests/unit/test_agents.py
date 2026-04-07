@@ -1,5 +1,5 @@
 """Unit tests for agent base class and infrastructure."""
-import uuid
+
 from typing import ClassVar
 
 import pytest
@@ -8,13 +8,11 @@ from pydantic import BaseModel
 from app.agents.base import (
     AgentMetadata,
     AgentRunContext,
-    AgentResult,
     BaseAgent,
-    LLMAgent,
 )
 
-
 # ─── Test Agents ──────────────────────────────────────────────────────────────
+
 
 class SimpleInput(BaseModel):
     value: str
@@ -63,6 +61,7 @@ class HighAutonomyAgent(BaseAgent[SimpleInput, SimpleOutput]):
 
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
+
 
 class TestBaseAgent:
     @pytest.mark.asyncio
@@ -119,7 +118,7 @@ class TestBaseAgent:
 
     @pytest.mark.asyncio
     async def test_context_defaults_are_safe(self):
-        agent = SucceedingAgent()
+        SucceedingAgent()
         ctx = AgentRunContext()
         assert ctx.autonomy_level == 1
         assert ctx.demo_mode is False
@@ -129,30 +128,36 @@ class TestBaseAgent:
 class TestAgentRegistry:
     def test_all_agents_registered(self):
         from app.agents.registry import AGENT_REGISTRY
+
         assert len(AGENT_REGISTRY) == 138
 
     def test_agent_lookup_by_name(self):
         from app.agents.registry import get_agent
+
         agent = get_agent("TechnicalSEOAuditAgent")
         assert agent is not None
         assert agent.layer == 4
 
     def test_agents_by_layer(self):
         from app.agents.registry import get_agents_for_layer
+
         layer4 = get_agents_for_layer(4)
         assert len(layer4) > 0
         assert all(a.layer == 4 for a in layer4)
 
     def test_nonexistent_agent_returns_none(self):
         from app.agents.registry import get_agent
+
         assert get_agent("NonExistentAgent") is None
 
     def test_agent_names_are_unique(self):
         from app.agents.registry import AGENT_REGISTRY
+
         names = [a.name for a in AGENT_REGISTRY]
         assert len(names) == len(set(names)), "Duplicate agent names found"
 
     def test_all_agents_have_module_path(self):
         from app.agents.registry import AGENT_REGISTRY
+
         for agent in AGENT_REGISTRY:
             assert agent.module_path, f"{agent.name} has no module_path"

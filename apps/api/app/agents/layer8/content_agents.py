@@ -4,6 +4,7 @@ Content production agents: ContentBriefAgent + LongFormWriterAgent
 These agents produce content assets with compliance awareness.
 All output goes to REVIEW status — never auto-published.
 """
+
 import uuid
 from typing import ClassVar
 
@@ -11,8 +12,8 @@ from pydantic import BaseModel
 
 from app.agents.base import AgentMetadata, AgentRunContext, LLMAgent
 
-
 # ─── Content Brief Agent ──────────────────────────────────────────────────────
+
 
 class ContentBriefInput(BaseModel):
     site_id: uuid.UUID
@@ -81,9 +82,7 @@ Additional notes: {input_data.notes or 'none'}"""
         return result or self._demo_brief(input_data)
 
     def _demo_brief(self, input_data: ContentBriefInput) -> ContentBriefOutput:
-        wc = input_data.word_count_target or (
-            1800 if input_data.content_type == "blog" else 800
-        )
+        wc = input_data.word_count_target or (1800 if input_data.content_type == "blog" else 800)
         return ContentBriefOutput(
             title=f"[Demo] {input_data.topic}",
             content_type=input_data.content_type,
@@ -92,19 +91,31 @@ Additional notes: {input_data.notes or 'none'}"""
             primary_keyword=input_data.target_keyword,
             secondary_keywords=["related term 1", "related term 2"],
             outline=[
-                {"heading": "Introduction", "description": "Hook and problem statement", "word_count": 200},
+                {
+                    "heading": "Introduction",
+                    "description": "Hook and problem statement",
+                    "word_count": 200,
+                },
                 {"heading": "Main Section", "description": "Core content", "word_count": wc - 400},
-                {"heading": "Conclusion & CTA", "description": "Summary and next step", "word_count": 200},
+                {
+                    "heading": "Conclusion & CTA",
+                    "description": "Summary and next step",
+                    "word_count": 200,
+                },
             ],
             tone_guidance=f"{input_data.tone}, clear, evidence-based",
             word_count_target=wc,
-            compliance_notes=["Verify all statistics before publishing", "Do not make comparative claims without evidence"],
+            compliance_notes=[
+                "Verify all statistics before publishing",
+                "Do not make comparative claims without evidence",
+            ],
             research_prompts=["What are the top 3 challenges this audience faces?"],
             cta_suggestions=["Start free trial", "Book a demo", "Download the guide"],
         )
 
 
 # ─── Long Form Writer Agent ───────────────────────────────────────────────────
+
 
 class LongFormWriterInput(BaseModel):
     brief: ContentBriefOutput
@@ -196,8 +207,12 @@ Additional context: {input_data.additional_context or 'none'}"""
             flags.append(f"{verify_count} claims marked for verification")
 
         suspicious_phrases = [
-            "guaranteed", "100% proven", "risk-free", "number one",
-            "best in the world", "scientifically proven",
+            "guaranteed",
+            "100% proven",
+            "risk-free",
+            "number one",
+            "best in the world",
+            "scientifically proven",
         ]
         for phrase in suspicious_phrases:
             if phrase.lower() in content.lower():

@@ -2,10 +2,11 @@
 Content endpoints: briefs, generation, review, approval.
 Falls back to file-based demo store when PostgreSQL is unavailable.
 """
+
 import logging
 import os
 import uuid
-from typing import Optional
+from datetime import UTC
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -29,17 +30,18 @@ router = APIRouter()
 
 # ── Creative generation via Ollama ────────────────────────────────────────────
 
+
 class CreativeGenerateRequest(BaseModel):
-    content_type: str        # reel_script | carousel | caption | story | blog | landing_page | ad_copy
-    objective: str           # engagement | awareness | traffic | conversion
+    content_type: str  # reel_script | carousel | caption | story | blog | landing_page | ad_copy
+    objective: str  # engagement | awareness | traffic | conversion
     topic: str
-    audience: Optional[str] = None
+    audience: str | None = None
     tone: str = "conversational"
-    keywords: Optional[str] = None
-    brand_name: Optional[str] = None
-    niche: Optional[str] = None
-    notes: Optional[str] = None
-    variations: int = 3      # Number of variations to generate
+    keywords: str | None = None
+    brand_name: str | None = None
+    niche: str | None = None
+    notes: str | None = None
+    variations: int = 3  # Number of variations to generate
 
 
 CONTENT_PROMPTS = {
@@ -49,7 +51,6 @@ Format each as:
 HOOK (first 3 seconds): [hook line]
 CONTENT: [main content, numbered steps or key points]
 CTA: [call to action]""",
-
     "carousel": """Write {variations} Instagram carousel post scripts for the following brief.
 Each carousel should have 5–8 slides.
 Format each as:
@@ -60,13 +61,11 @@ SLIDE 4: [key point or step 3]
 SLIDE 5: [key point or step 4]
 SLIDE 6: [social proof or stat]
 SLIDE 7 (CTA): [call to action]""",
-
     "caption": """Write {variations} Instagram caption variations for the following brief.
 Each caption should be 100–200 words, engaging, and end with a CTA and 5–8 relevant hashtags.
 Format each as:
 CAPTION: [caption text]
 HASHTAGS: [hashtags]""",
-
     "story": """Write {variations} Instagram Story sequences (3–5 slides each) for the following brief.
 Keep each story slide text under 30 words. Make them visually-oriented.
 Format each as:
@@ -74,13 +73,11 @@ SLIDE 1: [text]
 SLIDE 2: [text]
 SLIDE 3: [text]
 CTA SLIDE: [call to action]""",
-
     "ad_copy": """Write {variations} ad copy variations for the following brief.
 Each variation should include:
 HEADLINE: [5–8 words, attention-grabbing]
 BODY: [2–3 sentences, benefit-focused]
 CTA: [2–4 words]""",
-
     "blog": """Write an outline for {variations} blog article(s) for the following brief.
 Each outline should include:
 TITLE: [SEO-optimized title]
@@ -88,7 +85,6 @@ META DESCRIPTION: [150 characters]
 INTRODUCTION: [2-3 sentences]
 H2 SECTIONS: [list 4–6 section headings]
 CONCLUSION: [approach]""",
-
     "landing_page": """Write {variations} landing page copy variations for the following brief.
 Format each as:
 HEADLINE: [primary headline, 6–10 words]
@@ -174,7 +170,9 @@ Do not use placeholders — write actual copy."""
                     "note": f"Generated locally using {model} via Ollama.",
                 }
 
-            logger.warning("[content] Ollama returned %s — falling back to template", response.status_code)
+            logger.warning(
+                "[content] Ollama returned %s — falling back to template", response.status_code
+            )
 
     except httpx.RequestError as e:
         logger.warning("[content] Ollama unavailable (%s) — returning template structure", e)
@@ -218,7 +216,7 @@ def _template_fallback(p: CreativeGenerateRequest) -> str:
         lines += [
             f"HOOK: [Attention-grabbing opener about {p.topic}]",
             f"CONTENT: [3-5 key points about {p.topic} for {p.audience or 'your audience'}]",
-            f"CTA: [Action you want viewers to take]",
+            "CTA: [Action you want viewers to take]",
         ]
     elif p.content_type == "caption":
         lines += [
@@ -239,15 +237,20 @@ def _template_fallback(p: CreativeGenerateRequest) -> str:
 
 def _is_db_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return any(k in msg for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table"))
+    return any(
+        k in msg
+        for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table")
+    )
 
 
 def _paginate(items: list, page: int, page_size: int) -> PaginatedResponse:
     total = len(items)
     start = (page - 1) * page_size
     return PaginatedResponse(
-        items=items[start: start + page_size],
-        total=total, page=page, page_size=page_size,
+        items=items[start : start + page_size],
+        total=total,
+        page=page,
+        page_size=page_size,
         pages=max(1, -(-total // page_size)),
     )
 
@@ -275,23 +278,27 @@ async def create_brief(
     except Exception as exc:
         if not _is_db_error(exc):
             raise
-        from app.core.store.demo_store import create_content_asset, DEMO_WS
-        record = create_content_asset(DEMO_WS, {
-            "title": payload.topic,
-            "asset_type": payload.content_type or "blog",
-            "status": "draft",
-            "content": None,
-            "brief": {
-                "topic": payload.topic,
-                "content_type": payload.content_type,
-                "target_keyword": payload.target_keyword,
-                "tone": payload.tone,
-                "word_count_target": payload.word_count_target,
-                "notes": payload.notes,
+        from app.core.store.demo_store import DEMO_WS, create_content_asset
+
+        record = create_content_asset(
+            DEMO_WS,
+            {
+                "title": payload.topic,
+                "asset_type": payload.content_type or "blog",
+                "status": "draft",
+                "content": None,
+                "brief": {
+                    "topic": payload.topic,
+                    "content_type": payload.content_type,
+                    "target_keyword": payload.target_keyword,
+                    "tone": payload.tone,
+                    "word_count_target": payload.word_count_target,
+                    "notes": payload.notes,
+                },
+                "compliance_flags": [],
+                "risk_score": 0.0,
             },
-            "compliance_flags": [],
-            "risk_score": 0.0,
-        })
+        )
         return record
 
 
@@ -307,7 +314,9 @@ async def generate_content(
     except Exception as exc:
         if not _is_db_error(exc):
             raise
-        raise HTTPException(status_code=503, detail="Content generation requires a running database.")
+        raise HTTPException(
+            status_code=503, detail="Content generation requires a running database."
+        )
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -322,6 +331,7 @@ async def list_content(
 ):
     try:
         from sqlalchemy import func as sqlfunc
+
         query = select(ContentAsset).where(ContentAsset.workspace_id == workspace_id)
         if asset_type:
             query = query.where(ContentAsset.asset_type == asset_type)
@@ -329,16 +339,23 @@ async def list_content(
             query = query.where(ContentAsset.status == status)
         count_q = select(sqlfunc.count()).select_from(query.subquery())
         total = (await db.execute(count_q)).scalar()
-        items = (await db.execute(query.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+        items = (
+            (await db.execute(query.offset((page - 1) * page_size).limit(page_size)))
+            .scalars()
+            .all()
+        )
         return PaginatedResponse(
             items=[ContentAssetResponse.model_validate(i) for i in items],
-            total=total, page=page, page_size=page_size,
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
     except Exception as exc:
         if not _is_db_error(exc):
             raise
         from app.core.store.demo_store import get_content_assets
+
         items = get_content_assets(str(workspace_id), asset_type, status)
         return _paginate(items, page, page_size)
 
@@ -375,11 +392,14 @@ async def approve_content(
         if not asset:
             raise HTTPException(status_code=404, detail="Content asset not found")
         if asset.status not in (ContentStatus.REVIEW, ContentStatus.DRAFT):
-            raise HTTPException(status_code=400, detail=f"Cannot approve asset in {asset.status} status")
-        from datetime import datetime, timezone
+            raise HTTPException(
+                status_code=400, detail=f"Cannot approve asset in {asset.status} status"
+            )
+        from datetime import datetime
+
         asset.status = ContentStatus.APPROVED
         asset.approved_by_id = current_user.id
-        asset.approved_at = datetime.now(timezone.utc)
+        asset.approved_at = datetime.now(UTC)
         await db.commit()
         await db.refresh(asset)
         return asset

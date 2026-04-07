@@ -1,4 +1,5 @@
 """Finance Module — Invoice Intelligence API."""
+
 from __future__ import annotations
 
 import logging
@@ -6,7 +7,6 @@ import shutil
 import uuid
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -80,10 +80,10 @@ async def _process_bg(fp: str, fn: str, wid: str) -> None:
 
 @router.get("/invoices")
 async def list_invoices(
-    direction: Optional[str] = None,
-    category: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    direction: str | None = None,
+    category: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -102,9 +102,7 @@ async def list_invoices(
         where += " AND invoice_date<=:dt"
         params["dt"] = date_to
     r = await db.execute(
-        text(
-            f"SELECT * FROM invoices {where} ORDER BY invoice_date DESC NULLS LAST LIMIT 100"
-        ),
+        text(f"SELECT * FROM invoices {where} ORDER BY invoice_date DESC NULLS LAST LIMIT 100"),
         params,
     )
     invoices = [_row_to_dict(row) for row in r.fetchall()]
@@ -151,9 +149,7 @@ async def update_invoice(
             params[f] = data[f]
     if parts:
         await db.execute(
-            text(
-                f"UPDATE invoices SET {', '.join(parts)}, human_reviewed=true WHERE id=:id"
-            ),
+            text(f"UPDATE invoices SET {', '.join(parts)}, human_reviewed=true WHERE id=:id"),
             params,
         )
         await db.commit()

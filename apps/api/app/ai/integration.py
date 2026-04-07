@@ -28,7 +28,7 @@ Usage in existing agents:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from app.ai.engines.engine_manager import EngineResult, get_engine_manager
 from app.ai.guardrails.guardrail_manager import get_guardrail_manager
@@ -124,23 +124,25 @@ class AIClient:
 
         # 5. Record trace
         tracer = get_ai_tracer()
-        tracer.record(AITrace(
-            trace_id=result.trace_id,
-            engine=engine,
-            role=engine_instance.ai_role.value,
-            model_used=result.model_used,
-            provider=result.provider_used,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            latency_ms=result.latency_ms,
-            cost_usd=result.cost_usd,
-            success=result.success,
-            error=result.error,
-            input_preview=message[:200],
-            output_preview=(result.raw_content or "")[:200],
-            workspace_id=workspace_id,
-            site_id=site_id,
-        ))
+        tracer.record(
+            AITrace(
+                trace_id=result.trace_id,
+                engine=engine,
+                role=engine_instance.ai_role.value,
+                model_used=result.model_used,
+                provider=result.provider_used,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                latency_ms=result.latency_ms,
+                cost_usd=result.cost_usd,
+                success=result.success,
+                error=result.error,
+                input_preview=message[:200],
+                output_preview=(result.raw_content or "")[:200],
+                workspace_id=workspace_id,
+                site_id=site_id,
+            )
+        )
 
         return result
 
@@ -211,6 +213,7 @@ class AIClient:
 
 # ─── LangGraph Integration ───────────────────────────────────────
 
+
 class LangGraphLLMAdapter:
     """
     Adapter that makes the AI subsystem work as a LangGraph-compatible LLM.
@@ -238,7 +241,11 @@ class LangGraphLLMAdapter:
             message=task,
             engine=self.engine,
             context={"system_override": system} if system else {},
-            **{k: v for k, v in merged.items() if k in ("temperature", "max_tokens", "workspace_id", "site_id")},
+            **{
+                k: v
+                for k, v in merged.items()
+                if k in ("temperature", "max_tokens", "workspace_id", "site_id")
+            },
         )
 
         return {
@@ -251,7 +258,7 @@ class LangGraphLLMAdapter:
 
 # ─── Factory Functions ────────────────────────────────────────────
 
-_client: Optional[AIClient] = None
+_client: AIClient | None = None
 
 
 def get_ai_client() -> AIClient:

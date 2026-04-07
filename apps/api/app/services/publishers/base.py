@@ -13,53 +13,59 @@ Design principles:
   - Rate limit responses (429) are surfaced as PublishResult.rate_limited=True, not raised
   - The caller (sweep job / endpoint) handles retry scheduling
 """
+
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class PublisherStatus(str, Enum):
-    READY = "ready"                        # credentials valid, scopes ok
-    NO_CREDENTIALS = "no_credentials"      # user has not connected this channel
-    INVALID_CREDENTIALS = "invalid_credentials"   # token invalid/expired
-    MISSING_SCOPES = "missing_scopes"      # token exists but lacks required scopes
-    RATE_LIMITED = "rate_limited"          # channel is rate-limiting us now
-    UNAVAILABLE = "unavailable"            # channel API is down or unreachable
-    NOT_IMPLEMENTED = "not_implemented"    # publisher stub, not yet built
+    READY = "ready"  # credentials valid, scopes ok
+    NO_CREDENTIALS = "no_credentials"  # user has not connected this channel
+    INVALID_CREDENTIALS = "invalid_credentials"  # token invalid/expired
+    MISSING_SCOPES = "missing_scopes"  # token exists but lacks required scopes
+    RATE_LIMITED = "rate_limited"  # channel is rate-limiting us now
+    UNAVAILABLE = "unavailable"  # channel API is down or unreachable
+    NOT_IMPLEMENTED = "not_implemented"  # publisher stub, not yet built
 
 
 @dataclass
 class PublishResult:
     success: bool
-    post_id: Optional[str] = None           # platform-native post/tweet ID
-    post_url: Optional[str] = None          # public URL of the published post
-    error: Optional[str] = None
+    post_id: str | None = None  # platform-native post/tweet ID
+    post_url: str | None = None  # public URL of the published post
+    error: str | None = None
     rate_limited: bool = False
-    retry_after_seconds: Optional[int] = None
-    raw_response: Optional[dict] = field(default=None, repr=False)
-    published_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    retry_after_seconds: int | None = None
+    raw_response: dict | None = field(default=None, repr=False)
+    published_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @classmethod
-    def ok(cls, post_id: str, post_url: Optional[str] = None, raw: Optional[dict] = None) -> "PublishResult":
+    def ok(
+        cls, post_id: str, post_url: str | None = None, raw: dict | None = None
+    ) -> PublishResult:
         return cls(success=True, post_id=post_id, post_url=post_url, raw_response=raw)
 
     @classmethod
-    def fail(cls, error: str, rate_limited: bool = False, retry_after: Optional[int] = None) -> "PublishResult":
-        return cls(success=False, error=error, rate_limited=rate_limited, retry_after_seconds=retry_after)
+    def fail(
+        cls, error: str, rate_limited: bool = False, retry_after: int | None = None
+    ) -> PublishResult:
+        return cls(
+            success=False, error=error, rate_limited=rate_limited, retry_after_seconds=retry_after
+        )
 
     @classmethod
-    def not_implemented(cls, channel: str) -> "PublishResult":
+    def not_implemented(cls, channel: str) -> PublishResult:
         return cls(
             success=False,
             error=f"Publisher for '{channel}' is not yet fully implemented. "
-                  "Connect the account in Connections and ensure the required OAuth scopes are granted.",
+            "Connect the account in Connections and ensure the required OAuth scopes are granted.",
         )
 
 
@@ -77,11 +83,12 @@ class PublisherService(ABC):
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
-        self._credentials: Optional[dict] = None
+        self._credentials: dict | None = None
 
-    def _load_credentials(self) -> Optional[dict]:
+    def _load_credentials(self) -> dict | None:
         """Load and decode credentials from the credential store."""
         from app.core.store.credential_store import get_credential
+
         cred = get_credential(self.user_id, self.channel)
         if not cred:
             # Try aliases (e.g. "twitter" → "x")
@@ -96,8 +103,8 @@ class PublisherService(ABC):
     async def publish_text_post(
         self,
         text: str,
-        reply_to_id: Optional[str] = None,
-        schedule_at: Optional[str] = None,
+        reply_to_id: str | None = None,
+        schedule_at: str | None = None,
     ) -> PublishResult:
         """Publish a text-only post. Returns PublishResult."""
 
@@ -105,13 +112,15 @@ class PublisherService(ABC):
         self,
         text: str,
         media_urls: list[str],
-        reply_to_id: Optional[str] = None,
+        reply_to_id: str | None = None,
     ) -> PublishResult:
         """Publish a post with media attachments. Default: falls back to text-only."""
-        logger.warning("[%s] media publishing not implemented, falling back to text-only", self.channel)
+        logger.warning(
+            "[%s] media publishing not implemented, falling back to text-only", self.channel
+        )
         return await self.publish_text_post(text, reply_to_id=reply_to_id)
 
-    async def get_post_metrics(self, post_id: str) -> Optional[dict]:
+    async def get_post_metrics(self, post_id: str) -> dict | None:
         """Fetch engagement metrics for a published post. Returns None if not implemented."""
         return None
 
@@ -119,10 +128,11 @@ class PublisherService(ABC):
         """Delete a post. Returns True on success."""
         return False
 
-    def _audit(self, action: str, result: PublishResult, content_id: Optional[str] = None) -> None:
+    def _audit(self, action: str, result: PublishResult, content_id: str | None = None) -> None:
         """Write an audit event for this publish action."""
         try:
             from app.core.store.audit_store import write_audit_event
+
             write_audit_event(
                 user_id=self.user_id,
                 action=f"publish.{self.channel}.{action}",

@@ -3,6 +3,7 @@ AI Synthesis Engine — local Ollama (qwen3:8b)
 Converts raw analytics signals into human-readable insights.
 100% local, no external API calls.
 """
+
 from __future__ import annotations
 
 import json
@@ -68,9 +69,7 @@ class AISynthesisEngine:
                 for r in recommendations[:3]
             ]
         )
-        cpa_text = (
-            f"${metrics.get('cpa_7d', 0):.2f}" if metrics.get("cpa_7d") else "N/A"
-        )
+        cpa_text = f"${metrics.get('cpa_7d', 0):.2f}" if metrics.get("cpa_7d") else "N/A"
 
         prompt = f"""You are an expert paid advertising analyst. Analyze this campaign and write a 2-3 sentence strategic insight.
 

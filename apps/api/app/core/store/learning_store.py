@@ -7,21 +7,21 @@ This is the foundation of the closed-loop growth system.
 In production: migrate to Feast (feature store) + MLflow (experiment tracking).
 Currently: file-based JSON for self-hosted zero-dependency operation.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "learning_store.json"
 
 _DEFAULT: dict = {
-    "strategy_records": [],     # Every recommendation + what happened
-    "hypothesis_records": [],   # Tested hypotheses with outcomes
-    "learning_runs": [],        # Periodic learning sweep records
-    "suppressed_strategies": [], # Failed strategies to avoid repeating
+    "strategy_records": [],  # Every recommendation + what happened
+    "hypothesis_records": [],  # Tested hypotheses with outcomes
+    "learning_runs": [],  # Periodic learning sweep records
+    "suppressed_strategies": [],  # Failed strategies to avoid repeating
     "promoted_strategies": [],  # High-performing patterns to amplify
 }
 
@@ -50,21 +50,22 @@ def _save(data: dict) -> None:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # ── Strategy Records ──────────────────────────────────────────────────────────
 
+
 def record_strategy(
     user_id: str,
-    strategy_type: str,            # channel_recommendation | content_brief | media_plan | audience_hypothesis
+    strategy_type: str,  # channel_recommendation | content_brief | media_plan | audience_hypothesis
     strategy_title: str,
     niche: str,
-    channel: Optional[str],
+    channel: str | None,
     recommendation_data: dict,
     source: str = "niche_engine",  # niche_engine | user_defined | llm_generated
     strategy_version: str = "v1",
-    expected_outcome: Optional[dict] = None,  # { metric: value } predictions
+    expected_outcome: dict | None = None,  # { metric: value } predictions
 ) -> dict:
     """Record a strategy recommendation for future outcome tracking."""
     record = {
@@ -78,9 +79,9 @@ def record_strategy(
         "strategy_version": strategy_version,
         "recommendation_data": recommendation_data,
         "expected_outcome": expected_outcome or {},
-        "status": "recommended",   # recommended | approved | rejected | executed | measured
-        "outcome": None,           # None | success | failure | partial
-        "outcome_data": {},        # Actual metrics when available
+        "status": "recommended",  # recommended | approved | rejected | executed | measured
+        "outcome": None,  # None | success | failure | partial
+        "outcome_data": {},  # Actual metrics when available
         "confidence_before": 0.7,  # Starting confidence
         "confidence_after": None,  # Updated after measurement
         "confidence_delta": None,  # Computed: confidence_after - confidence_before
@@ -97,10 +98,10 @@ def record_strategy(
 
 def update_strategy_outcome(
     record_id: str,
-    outcome: str,          # success | failure | partial
-    outcome_data: dict,    # { impressions, clicks, conversions, roas, cac, ... }
-    confidence_after: Optional[float] = None,
-) -> Optional[dict]:
+    outcome: str,  # success | failure | partial
+    outcome_data: dict,  # { impressions, clicks, conversions, roas, cac, ... }
+    confidence_after: float | None = None,
+) -> dict | None:
     """Record the measured outcome for a strategy and update confidence delta."""
     data = _load()
     for r in data["strategy_records"]:
@@ -130,9 +131,9 @@ def update_strategy_outcome(
 
 def get_strategy_records(
     user_id: str,
-    niche: Optional[str] = None,
-    strategy_type: Optional[str] = None,
-    outcome: Optional[str] = None,
+    niche: str | None = None,
+    strategy_type: str | None = None,
+    outcome: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     records = [r for r in _load()["strategy_records"] if r["user_id"] == user_id]
@@ -147,14 +148,15 @@ def get_strategy_records(
 
 # ── Hypothesis Records ────────────────────────────────────────────────────────
 
+
 def record_hypothesis(
     user_id: str,
     hypothesis: str,
     rationale: str,
-    channel: Optional[str],
+    channel: str | None,
     niche: str,
-    test_type: str,           # ab_test | before_after | holdout | multivariate
-    metric_to_track: str,     # ctr | cpa | roas | engagement_rate | follower_growth
+    test_type: str,  # ab_test | before_after | holdout | multivariate
+    metric_to_track: str,  # ctr | cpa | roas | engagement_rate | follower_growth
     expected_lift_pct: float,
     test_duration_days: int,
 ) -> dict:
@@ -170,8 +172,8 @@ def record_hypothesis(
         "metric_to_track": metric_to_track,
         "expected_lift_pct": expected_lift_pct,
         "test_duration_days": test_duration_days,
-        "status": "proposed",   # proposed | running | completed | abandoned
-        "result": None,         # None | confirmed | rejected | inconclusive
+        "status": "proposed",  # proposed | running | completed | abandoned
+        "result": None,  # None | confirmed | rejected | inconclusive
         "actual_lift_pct": None,
         "result_data": {},
         "confidence_level": None,
@@ -188,12 +190,12 @@ def record_hypothesis(
 
 def update_hypothesis_result(
     hypothesis_id: str,
-    result: str,              # confirmed | rejected | inconclusive
+    result: str,  # confirmed | rejected | inconclusive
     actual_lift_pct: float,
     confidence_level: float,  # 0.0 – 1.0
     result_data: dict,
     notes: str = "",
-) -> Optional[dict]:
+) -> dict | None:
     """Record the outcome of a hypothesis test."""
     data = _load()
     for h in data["hypothesis_records"]:
@@ -212,8 +214,8 @@ def update_hypothesis_result(
 
 def get_hypotheses(
     user_id: str,
-    niche: Optional[str] = None,
-    result: Optional[str] = None,
+    niche: str | None = None,
+    result: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     records = [h for h in _load()["hypothesis_records"] if h["user_id"] == user_id]
@@ -226,6 +228,7 @@ def get_hypotheses(
 
 # ── Pattern Suppression / Promotion ──────────────────────────────────────────
 
+
 def _evaluate_strategy_pattern(data: dict, record: dict) -> None:
     """
     After recording a strategy outcome, check if the pattern should be
@@ -233,14 +236,13 @@ def _evaluate_strategy_pattern(data: dict, record: dict) -> None:
     """
     niche = record["niche"]
     strategy_type = record["strategy_type"]
-    outcome = record["outcome"]
+    record["outcome"]
 
     # Count recent outcomes for this pattern
     matching = [
-        r for r in data["strategy_records"]
-        if r["niche"] == niche
-        and r["strategy_type"] == strategy_type
-        and r["outcome"] is not None
+        r
+        for r in data["strategy_records"]
+        if r["niche"] == niche and r["strategy_type"] == strategy_type and r["outcome"] is not None
     ][-10:]  # Last 10 instances
 
     if len(matching) < 3:
@@ -257,36 +259,40 @@ def _evaluate_strategy_pattern(data: dict, record: dict) -> None:
     if failure_rate >= 0.6:
         existing = [s for s in data["suppressed_strategies"] if s["pattern_key"] == pattern_key]
         if not existing:
-            data["suppressed_strategies"].append({
-                "id": str(uuid.uuid4()),
-                "pattern_key": pattern_key,
-                "niche": niche,
-                "strategy_type": strategy_type,
-                "failure_rate": failure_rate,
-                "sample_size": len(matching),
-                "suppressed_at": _now(),
-                "note": f"Suppressed after {len(failures)}/{len(matching)} failures",
-            })
+            data["suppressed_strategies"].append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "pattern_key": pattern_key,
+                    "niche": niche,
+                    "strategy_type": strategy_type,
+                    "failure_rate": failure_rate,
+                    "sample_size": len(matching),
+                    "suppressed_at": _now(),
+                    "note": f"Suppressed after {len(failures)}/{len(matching)} failures",
+                }
+            )
 
     # Promote if >70% success rate
     if success_rate >= 0.7:
         existing = [p for p in data["promoted_strategies"] if p["pattern_key"] == pattern_key]
         if not existing:
-            data["promoted_strategies"].append({
-                "id": str(uuid.uuid4()),
-                "pattern_key": pattern_key,
-                "niche": niche,
-                "strategy_type": strategy_type,
-                "success_rate": success_rate,
-                "sample_size": len(matching),
-                "promoted_at": _now(),
-                "note": f"Promoted after {len(successes)}/{len(matching)} successes",
-            })
+            data["promoted_strategies"].append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "pattern_key": pattern_key,
+                    "niche": niche,
+                    "strategy_type": strategy_type,
+                    "success_rate": success_rate,
+                    "sample_size": len(matching),
+                    "promoted_at": _now(),
+                    "note": f"Promoted after {len(successes)}/{len(matching)} successes",
+                }
+            )
 
     _save(data)
 
 
-def get_suppressed_strategies(niche: Optional[str] = None) -> list[dict]:
+def get_suppressed_strategies(niche: str | None = None) -> list[dict]:
     data = _load()
     items = data["suppressed_strategies"]
     if niche:
@@ -294,7 +300,7 @@ def get_suppressed_strategies(niche: Optional[str] = None) -> list[dict]:
     return items
 
 
-def get_promoted_strategies(niche: Optional[str] = None) -> list[dict]:
+def get_promoted_strategies(niche: str | None = None) -> list[dict]:
     data = _load()
     items = data["promoted_strategies"]
     if niche:
@@ -304,7 +310,8 @@ def get_promoted_strategies(niche: Optional[str] = None) -> list[dict]:
 
 # ── Learning Summary ──────────────────────────────────────────────────────────
 
-def get_learning_summary(user_id: str, niche: Optional[str] = None) -> dict:
+
+def get_learning_summary(user_id: str, niche: str | None = None) -> dict:
     """Return a high-level learning summary for the dashboard."""
     records = get_strategy_records(user_id, niche=niche)
     hypotheses = get_hypotheses(user_id, niche=niche)

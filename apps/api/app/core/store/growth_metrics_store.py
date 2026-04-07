@@ -9,21 +9,23 @@ Stores:
 Timeseries design: each snapshot is one row. Query with date window to get delta.
 In production: migrate to TimescaleDB or InfluxDB hypertable.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
-STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "growth_metrics_store.json"
+STORE_PATH = (
+    Path(__file__).parent.parent.parent.parent.parent / "storage" / "growth_metrics_store.json"
+)
 
 _DEFAULT: dict = {
-    "follower_snapshots": [],      # {id, user_id, channel, follower_count, ts}
-    "ad_campaigns": [],            # {id, user_id, platform, campaign_id, name, status, ...}
-    "ad_performance_snapshots": [], # {id, campaign_record_id, ts, impressions, clicks, spend, ...}
-    "optimization_recommendations": [], # {id, user_id, campaign_record_id, suggestion, ...}
+    "follower_snapshots": [],  # {id, user_id, channel, follower_count, ts}
+    "ad_campaigns": [],  # {id, user_id, platform, campaign_id, name, status, ...}
+    "ad_performance_snapshots": [],  # {id, campaign_record_id, ts, impressions, clicks, spend, ...}
+    "optimization_recommendations": [],  # {id, user_id, campaign_record_id, suggestion, ...}
 }
 
 
@@ -51,16 +53,17 @@ def _save(data: dict) -> None:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # ── Follower Timeseries ───────────────────────────────────────────────────────
+
 
 def append_follower_snapshot(
     user_id: str,
     channel: str,
     follower_count: int,
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
 ) -> dict:
     """Record a follower count snapshot. Call this on schedule (e.g. every 6h)."""
     snap = {
@@ -68,7 +71,7 @@ def append_follower_snapshot(
         "user_id": user_id,
         "channel": channel,
         "follower_count": follower_count,
-        "extra": extra or {},   # e.g. {"following": 500, "tweet_count": 120}
+        "extra": extra or {},  # e.g. {"following": 500, "tweet_count": 120}
         "ts": _now(),
     }
     data = _load()
@@ -83,23 +86,21 @@ def get_follower_history(
     days: int = 30,
 ) -> list[dict]:
     """Return follower snapshots for the last N days, oldest first."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     data = _load()
     snaps = [
-        s for s in data["follower_snapshots"]
-        if s["user_id"] == user_id
-        and s["channel"] == channel
-        and s["ts"] >= cutoff
+        s
+        for s in data["follower_snapshots"]
+        if s["user_id"] == user_id and s["channel"] == channel and s["ts"] >= cutoff
     ]
     return sorted(snaps, key=lambda x: x["ts"])
 
 
-def get_latest_follower_count(user_id: str, channel: str) -> Optional[int]:
+def get_latest_follower_count(user_id: str, channel: str) -> int | None:
     """Return the most recent follower count for this user+channel, or None."""
     data = _load()
     snaps = [
-        s for s in data["follower_snapshots"]
-        if s["user_id"] == user_id and s["channel"] == channel
+        s for s in data["follower_snapshots"] if s["user_id"] == user_id and s["channel"] == channel
     ]
     if not snaps:
         return None
@@ -107,7 +108,7 @@ def get_latest_follower_count(user_id: str, channel: str) -> Optional[int]:
     return latest["follower_count"]
 
 
-def get_follower_delta(user_id: str, channel: str, days: int = 7) -> Optional[int]:
+def get_follower_delta(user_id: str, channel: str, days: int = 7) -> int | None:
     """Return follower gain/loss over the last N days. None if no data."""
     history = get_follower_history(user_id, channel, days=days)
     if len(history) < 2:
@@ -117,17 +118,18 @@ def get_follower_delta(user_id: str, channel: str, days: int = 7) -> Optional[in
 
 # ── Ad Campaign Records ───────────────────────────────────────────────────────
 
+
 def register_ad_campaign(
     user_id: str,
-    platform: str,              # "meta" | "google"
-    campaign_id: str,           # Platform campaign ID
+    platform: str,  # "meta" | "google"
+    campaign_id: str,  # Platform campaign ID
     name: str,
     objective: str,
     daily_budget_usd: float,
     landing_page_url: str,
-    ad_set_id: Optional[str] = None,
-    ad_group_id: Optional[str] = None,
-    ad_id: Optional[str] = None,
+    ad_set_id: str | None = None,
+    ad_group_id: str | None = None,
+    ad_id: str | None = None,
 ) -> dict:
     """Register a newly launched ad campaign for performance tracking."""
     record = {
@@ -142,7 +144,7 @@ def register_ad_campaign(
         "ad_set_id": ad_set_id,
         "ad_group_id": ad_group_id,
         "ad_id": ad_id,
-        "status": "paused",   # paused | active | optimizing | paused_poor_performance
+        "status": "paused",  # paused | active | optimizing | paused_poor_performance
         "launched_at": _now(),
         "last_checked_at": None,
         "total_spend_usd": 0.0,
@@ -161,7 +163,8 @@ def get_active_ad_campaigns(user_id: str) -> list[dict]:
     """Return campaigns with status 'active' or 'optimizing'."""
     data = _load()
     return [
-        c for c in data["ad_campaigns"]
+        c
+        for c in data["ad_campaigns"]
         if c["user_id"] == user_id and c["status"] in ("active", "optimizing")
     ]
 
@@ -182,6 +185,7 @@ def update_campaign_status(record_id: str, status: str) -> None:
 
 
 # ── Ad Performance Snapshots ─────────────────────────────────────────────────
+
 
 def append_ad_performance_snapshot(
     campaign_record_id: str,
@@ -235,23 +239,23 @@ def append_ad_performance_snapshot(
 def get_campaign_performance_history(campaign_record_id: str) -> list[dict]:
     data = _load()
     snaps = [
-        s for s in data["ad_performance_snapshots"]
-        if s["campaign_record_id"] == campaign_record_id
+        s for s in data["ad_performance_snapshots"] if s["campaign_record_id"] == campaign_record_id
     ]
     return sorted(snaps, key=lambda x: x["ts"])
 
 
 # ── Optimization Recommendations ─────────────────────────────────────────────
 
+
 def add_optimization_recommendation(
     user_id: str,
     campaign_record_id: str,
     platform: str,
-    issue: str,                 # e.g. "high_cpc", "low_ctr", "poor_conversion"
-    suggestion: str,            # Human-readable recommendation
-    action_type: str,           # "pause" | "budget_cut" | "budget_increase" | "new_creative" | "new_audience"
-    urgency: str = "medium",    # "low" | "medium" | "high"
-    metrics_snapshot: Optional[dict] = None,
+    issue: str,  # e.g. "high_cpc", "low_ctr", "poor_conversion"
+    suggestion: str,  # Human-readable recommendation
+    action_type: str,  # "pause" | "budget_cut" | "budget_increase" | "new_creative" | "new_audience"
+    urgency: str = "medium",  # "low" | "medium" | "high"
+    metrics_snapshot: dict | None = None,
 ) -> dict:
     rec = {
         "id": str(uuid.uuid4()),
@@ -263,7 +267,7 @@ def add_optimization_recommendation(
         "action_type": action_type,
         "urgency": urgency,
         "metrics_snapshot": metrics_snapshot or {},
-        "status": "pending",    # pending | applied | dismissed
+        "status": "pending",  # pending | applied | dismissed
         "created_at": _now(),
         "applied_at": None,
     }
@@ -276,7 +280,8 @@ def add_optimization_recommendation(
 def get_pending_recommendations(user_id: str) -> list[dict]:
     data = _load()
     recs = [
-        r for r in data["optimization_recommendations"]
+        r
+        for r in data["optimization_recommendations"]
         if r["user_id"] == user_id and r["status"] == "pending"
     ]
     return sorted(recs, key=lambda x: x["created_at"], reverse=True)

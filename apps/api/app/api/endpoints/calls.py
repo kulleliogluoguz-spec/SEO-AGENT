@@ -6,17 +6,16 @@ Hybrid architecture:
 - Analysis: Local Whisper + Ollama qwen3:8b (no external AI)
 """
 
-import os
-import json
-import uuid
 import asyncio
+import json
+import os
 import subprocess
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 import aiofiles
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
@@ -30,6 +29,7 @@ SUPPORTED_AUDIO = {".mp3", ".wav", ".m4a", ".ogg", ".webm", ".mp4", ".aac"}
 
 # ─── Database helpers ────────────────────────────────────────────────────────
 
+
 def load_db() -> dict:
     if not CALLS_DB.exists():
         return {"calls": []}
@@ -42,7 +42,7 @@ def save_db(data: dict):
         json.dump(data, f, indent=2, default=str)
 
 
-def get_call(call_id: str) -> Optional[dict]:
+def get_call(call_id: str) -> dict | None:
     for c in load_db()["calls"]:
         if c["id"] == call_id:
             return c
@@ -66,6 +66,7 @@ def add_call(call: dict):
 
 # ─── Transcription ───────────────────────────────────────────────────────────
 
+
 async def transcribe_audio(audio_path: str) -> str:
     """Transcribe using local Whisper. No external API calls."""
     loop = asyncio.get_running_loop()
@@ -74,10 +75,21 @@ async def transcribe_audio(audio_path: str) -> str:
         # Try whisper CLI first
         try:
             result = subprocess.run(
-                ["whisper", audio_path, "--model", "base",
-                 "--output_format", "txt", "--output_dir", str(CALLS_STORAGE),
-                 "--language", "auto"],
-                capture_output=True, text=True, timeout=300
+                [
+                    "whisper",
+                    audio_path,
+                    "--model",
+                    "base",
+                    "--output_format",
+                    "txt",
+                    "--output_dir",
+                    str(CALLS_STORAGE),
+                    "--language",
+                    "auto",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
             txt = CALLS_STORAGE / (Path(audio_path).stem + ".txt")
             if txt.exists():
@@ -91,6 +103,7 @@ async def transcribe_audio(audio_path: str) -> str:
         # Fall back to Python whisper library
         try:
             import whisper
+
             model = whisper.load_model("base")
             result = model.transcribe(audio_path)
             return result["text"].strip()
@@ -103,6 +116,7 @@ async def transcribe_audio(audio_path: str) -> str:
 
 
 # ─── AI Analysis ─────────────────────────────────────────────────────────────
+
 
 async def analyze_with_ollama(transcript: str) -> dict:
     """
@@ -147,7 +161,7 @@ Scoring:
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 "http://localhost:11434/api/generate",
-                json={"model": "qwen3:8b", "prompt": prompt, "stream": False}
+                json={"model": "qwen3:8b", "prompt": prompt, "stream": False},
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "")
@@ -181,6 +195,7 @@ Scoring:
 
 # ─── Background pipeline ─────────────────────────────────────────────────────
 
+
 async def process_call(call_id: str, audio_path: str):
     """Full pipeline: transcribe → analyze → save."""
     try:
@@ -189,16 +204,20 @@ async def process_call(call_id: str, audio_path: str):
         update_call(call_id, {"transcript": transcript, "status": "analyzing"})
 
         analysis = await analyze_with_ollama(transcript)
-        update_call(call_id, {
-            "analysis": analysis,
-            "status": "completed",
-            "completed_at": datetime.utcnow().isoformat(),
-        })
+        update_call(
+            call_id,
+            {
+                "analysis": analysis,
+                "status": "completed",
+                "completed_at": datetime.utcnow().isoformat(),
+            },
+        )
     except Exception as e:
         update_call(call_id, {"status": "failed", "error": str(e)})
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
+
 
 @router.get("")
 async def list_calls(limit: int = 50, offset: int = 0):
@@ -206,7 +225,7 @@ async def list_calls(limit: int = 50, offset: int = 0):
     db = load_db()
     calls = db["calls"]
     return {
-        "calls": calls[offset:offset + limit],
+        "calls": calls[offset : offset + limit],
         "total": len(calls),
         "limit": limit,
         "offset": offset,
@@ -226,9 +245,19 @@ async def get_stats():
 
     scores = {
         "hot": len([c for c in completed if c.get("analysis", {}).get("sales_potential") == "hot"]),
-        "warm": len([c for c in completed if c.get("analysis", {}).get("sales_potential") == "warm"]),
-        "cold": len([c for c in completed if c.get("analysis", {}).get("sales_potential") == "cold"]),
-        "not_interested": len([c for c in completed if c.get("analysis", {}).get("sales_potential") == "not_interested"]),
+        "warm": len(
+            [c for c in completed if c.get("analysis", {}).get("sales_potential") == "warm"]
+        ),
+        "cold": len(
+            [c for c in completed if c.get("analysis", {}).get("sales_potential") == "cold"]
+        ),
+        "not_interested": len(
+            [
+                c
+                for c in completed
+                if c.get("analysis", {}).get("sales_potential") == "not_interested"
+            ]
+        ),
     }
 
     return {
@@ -236,9 +265,8 @@ async def get_stats():
         "completed": len(completed),
         "this_week": len(this_week),
         "sales_breakdown": scores,
-        "avg_sales_score": sum(
-            c.get("analysis", {}).get("sales_score", 0) for c in completed
-        ) / max(len(completed), 1),
+        "avg_sales_score": sum(c.get("analysis", {}).get("sales_score", 0) for c in completed)
+        / max(len(completed), 1),
     }
 
 
@@ -250,27 +278,32 @@ async def weekly_report():
     week_ago = (now - timedelta(days=7)).isoformat()
 
     weekly = [
-        c for c in db["calls"]
+        c
+        for c in db["calls"]
         if c.get("created_at", "") >= week_ago and c.get("status") == "completed"
     ]
 
     customers = []
     for call in weekly:
         analysis = call.get("analysis", {})
-        customers.append({
-            "customer_name": analysis.get("customer_name", "Unknown"),
-            "customer_phone": call.get("phone_number", analysis.get("customer_phone", "Unknown")),
-            "company": analysis.get("company_name", "Unknown"),
-            "call_date": call.get("created_at"),
-            "duration": call.get("duration"),
-            "sales_potential": analysis.get("sales_potential", "cold"),
-            "sales_score": analysis.get("sales_score", 0),
-            "summary": analysis.get("call_summary", ""),
-            "key_requests": analysis.get("key_requests", []),
-            "follow_up": analysis.get("follow_up_recommended", False),
-            "follow_up_actions": analysis.get("follow_up_actions", []),
-            "reasoning": analysis.get("sales_reasoning", ""),
-        })
+        customers.append(
+            {
+                "customer_name": analysis.get("customer_name", "Unknown"),
+                "customer_phone": call.get(
+                    "phone_number", analysis.get("customer_phone", "Unknown")
+                ),
+                "company": analysis.get("company_name", "Unknown"),
+                "call_date": call.get("created_at"),
+                "duration": call.get("duration"),
+                "sales_potential": analysis.get("sales_potential", "cold"),
+                "sales_score": analysis.get("sales_score", 0),
+                "summary": analysis.get("call_summary", ""),
+                "key_requests": analysis.get("key_requests", []),
+                "follow_up": analysis.get("follow_up_recommended", False),
+                "follow_up_actions": analysis.get("follow_up_actions", []),
+                "reasoning": analysis.get("sales_reasoning", ""),
+            }
+        )
 
     customers.sort(key=lambda x: x["sales_score"], reverse=True)
 
@@ -367,12 +400,14 @@ async def get_call_detail(call_id: str):
 
 # ─── Twilio Routes ────────────────────────────────────────────────────────────
 
+
 @router.post("/twilio/token")
 async def get_twilio_token(identity: str = "user"):
     """Generate Twilio access token for React Native SDK."""
     try:
         from twilio.jwt.access_token import AccessToken
         from twilio.jwt.access_token.grants import VoiceGrant
+
         from app.core.config.settings import get_settings
 
         s = get_settings()
@@ -432,6 +467,7 @@ async def recording_complete(request: Request, background_tasks: BackgroundTasks
     audio_path = CALLS_STORAGE / f"{call_id}.wav"
 
     import httpx
+
     from app.core.config.settings import get_settings
 
     s = get_settings()

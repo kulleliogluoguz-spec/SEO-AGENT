@@ -12,6 +12,7 @@ Run:
     DATABASE_URL='postgresql+asyncpg://aicmo:aicmo_dev@localhost:5432/aicmo' \\
         python3 scripts/seed_ad_demo.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,14 +35,14 @@ def _asyncpg_dsn() -> str:
 
 CAMPAIGNS = [
     # name, platform, type, daily_budget, base_roas, weekly_trend, base_ctr, base_freq
-    ("Brand Search - Exact",       "google_ads", "SEARCH",    150, 4.8, 0.05,  0.030, None),
-    ("Competitor Keywords",        "google_ads", "SEARCH",     80, 2.1, -0.12, 0.022, None),
-    ("Shopping - All Products",    "google_ads", "SHOPPING",  200, 3.4, 0.08,  0.018, None),
-    ("Display Remarketing",        "google_ads", "DISPLAY",    50, 0.9, -0.20, 0.005, None),
-    ("Prospecting - Lookalike 1%", "meta_ads",   "REACH",     120, 2.8, 0.15,  0.013, 2.4),
-    ("Retargeting - 30 Day",       "meta_ads",   "CONVERSIONS", 90, 5.2, 0.03,  0.024, 3.2),
-    ("Interest Targeting - Broad", "meta_ads",   "CONVERSIONS", 60, 1.4, -0.08, 0.011, 4.1),
-    ("Video Views - Awareness",    "meta_ads",   "VIDEO_VIEWS", 40, 1.1, -0.05, 0.009, 8.7),
+    ("Brand Search - Exact", "google_ads", "SEARCH", 150, 4.8, 0.05, 0.030, None),
+    ("Competitor Keywords", "google_ads", "SEARCH", 80, 2.1, -0.12, 0.022, None),
+    ("Shopping - All Products", "google_ads", "SHOPPING", 200, 3.4, 0.08, 0.018, None),
+    ("Display Remarketing", "google_ads", "DISPLAY", 50, 0.9, -0.20, 0.005, None),
+    ("Prospecting - Lookalike 1%", "meta_ads", "REACH", 120, 2.8, 0.15, 0.013, 2.4),
+    ("Retargeting - 30 Day", "meta_ads", "CONVERSIONS", 90, 5.2, 0.03, 0.024, 3.2),
+    ("Interest Targeting - Broad", "meta_ads", "CONVERSIONS", 60, 1.4, -0.08, 0.011, 4.1),
+    ("Video Views - Awareness", "meta_ads", "VIDEO_VIEWS", 40, 1.1, -0.05, 0.009, 8.7),
 ]
 
 RECOMMENDATIONS = [
@@ -110,11 +111,15 @@ async def ensure_workspace(conn: asyncpg.Connection) -> None:
         )
 
 
-async def seed_account(conn: asyncpg.Connection, platform: str, name: str, account_id: str) -> uuid.UUID:
+async def seed_account(
+    conn: asyncpg.Connection, platform: str, name: str, account_id: str
+) -> uuid.UUID:
     """Create or fetch an ad account row."""
     existing = await conn.fetchrow(
         "SELECT id FROM ad_accounts WHERE workspace_id = $1 AND platform = $2 AND account_id = $3",
-        DEMO_WORKSPACE_ID, platform, account_id,
+        DEMO_WORKSPACE_ID,
+        platform,
+        account_id,
     )
     if existing:
         return existing["id"]
@@ -125,7 +130,11 @@ async def seed_account(conn: asyncpg.Connection, platform: str, name: str, accou
         INSERT INTO ad_accounts (id, workspace_id, platform, account_id, account_name, currency, is_active)
         VALUES ($1, $2, $3, $4, $5, 'USD', true)
         """,
-        new_id, DEMO_WORKSPACE_ID, platform, account_id, name,
+        new_id,
+        DEMO_WORKSPACE_ID,
+        platform,
+        account_id,
+        name,
     )
     return new_id
 
@@ -141,7 +150,8 @@ async def seed_campaign(
     """Create or fetch a campaign row."""
     existing = await conn.fetchrow(
         "SELECT id FROM analytics_ad_campaigns WHERE ad_account_id = $1 AND platform_campaign_id = $2",
-        ad_account_id, platform_campaign_id,
+        ad_account_id,
+        platform_campaign_id,
     )
     if existing:
         return existing["id"]
@@ -153,7 +163,12 @@ async def seed_campaign(
             (id, ad_account_id, platform_campaign_id, name, status, campaign_type, daily_budget)
         VALUES ($1, $2, $3, $4, 'ENABLED', $5, $6)
         """,
-        new_id, ad_account_id, platform_campaign_id, name, campaign_type, daily_budget,
+        new_id,
+        ad_account_id,
+        platform_campaign_id,
+        name,
+        campaign_type,
+        daily_budget,
     )
     return new_id
 
@@ -170,9 +185,7 @@ async def seed_performance(
 ) -> int:
     """Generate `days` of daily performance rows with realistic noise + trend."""
     # Wipe existing perf rows for this campaign so re-runs are idempotent
-    await conn.execute(
-        "DELETE FROM ad_performance_daily WHERE campaign_id = $1", campaign_id
-    )
+    await conn.execute("DELETE FROM ad_performance_daily WHERE campaign_id = $1", campaign_id)
 
     base_spend = daily_budget * random.uniform(0.7, 0.95)
     inserted = 0
@@ -211,8 +224,21 @@ async def seed_performance(
                  spend, revenue, roas, cpa, ctr, cpm, cpc, frequency, reach)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             """,
-            uuid.uuid4(), campaign_id, d, impressions, clicks, conversions,
-            spend, revenue, roas, cpa, ctr, cpm, cpc, frequency, reach,
+            uuid.uuid4(),
+            campaign_id,
+            d,
+            impressions,
+            clicks,
+            conversions,
+            spend,
+            revenue,
+            roas,
+            cpa,
+            ctr,
+            cpm,
+            cpc,
+            frequency,
+            reach,
         )
         inserted += 1
     return inserted
@@ -221,9 +247,7 @@ async def seed_performance(
 async def seed_recommendations(conn: asyncpg.Connection, campaign_ids: list[uuid.UUID]) -> int:
     """Insert demo AI recommendations linked to seeded campaigns."""
     # Wipe existing recs for the demo workspace so re-runs are idempotent
-    await conn.execute(
-        "DELETE FROM ai_recommendations WHERE workspace_id = $1", DEMO_WORKSPACE_ID
-    )
+    await conn.execute("DELETE FROM ai_recommendations WHERE workspace_id = $1", DEMO_WORKSPACE_ID)
 
     inserted = 0
     for rec in RECOMMENDATIONS:

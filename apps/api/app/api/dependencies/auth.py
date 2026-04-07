@@ -65,7 +65,9 @@ async def get_current_user(
         if "expired" in err_str:
             detail = "Token expired. Please log in again."
         elif "signature" in err_str or "verification" in err_str:
-            detail = "Token signature invalid (server SECRET_KEY may have changed). Please log in again."
+            detail = (
+                "Token signature invalid (server SECRET_KEY may have changed). Please log in again."
+            )
         else:
             detail = f"Invalid token: {e}"
         raise HTTPException(

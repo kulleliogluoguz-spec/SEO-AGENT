@@ -11,23 +11,23 @@ POST /api/v1/learning/hypotheses/{id}/result — record test result
 GET  /api/v1/learning/suppressed          — suppressed (failing) strategy patterns
 GET  /api/v1/learning/promoted            — promoted (winning) strategy patterns
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from app.api.dependencies.auth import get_current_user
 from app.core.store.learning_store import (
-    get_learning_summary,
-    record_strategy,
-    update_strategy_outcome,
-    get_strategy_records,
-    record_hypothesis,
-    update_hypothesis_result,
     get_hypotheses,
-    get_suppressed_strategies,
+    get_learning_summary,
     get_promoted_strategies,
+    get_strategy_records,
+    get_suppressed_strategies,
+    record_hypothesis,
+    record_strategy,
+    update_hypothesis_result,
+    update_strategy_outcome,
 )
 
 router = APIRouter()
@@ -35,28 +35,37 @@ router = APIRouter()
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class StrategyRecordCreate(BaseModel):
-    strategy_type: str = Field(..., description="channel_recommendation | content_brief | media_plan | audience_hypothesis")
+    strategy_type: str = Field(
+        ..., description="channel_recommendation | content_brief | media_plan | audience_hypothesis"
+    )
     strategy_title: str
     niche: str
-    channel: Optional[str] = None
+    channel: str | None = None
     recommendation_data: dict = Field(default_factory=dict)
     source: str = "niche_engine"
 
 
 class StrategyOutcomeUpdate(BaseModel):
     outcome: str = Field(..., description="success | failure | partial")
-    outcome_data: dict = Field(default_factory=dict, description="Actual metrics: impressions, clicks, roas, cac, etc.")
-    confidence_after: Optional[float] = Field(None, ge=0.0, le=1.0)
+    outcome_data: dict = Field(
+        default_factory=dict, description="Actual metrics: impressions, clicks, roas, cac, etc."
+    )
+    confidence_after: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class HypothesisCreate(BaseModel):
     hypothesis: str
     rationale: str
-    channel: Optional[str] = None
+    channel: str | None = None
     niche: str
-    test_type: str = Field(default="ab_test", description="ab_test | before_after | holdout | multivariate")
-    metric_to_track: str = Field(default="ctr", description="ctr | cpa | roas | engagement_rate | follower_growth")
+    test_type: str = Field(
+        default="ab_test", description="ab_test | before_after | holdout | multivariate"
+    )
+    metric_to_track: str = Field(
+        default="ctr", description="ctr | cpa | roas | engagement_rate | follower_growth"
+    )
     expected_lift_pct: float = Field(default=10.0, description="Expected percentage improvement")
     test_duration_days: int = Field(default=14, ge=1, le=90)
 
@@ -71,9 +80,10 @@ class HypothesisResultUpdate(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/summary")
 async def learning_summary(
-    niche: Optional[str] = Query(None),
+    niche: str | None = Query(None),
     current_user=Depends(get_current_user),
 ) -> dict:
     """
@@ -95,9 +105,9 @@ async def learning_summary(
 
 @router.get("/strategies")
 async def list_strategies(
-    niche: Optional[str] = Query(None),
-    strategy_type: Optional[str] = Query(None),
-    outcome: Optional[str] = Query(None),
+    niche: str | None = Query(None),
+    strategy_type: str | None = Query(None),
+    outcome: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user=Depends(get_current_user),
 ) -> dict:
@@ -159,8 +169,8 @@ async def record_outcome(
 
 @router.get("/hypotheses")
 async def list_hypotheses(
-    niche: Optional[str] = Query(None),
-    result: Optional[str] = Query(None),
+    niche: str | None = Query(None),
+    result: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user=Depends(get_current_user),
 ) -> dict:
@@ -194,7 +204,10 @@ async def create_hypothesis(
         expected_lift_pct=payload.expected_lift_pct,
         test_duration_days=payload.test_duration_days,
     )
-    return {"hypothesis": hyp, "message": "Hypothesis recorded. Run the test and record results via POST /hypotheses/{id}/result."}
+    return {
+        "hypothesis": hyp,
+        "message": "Hypothesis recorded. Run the test and record results via POST /hypotheses/{id}/result.",
+    }
 
 
 @router.post("/hypotheses/{hypothesis_id}/result")
@@ -217,15 +230,19 @@ async def record_hypothesis_result(
     return {
         "hypothesis": hyp,
         "message": f"Result recorded as '{payload.result}'. "
-                   + ("Pattern promoted for future recommendations." if payload.result == "confirmed" else
-                      "Pattern suppressed to avoid repeating this approach." if payload.result == "rejected" else
-                      "Inconclusive — more data needed before making a pattern decision."),
+        + (
+            "Pattern promoted for future recommendations."
+            if payload.result == "confirmed"
+            else "Pattern suppressed to avoid repeating this approach."
+            if payload.result == "rejected"
+            else "Inconclusive — more data needed before making a pattern decision."
+        ),
     }
 
 
 @router.get("/suppressed")
 async def suppressed_patterns(
-    niche: Optional[str] = Query(None),
+    niche: str | None = Query(None),
     current_user=Depends(get_current_user),
 ) -> dict:
     """
@@ -242,7 +259,7 @@ async def suppressed_patterns(
 
 @router.get("/promoted")
 async def promoted_patterns(
-    niche: Optional[str] = Query(None),
+    niche: str | None = Query(None),
     current_user=Depends(get_current_user),
 ) -> dict:
     """

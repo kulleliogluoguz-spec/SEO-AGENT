@@ -4,6 +4,7 @@ ProductUnderstandingAgent — Layer 2
 Synthesizes product intelligence from crawled site content.
 Produces structured product profile including value props, ICP, personas, JTBD.
 """
+
 import uuid
 from typing import ClassVar
 
@@ -48,7 +49,9 @@ class ProductProfile(BaseModel):
     product_summary: str
     category: str
     subcategory: str | None
-    pricing_model: str | None  # free | freemium | subscription | one_time | usage_based | enterprise
+    pricing_model: (
+        str | None
+    )  # free | freemium | subscription | one_time | usage_based | enterprise
     pricing_signals: list[str]
     value_props: list[ValueProp]
     icps: list[ICP]
@@ -118,9 +121,7 @@ Produce a complete product intelligence profile including:
         # Fallback
         return self._demo_profile(input_data.site_url)
 
-    def _build_content_digest(
-        self, pages: list[dict], max_chars: int
-    ) -> str:
+    def _build_content_digest(self, pages: list[dict], max_chars: int) -> str:
         """Build a condensed content digest from crawled pages."""
         parts = []
         total_chars = 0
@@ -171,8 +172,14 @@ Produce a complete product intelligence profile including:
                     description="VP Engineering or CTO at a 50-200 person software company",
                     company_size="50-200",
                     role="VP Engineering / CTO",
-                    pain_points=["Sprint planning takes too long", "Hard to track cross-team dependencies"],
-                    buying_triggers=["Team scaling past 10 engineers", "Current tool not cutting it"],
+                    pain_points=[
+                        "Sprint planning takes too long",
+                        "Hard to track cross-team dependencies",
+                    ],
+                    buying_triggers=[
+                        "Team scaling past 10 engineers",
+                        "Current tool not cutting it",
+                    ],
                 )
             ],
             personas=[
@@ -181,7 +188,10 @@ Produce a complete product intelligence profile including:
                     title="Engineering Manager",
                     description="Manages a team of 8-15 engineers, accountable for sprint delivery",
                     goals=["Hit sprint commitments", "Give team clarity on priorities"],
-                    frustrations=["Too much time in planning meetings", "Status reporting is manual"],
+                    frustrations=[
+                        "Too much time in planning meetings",
+                        "Status reporting is manual",
+                    ],
                 )
             ],
             jobs_to_be_done=[

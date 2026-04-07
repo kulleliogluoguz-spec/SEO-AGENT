@@ -1,15 +1,45 @@
 """Unit tests for TechnicalSEOAuditAgent."""
-import uuid
-import pytest
-from app.agents.layer4.technical_seo import TechnicalSEOAuditAgent, TechnicalSEOInput
-from app.agents.base import AgentRunContext
 
+import uuid
+
+import pytest
+
+from app.agents.base import AgentRunContext
+from app.agents.layer4.technical_seo import TechnicalSEOAuditAgent, TechnicalSEOInput
 
 DEMO_PAGES = [
-    {"url": "https://ex.com/", "title": "Home", "meta_description": "Desc", "h1": "Welcome", "word_count": 500, "status_code": 200},
-    {"url": "https://ex.com/pricing", "title": None, "meta_description": None, "h1": "Pricing", "word_count": 300, "status_code": 200},
-    {"url": "https://ex.com/features", "title": "Features", "meta_description": "Our features", "h1": None, "word_count": 150, "status_code": 200},
-    {"url": "https://ex.com/old", "title": "Old", "meta_description": None, "h1": None, "word_count": 0, "status_code": 404},
+    {
+        "url": "https://ex.com/",
+        "title": "Home",
+        "meta_description": "Desc",
+        "h1": "Welcome",
+        "word_count": 500,
+        "status_code": 200,
+    },
+    {
+        "url": "https://ex.com/pricing",
+        "title": None,
+        "meta_description": None,
+        "h1": "Pricing",
+        "word_count": 300,
+        "status_code": 200,
+    },
+    {
+        "url": "https://ex.com/features",
+        "title": "Features",
+        "meta_description": "Our features",
+        "h1": None,
+        "word_count": 150,
+        "status_code": 200,
+    },
+    {
+        "url": "https://ex.com/old",
+        "title": "Old",
+        "meta_description": None,
+        "h1": None,
+        "word_count": 0,
+        "status_code": 404,
+    },
 ]
 
 
@@ -66,8 +96,22 @@ class TestTechnicalSEOAuditAgent:
         agent = TechnicalSEOAuditAgent()
         ctx = AgentRunContext(demo_mode=True)
         clean_pages = [
-            {"url": "https://ex.com/", "title": "Good Title", "meta_description": "Good desc", "h1": "Good H1", "word_count": 800, "status_code": 200},
-            {"url": "https://ex.com/about", "title": "About", "meta_description": "About us", "h1": "About", "word_count": 600, "status_code": 200},
+            {
+                "url": "https://ex.com/",
+                "title": "Good Title",
+                "meta_description": "Good desc",
+                "h1": "Good H1",
+                "word_count": 800,
+                "status_code": 200,
+            },
+            {
+                "url": "https://ex.com/about",
+                "title": "About",
+                "meta_description": "About us",
+                "h1": "About",
+                "word_count": 600,
+                "status_code": 200,
+            },
         ]
         result = await agent.run(
             TechnicalSEOInput(site_id=uuid.uuid4(), crawl_id=uuid.uuid4(), pages=clean_pages),

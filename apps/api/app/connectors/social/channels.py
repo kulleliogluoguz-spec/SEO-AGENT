@@ -5,19 +5,22 @@ Each connector has:
   - Real adapter structure (for production with actual API keys)
   - Auth, rate limiting, retry logic, error handling
 """
+
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import random
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from .base import (
-    AuthStatus, BaseSocialConnector, ConnectorRegistry,
-    MetricsResult, PublishResult, RateLimitState,
+    AuthStatus,
+    BaseSocialConnector,
+    ConnectorRegistry,
+    MetricsResult,
+    PublishResult,
+    RateLimitState,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,7 @@ logger = logging.getLogger(__name__)
 # ═════════════════════════════════════════════════════════════════════════════
 #  INSTAGRAM CONNECTOR
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class InstagramConnector(BaseSocialConnector):
     channel_name = "instagram"
@@ -48,15 +52,20 @@ class InstagramConnector(BaseSocialConnector):
 
     async def authenticate(self) -> AuthStatus:
         if self._mock:
-            return AuthStatus(connected=True, account_name="@demo_brand",
-                              account_id="ig_mock_123", scopes=["publish_media", "read_insights"])
+            return AuthStatus(
+                connected=True,
+                account_name="@demo_brand",
+                account_id="ig_mock_123",
+                scopes=["publish_media", "read_insights"],
+            )
         # Real: call Instagram Graph API /me
         # response = await httpx.AsyncClient().get(
         #     "https://graph.instagram.com/me",
         #     params={"fields": "id,username", "access_token": self.access_token}
         # )
-        return AuthStatus(connected=True, account_name="@real_account",
-                          account_id=self.account_id or "unknown")
+        return AuthStatus(
+            connected=True, account_name="@real_account", account_id=self.account_id or "unknown"
+        )
 
     async def refresh_auth(self) -> AuthStatus:
         if self._mock:
@@ -75,7 +84,10 @@ class InstagramConnector(BaseSocialConnector):
         return PublishResult(
             success=True,
             external_id=f"ig_scheduled_{uuid.uuid4().hex[:12]}",
-            raw_response={"scheduled_at": publish_at.isoformat(), "note": "Managed by internal scheduler"},
+            raw_response={
+                "scheduled_at": publish_at.isoformat(),
+                "note": "Managed by internal scheduler",
+            },
         )
 
     async def delete(self, external_id: str) -> bool:
@@ -92,11 +104,14 @@ class InstagramConnector(BaseSocialConnector):
 
     async def get_account_metrics(self) -> MetricsResult:
         if self._mock:
-            return MetricsResult(success=True, metrics={
-                "followers": random.randint(1000, 50000),
-                "following": random.randint(100, 2000),
-                "media_count": random.randint(50, 500),
-            })
+            return MetricsResult(
+                success=True,
+                metrics={
+                    "followers": random.randint(1000, 50000),
+                    "following": random.randint(100, 2000),
+                    "media_count": random.randint(50, 500),
+                },
+            )
         return MetricsResult(success=True, metrics={})
 
     def _validate_content(self, content: dict):
@@ -125,7 +140,8 @@ class InstagramConnector(BaseSocialConnector):
         impressions = random.randint(500, 15000)
         reach = int(impressions * random.uniform(0.6, 0.9))
         return {
-            "impressions": impressions, "reach": reach,
+            "impressions": impressions,
+            "reach": reach,
             "likes": random.randint(20, int(reach * 0.1)),
             "comments": random.randint(0, 50),
             "saves": random.randint(5, 100),
@@ -140,6 +156,7 @@ ConnectorRegistry.register("instagram", InstagramConnector)
 # ═════════════════════════════════════════════════════════════════════════════
 #  TIKTOK CONNECTOR
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class TikTokConnector(BaseSocialConnector):
     channel_name = "tiktok"
@@ -158,8 +175,12 @@ class TikTokConnector(BaseSocialConnector):
 
     async def authenticate(self) -> AuthStatus:
         if self._mock:
-            return AuthStatus(connected=True, account_name="@demo_tiktok",
-                              account_id="tt_mock_456", scopes=["video.publish", "video.list"])
+            return AuthStatus(
+                connected=True,
+                account_name="@demo_tiktok",
+                account_id="tt_mock_456",
+                scopes=["video.publish", "video.list"],
+            )
         # Real: TikTok Content Posting API auth verification
         return AuthStatus(connected=True, account_id=self.account_id or "unknown")
 
@@ -190,13 +211,17 @@ class TikTokConnector(BaseSocialConnector):
     async def get_metrics(self, external_id: str) -> MetricsResult:
         if self._mock:
             views = random.randint(1000, 500000)
-            return MetricsResult(success=True, metrics={
-                "views": views, "likes": int(views * random.uniform(0.03, 0.15)),
-                "comments": random.randint(5, 500),
-                "shares": random.randint(0, 200),
-                "avg_watch_time": round(random.uniform(3.0, 45.0), 1),
-                "completion_rate": round(random.uniform(0.15, 0.75), 3),
-            })
+            return MetricsResult(
+                success=True,
+                metrics={
+                    "views": views,
+                    "likes": int(views * random.uniform(0.03, 0.15)),
+                    "comments": random.randint(5, 500),
+                    "shares": random.randint(0, 200),
+                    "avg_watch_time": round(random.uniform(3.0, 45.0), 1),
+                    "completion_rate": round(random.uniform(0.15, 0.75), 3),
+                },
+            )
         return MetricsResult(success=True, metrics={})
 
     async def get_account_metrics(self) -> MetricsResult:
@@ -212,6 +237,7 @@ ConnectorRegistry.register("tiktok", TikTokConnector)
 # ═════════════════════════════════════════════════════════════════════════════
 #  TWITTER / X CONNECTOR
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class TwitterConnector(BaseSocialConnector):
     channel_name = "twitter"
@@ -230,8 +256,12 @@ class TwitterConnector(BaseSocialConnector):
 
     async def authenticate(self) -> AuthStatus:
         if self._mock:
-            return AuthStatus(connected=True, account_name="@demo_brand",
-                              account_id="tw_mock_789", scopes=["tweet.read", "tweet.write"])
+            return AuthStatus(
+                connected=True,
+                account_name="@demo_brand",
+                account_id="tw_mock_789",
+                scopes=["tweet.read", "tweet.write"],
+            )
         return AuthStatus(connected=True, account_id=self.account_id or "unknown")
 
     async def refresh_auth(self) -> AuthStatus:
@@ -244,9 +274,13 @@ class TwitterConnector(BaseSocialConnector):
             is_thread = isinstance(content.get("thread"), list)
             tweet_id = f"tw_{uuid.uuid4().hex[:12]}"
             return PublishResult(
-                success=True, external_id=tweet_id,
+                success=True,
+                external_id=tweet_id,
                 url=f"https://x.com/demo_brand/status/{random.randint(10**17, 10**18)}",
-                raw_response={"is_thread": is_thread, "tweet_count": len(content.get("thread", [1]))},
+                raw_response={
+                    "is_thread": is_thread,
+                    "tweet_count": len(content.get("thread", [1])),
+                },
             )
         return await self._rate_limited_call(self._real_publish, content)
 
@@ -263,15 +297,18 @@ class TwitterConnector(BaseSocialConnector):
     async def get_metrics(self, external_id: str) -> MetricsResult:
         if self._mock:
             impressions = random.randint(200, 50000)
-            return MetricsResult(success=True, metrics={
-                "impressions": impressions,
-                "likes": random.randint(0, int(impressions * 0.05)),
-                "retweets": random.randint(0, int(impressions * 0.02)),
-                "replies": random.randint(0, 30),
-                "bookmark": random.randint(0, 20),
-                "url_clicks": random.randint(0, int(impressions * 0.03)),
-                "profile_visits": random.randint(0, 50),
-            })
+            return MetricsResult(
+                success=True,
+                metrics={
+                    "impressions": impressions,
+                    "likes": random.randint(0, int(impressions * 0.05)),
+                    "retweets": random.randint(0, int(impressions * 0.02)),
+                    "replies": random.randint(0, 30),
+                    "bookmark": random.randint(0, 20),
+                    "url_clicks": random.randint(0, int(impressions * 0.03)),
+                    "profile_visits": random.randint(0, 50),
+                },
+            )
         return MetricsResult(success=True, metrics={})
 
     async def get_account_metrics(self) -> MetricsResult:
@@ -289,6 +326,7 @@ ConnectorRegistry.register("twitter", TwitterConnector)
 #  LINKEDIN CONNECTOR
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class LinkedInConnector(BaseSocialConnector):
     channel_name = "linkedin"
 
@@ -305,8 +343,12 @@ class LinkedInConnector(BaseSocialConnector):
 
     async def authenticate(self) -> AuthStatus:
         if self._mock:
-            return AuthStatus(connected=True, account_name="Demo Corp",
-                              account_id="li_mock_abc", scopes=["w_member_social", "r_liteprofile"])
+            return AuthStatus(
+                connected=True,
+                account_name="Demo Corp",
+                account_id="li_mock_abc",
+                scopes=["w_member_social", "r_liteprofile"],
+            )
         return AuthStatus(connected=True, account_id=self.account_id or "unknown")
 
     async def refresh_auth(self) -> AuthStatus:
@@ -335,14 +377,17 @@ class LinkedInConnector(BaseSocialConnector):
     async def get_metrics(self, external_id: str) -> MetricsResult:
         if self._mock:
             impressions = random.randint(300, 20000)
-            return MetricsResult(success=True, metrics={
-                "impressions": impressions,
-                "likes": random.randint(5, int(impressions * 0.08)),
-                "comments": random.randint(0, 30),
-                "shares": random.randint(0, 15),
-                "clicks": random.randint(0, int(impressions * 0.04)),
-                "engagement_rate": round(random.uniform(2.0, 10.0), 2),
-            })
+            return MetricsResult(
+                success=True,
+                metrics={
+                    "impressions": impressions,
+                    "likes": random.randint(5, int(impressions * 0.08)),
+                    "comments": random.randint(0, 30),
+                    "shares": random.randint(0, 15),
+                    "clicks": random.randint(0, int(impressions * 0.04)),
+                    "engagement_rate": round(random.uniform(2.0, 10.0), 2),
+                },
+            )
         return MetricsResult(success=True, metrics={})
 
     async def get_account_metrics(self) -> MetricsResult:
@@ -360,6 +405,7 @@ ConnectorRegistry.register("linkedin", LinkedInConnector)
 #  META ADS CONNECTOR
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class MetaAdsConnector(BaseSocialConnector):
     channel_name = "meta_ads"
 
@@ -370,7 +416,7 @@ class MetaAdsConnector(BaseSocialConnector):
         "api_calls_per_hour": 200,
     }
 
-    def __init__(self, ad_account_id: Optional[str] = None, **kwargs):
+    def __init__(self, ad_account_id: str | None = None, **kwargs):
         super().__init__(**kwargs)
         self.ad_account_id = ad_account_id
         self._rate_limit = RateLimitState(remaining=200, limit=200, window_seconds=3600)
@@ -378,8 +424,12 @@ class MetaAdsConnector(BaseSocialConnector):
 
     async def authenticate(self) -> AuthStatus:
         if self._mock:
-            return AuthStatus(connected=True, account_name="Demo Ad Account",
-                              account_id="act_mock_999", scopes=["ads_management", "ads_read"])
+            return AuthStatus(
+                connected=True,
+                account_name="Demo Ad Account",
+                account_id="act_mock_999",
+                scopes=["ads_management", "ads_read"],
+            )
         return AuthStatus(connected=True, account_id=self.ad_account_id or "unknown")
 
     async def refresh_auth(self) -> AuthStatus:
@@ -417,14 +467,20 @@ class MetaAdsConnector(BaseSocialConnector):
             impressions = random.randint(500, 100000)
             clicks = random.randint(10, int(impressions * 0.05))
             conversions = random.randint(0, int(clicks * 0.15))
-            return MetricsResult(success=True, metrics={
-                "impressions": impressions, "reach": int(impressions * 0.85),
-                "clicks": clicks, "ctr": round(clicks / max(impressions, 1) * 100, 2),
-                "spend": spend, "cpc": round(spend / max(clicks, 1), 2),
-                "conversions": conversions,
-                "cost_per_conversion": round(spend / max(conversions, 1), 2),
-                "roas": round(random.uniform(0.5, 8.0), 2),
-            })
+            return MetricsResult(
+                success=True,
+                metrics={
+                    "impressions": impressions,
+                    "reach": int(impressions * 0.85),
+                    "clicks": clicks,
+                    "ctr": round(clicks / max(impressions, 1) * 100, 2),
+                    "spend": spend,
+                    "cpc": round(spend / max(clicks, 1), 2),
+                    "conversions": conversions,
+                    "cost_per_conversion": round(spend / max(conversions, 1), 2),
+                    "roas": round(random.uniform(0.5, 8.0), 2),
+                },
+            )
         return MetricsResult(success=True, metrics={})
 
     async def get_account_metrics(self) -> MetricsResult:

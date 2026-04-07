@@ -20,13 +20,13 @@ Staged capability model:
   Stage E: LIVE_OPTIMIZE  — automated bid/budget optimization loops
 """
 
-from app.adapters.base import BaseAdsAdapter, AdapterCapabilityStage, AdapterStatus
-from app.adapters.meta import MetaAdsAdapter
+from app.adapters.base import AdapterCapabilityStage, AdapterStatus, BaseAdsAdapter
 from app.adapters.google import GoogleAdsAdapter
-from app.adapters.tiktok import TikTokAdsAdapter
 from app.adapters.linkedin import LinkedInAdsAdapter
+from app.adapters.meta import MetaAdsAdapter
 from app.adapters.pinterest import PinterestAdsAdapter
 from app.adapters.snap import SnapAdsAdapter
+from app.adapters.tiktok import TikTokAdsAdapter
 
 ADAPTER_REGISTRY: dict[str, type[BaseAdsAdapter]] = {
     "meta": MetaAdsAdapter,

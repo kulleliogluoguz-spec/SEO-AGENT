@@ -20,18 +20,18 @@ Environment:
   GOOGLE_ADS_DEVELOPER_TOKEN — from Google Ads API Center
   Tokens stored in credential_store under platform="google_ads"
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Optional
 
 import httpx
 
 from app.core.config.settings import get_settings
-from app.core.store.credential_store import get_credential, get_linked_accounts, store_credential
 from app.core.store.audit_store import write_audit_event
+from app.core.store.credential_store import get_credential, get_linked_accounts, store_credential
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -43,11 +43,11 @@ GOOGLE_TOKEN_REFRESH_URL = "https://oauth2.googleapis.com/token"
 @dataclass
 class GoogleAdsResult:
     success: bool
-    campaign_id: Optional[str] = None
-    budget_id: Optional[str] = None
-    ad_group_id: Optional[str] = None
-    ad_id: Optional[str] = None
-    error: Optional[str] = None
+    campaign_id: str | None = None
+    budget_id: str | None = None
+    ad_group_id: str | None = None
+    ad_id: str | None = None
+    error: str | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -71,7 +71,7 @@ class GoogleAdsService:
     def __init__(self, user_id: str):
         self.user_id = user_id
 
-    def _load_credentials(self) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    def _load_credentials(self) -> tuple[str | None, str | None, str | None]:
         """Return (access_token, refresh_token, customer_id)."""
         cred = get_credential(self.user_id, "google_ads")
         if not cred:
@@ -89,7 +89,7 @@ class GoogleAdsService:
 
         return access_token, refresh_token, customer_id
 
-    async def _refresh_token_if_needed(self, refresh_token: str) -> Optional[str]:
+    async def _refresh_token_if_needed(self, refresh_token: str) -> str | None:
         """Exchange refresh token for new access token."""
         if not refresh_token or not settings.google_client_id:
             return None
@@ -130,7 +130,9 @@ class GoogleAdsService:
             "login-customer-id": customer_id,
         }
 
-    async def _api(self, method: str, path: str, access_token: str, customer_id: str, **kwargs) -> dict:
+    async def _api(
+        self, method: str, path: str, access_token: str, customer_id: str, **kwargs
+    ) -> dict:
         url = f"{GOOGLE_ADS_API_BASE}/{path.lstrip('/')}"
         headers = self._headers(access_token, customer_id)
 
@@ -164,9 +166,15 @@ class GoogleAdsService:
         """Validate Google Ads credentials."""
         access_token, refresh_token, customer_id = self._load_credentials()
         if not access_token:
-            return {"connected": False, "reason": "No Google Ads credentials. Connect via Settings → Connections."}
+            return {
+                "connected": False,
+                "reason": "No Google Ads credentials. Connect via Settings → Connections.",
+            }
         if not customer_id:
-            return {"connected": False, "reason": "No Google Ads account linked. Complete Google connection flow."}
+            return {
+                "connected": False,
+                "reason": "No Google Ads account linked. Complete Google connection flow.",
+            }
         if not settings.google_ads_developer_token:
             return {"connected": False, "reason": "GOOGLE_ADS_DEVELOPER_TOKEN not set in .env"}
 
@@ -195,8 +203,8 @@ class GoogleAdsService:
         headlines: list[str],
         descriptions: list[str],
         keywords: list[str],
-        geo_target_names: Optional[list[str]] = None,
-        customer_id: Optional[str] = None,
+        geo_target_names: list[str] | None = None,
+        customer_id: str | None = None,
         start_paused: bool = True,
     ) -> GoogleAdsResult:
         """
@@ -211,11 +219,13 @@ class GoogleAdsService:
         if not access_token:
             result = GoogleAdsResult(
                 success=False,
-                error="Google Ads not connected. Go to Connections and link your Google Ads account."
+                error="Google Ads not connected. Go to Connections and link your Google Ads account.",
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.google.create_campaign",
-                channel="google_ads", success=False,
+                user_id=self.user_id,
+                action="ads.google.create_campaign",
+                channel="google_ads",
+                success=False,
                 metadata={"error": result.error, "campaign_name": name},
             )
             return result
@@ -225,7 +235,9 @@ class GoogleAdsService:
             return GoogleAdsResult(success=False, error="No Google Ads customer ID found.")
 
         if not settings.google_ads_developer_token:
-            return GoogleAdsResult(success=False, error="GOOGLE_ADS_DEVELOPER_TOKEN not configured.")
+            return GoogleAdsResult(
+                success=False, error="GOOGLE_ADS_DEVELOPER_TOKEN not configured."
+            )
 
         budget_id = campaign_id = ad_group_id = ad_id = None
 
@@ -233,17 +245,20 @@ class GoogleAdsService:
             # Step 1: Create Campaign Budget
             start_date = date.today().strftime("%Y%m%d")
             budget_payload = {
-                "campaignBudgets": [{
-                    "resourceName": f"customers/{cid}/campaignBudgets/-1",
-                    "name": f"{name} Budget",
-                    "amountMicros": str(int(daily_budget_usd * 1_000_000)),
-                    "deliveryMethod": "STANDARD",
-                }]
+                "campaignBudgets": [
+                    {
+                        "resourceName": f"customers/{cid}/campaignBudgets/-1",
+                        "name": f"{name} Budget",
+                        "amountMicros": str(int(daily_budget_usd * 1_000_000)),
+                        "deliveryMethod": "STANDARD",
+                    }
+                ]
             }
             budget_resp = await self._api(
                 "POST",
                 f"customers/{cid}/campaignBudgets:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json=budget_payload,
             )
             budget_resource = budget_resp.get("results", [{}])[0].get("resourceName", "")
@@ -252,28 +267,31 @@ class GoogleAdsService:
 
             # Step 2: Create Campaign
             campaign_payload = {
-                "campaigns": [{
-                    "resourceName": f"customers/{cid}/campaigns/-1",
-                    "name": name,
-                    "advertisingChannelType": "SEARCH",
-                    "campaignBudget": budget_resource,
-                    "status": "PAUSED" if start_paused else "ENABLED",
-                    "startDate": start_date,
-                    "endDate": (date.today() + timedelta(days=30)).strftime("%Y%m%d"),
-                    "manualCpc": {"enhancedCpcEnabled": True},
-                    "targetSpend": {},
-                    "networkSettings": {
-                        "targetGoogleSearch": True,
-                        "targetSearchNetwork": True,
-                        "targetContentNetwork": False,
-                    },
-                    "urlExpansionOptOut": False,
-                }]
+                "campaigns": [
+                    {
+                        "resourceName": f"customers/{cid}/campaigns/-1",
+                        "name": name,
+                        "advertisingChannelType": "SEARCH",
+                        "campaignBudget": budget_resource,
+                        "status": "PAUSED" if start_paused else "ENABLED",
+                        "startDate": start_date,
+                        "endDate": (date.today() + timedelta(days=30)).strftime("%Y%m%d"),
+                        "manualCpc": {"enhancedCpcEnabled": True},
+                        "targetSpend": {},
+                        "networkSettings": {
+                            "targetGoogleSearch": True,
+                            "targetSearchNetwork": True,
+                            "targetContentNetwork": False,
+                        },
+                        "urlExpansionOptOut": False,
+                    }
+                ]
             }
             camp_resp = await self._api(
                 "POST",
                 f"customers/{cid}/campaigns:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json=campaign_payload,
             )
             campaign_resource = camp_resp.get("results", [{}])[0].get("resourceName", "")
@@ -282,19 +300,22 @@ class GoogleAdsService:
 
             # Step 3: Create Ad Group
             ad_group_payload = {
-                "adGroups": [{
-                    "resourceName": f"customers/{cid}/adGroups/-1",
-                    "name": f"{name} — Ad Group",
-                    "campaign": campaign_resource,
-                    "type": "SEARCH_STANDARD",
-                    "status": "ENABLED",
-                    "cpcBidMicros": str(int(2.0 * 1_000_000)),  # Default $2 CPC bid
-                }]
+                "adGroups": [
+                    {
+                        "resourceName": f"customers/{cid}/adGroups/-1",
+                        "name": f"{name} — Ad Group",
+                        "campaign": campaign_resource,
+                        "type": "SEARCH_STANDARD",
+                        "status": "ENABLED",
+                        "cpcBidMicros": str(int(2.0 * 1_000_000)),  # Default $2 CPC bid
+                    }
+                ]
             }
             ag_resp = await self._api(
                 "POST",
                 f"customers/{cid}/adGroups:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json=ad_group_payload,
             )
             ag_resource = ag_resp.get("results", [{}])[0].get("resourceName", "")
@@ -305,60 +326,62 @@ class GoogleAdsService:
             if keywords:
                 kw_entries = []
                 for kw in keywords[:20]:  # max 20 keywords per ad group
-                    kw_entries.append({
-                        "resourceName": f"customers/{cid}/adGroupCriteria/-1~-1",
-                        "adGroup": ag_resource,
-                        "status": "ENABLED",
-                        "keyword": {
-                            "text": kw[:80],  # Max 80 chars
-                            "matchType": "BROAD",
-                        },
-                    })
+                    kw_entries.append(
+                        {
+                            "resourceName": f"customers/{cid}/adGroupCriteria/-1~-1",
+                            "adGroup": ag_resource,
+                            "status": "ENABLED",
+                            "keyword": {
+                                "text": kw[:80],  # Max 80 chars
+                                "matchType": "BROAD",
+                            },
+                        }
+                    )
                 await self._api(
                     "POST",
                     f"customers/{cid}/adGroupCriteria:mutate",
-                    access_token, cid,
+                    access_token,
+                    cid,
                     json={"adGroupCriteria": kw_entries},
                 )
                 logger.info("[google_ads] %d keywords added", len(kw_entries))
 
             # Step 5: Create Responsive Search Ad
             # Headlines: 3–15 items, max 30 chars; Descriptions: 2–4, max 90 chars
-            rsa_headlines = [
-                {"text": h[:30], "pinnedField": None}
-                for h in headlines[:15]
-            ]
-            rsa_descriptions = [
-                {"text": d[:90], "pinnedField": None}
-                for d in descriptions[:4]
-            ]
+            rsa_headlines = [{"text": h[:30], "pinnedField": None} for h in headlines[:15]]
+            rsa_descriptions = [{"text": d[:90], "pinnedField": None} for d in descriptions[:4]]
             # Ensure minimum counts
             while len(rsa_headlines) < 3:
                 rsa_headlines.append({"text": name[:30], "pinnedField": None})
             while len(rsa_descriptions) < 2:
-                rsa_descriptions.append({"text": f"Learn more at {landing_page_url[:40]}", "pinnedField": None})
+                rsa_descriptions.append(
+                    {"text": f"Learn more at {landing_page_url[:40]}", "pinnedField": None}
+                )
 
             ad_payload = {
-                "adGroupAds": [{
-                    "resourceName": f"customers/{cid}/adGroupAds/-1~-1",
-                    "adGroup": ag_resource,
-                    "status": "ENABLED",
-                    "ad": {
-                        "resourceName": f"customers/{cid}/ads/-1",
-                        "responsiveSearchAd": {
-                            "headlines": rsa_headlines,
-                            "descriptions": rsa_descriptions,
-                            "path1": "",
-                            "path2": "",
+                "adGroupAds": [
+                    {
+                        "resourceName": f"customers/{cid}/adGroupAds/-1~-1",
+                        "adGroup": ag_resource,
+                        "status": "ENABLED",
+                        "ad": {
+                            "resourceName": f"customers/{cid}/ads/-1",
+                            "responsiveSearchAd": {
+                                "headlines": rsa_headlines,
+                                "descriptions": rsa_descriptions,
+                                "path1": "",
+                                "path2": "",
+                            },
+                            "finalUrls": [landing_page_url],
                         },
-                        "finalUrls": [landing_page_url],
-                    },
-                }]
+                    }
+                ]
             }
             ad_resp = await self._api(
                 "POST",
                 f"customers/{cid}/adGroupAds:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json=ad_payload,
             )
             ad_resource = ad_resp.get("results", [{}])[0].get("resourceName", "")
@@ -368,15 +391,19 @@ class GoogleAdsService:
         except Exception as e:
             logger.error("[google_ads] create_search_campaign failed: %s", e)
             write_audit_event(
-                user_id=self.user_id, action="ads.google.create_campaign",
-                channel="google_ads", success=False,
+                user_id=self.user_id,
+                action="ads.google.create_campaign",
+                channel="google_ads",
+                success=False,
                 metadata={"error": str(e), "campaign_id": campaign_id, "customer_id": cid},
             )
             return GoogleAdsResult(success=False, error=str(e), campaign_id=campaign_id)
 
         write_audit_event(
-            user_id=self.user_id, action="ads.google.create_campaign",
-            channel="google_ads", success=True,
+            user_id=self.user_id,
+            action="ads.google.create_campaign",
+            channel="google_ads",
+            success=True,
             metadata={
                 "campaign_id": campaign_id,
                 "budget_id": budget_id,
@@ -395,7 +422,7 @@ class GoogleAdsService:
             ad_id=ad_id,
         )
 
-    async def activate_campaign(self, campaign_id: str, customer_id: Optional[str] = None) -> bool:
+    async def activate_campaign(self, campaign_id: str, customer_id: str | None = None) -> bool:
         """Enable a paused campaign (starts spending)."""
         access_token, _, default_cid = self._load_credentials()
         cid = customer_id or default_cid
@@ -405,18 +432,23 @@ class GoogleAdsService:
             await self._api(
                 "POST",
                 f"customers/{cid}/campaigns:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json={
-                    "campaigns": [{
-                        "resourceName": f"customers/{cid}/campaigns/{campaign_id}",
-                        "status": "ENABLED",
-                    }],
+                    "campaigns": [
+                        {
+                            "resourceName": f"customers/{cid}/campaigns/{campaign_id}",
+                            "status": "ENABLED",
+                        }
+                    ],
                     "updateMask": "status",
                 },
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.google.activate_campaign",
-                channel="google_ads", success=True,
+                user_id=self.user_id,
+                action="ads.google.activate_campaign",
+                channel="google_ads",
+                success=True,
                 metadata={"campaign_id": campaign_id, "customer_id": cid},
             )
             return True
@@ -424,7 +456,7 @@ class GoogleAdsService:
             logger.error("[google_ads] activate_campaign failed: %s", e)
             return False
 
-    async def pause_campaign(self, campaign_id: str, customer_id: Optional[str] = None) -> bool:
+    async def pause_campaign(self, campaign_id: str, customer_id: str | None = None) -> bool:
         """Pause a running campaign."""
         access_token, _, default_cid = self._load_credentials()
         cid = customer_id or default_cid
@@ -434,18 +466,23 @@ class GoogleAdsService:
             await self._api(
                 "POST",
                 f"customers/{cid}/campaigns:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json={
-                    "campaigns": [{
-                        "resourceName": f"customers/{cid}/campaigns/{campaign_id}",
-                        "status": "PAUSED",
-                    }],
+                    "campaigns": [
+                        {
+                            "resourceName": f"customers/{cid}/campaigns/{campaign_id}",
+                            "status": "PAUSED",
+                        }
+                    ],
                     "updateMask": "status",
                 },
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.google.pause_campaign",
-                channel="google_ads", success=True,
+                user_id=self.user_id,
+                action="ads.google.pause_campaign",
+                channel="google_ads",
+                success=True,
                 metadata={"campaign_id": campaign_id},
             )
             return True
@@ -457,8 +494,8 @@ class GoogleAdsService:
         self,
         campaign_id: str,
         days: int = 7,
-        customer_id: Optional[str] = None,
-    ) -> Optional[dict]:
+        customer_id: str | None = None,
+    ) -> dict | None:
         """Fetch campaign performance via Google Ads Query Language (GAQL)."""
         access_token, _, default_cid = self._load_credentials()
         cid = customer_id or default_cid
@@ -485,7 +522,8 @@ class GoogleAdsService:
             data = await self._api(
                 "POST",
                 f"customers/{cid}/googleAds:search",
-                access_token, cid,
+                access_token,
+                cid,
                 json={"query": query.strip()},
             )
             rows = data.get("results", [])
@@ -515,7 +553,7 @@ class GoogleAdsService:
         self,
         budget_id: str,
         new_budget_usd: float,
-        customer_id: Optional[str] = None,
+        customer_id: str | None = None,
     ) -> bool:
         """Update campaign daily budget."""
         access_token, _, default_cid = self._load_credentials()
@@ -526,18 +564,23 @@ class GoogleAdsService:
             await self._api(
                 "POST",
                 f"customers/{cid}/campaignBudgets:mutate",
-                access_token, cid,
+                access_token,
+                cid,
                 json={
-                    "campaignBudgets": [{
-                        "resourceName": f"customers/{cid}/campaignBudgets/{budget_id}",
-                        "amountMicros": str(int(new_budget_usd * 1_000_000)),
-                    }],
+                    "campaignBudgets": [
+                        {
+                            "resourceName": f"customers/{cid}/campaignBudgets/{budget_id}",
+                            "amountMicros": str(int(new_budget_usd * 1_000_000)),
+                        }
+                    ],
                     "updateMask": "amount_micros",
                 },
             )
             write_audit_event(
-                user_id=self.user_id, action="ads.google.update_budget",
-                channel="google_ads", success=True,
+                user_id=self.user_id,
+                action="ads.google.update_budget",
+                channel="google_ads",
+                success=True,
                 metadata={"budget_id": budget_id, "new_budget_usd": new_budget_usd},
             )
             return True

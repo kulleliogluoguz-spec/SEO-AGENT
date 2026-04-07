@@ -2,6 +2,7 @@
 AI Learning & Memory — learns from user feedback to improve recommendations.
 PostgreSQL for structured preferences + Chroma (optional) for semantic search.
 """
+
 from __future__ import annotations
 
 import json
@@ -108,9 +109,7 @@ class AIMemoryService:
                     """
                 ),
                 {
-                    "v": json.dumps(
-                        {"accepts": accepts, "rejects": rejects, "accept_rate": rate}
-                    ),
+                    "v": json.dumps({"accepts": accepts, "rejects": rejects, "accept_rate": rate}),
                     "cnt": cnt,
                     "conf": min(0.95, 0.5 + rate * 0.5),
                     "wid": self.workspace_id,
@@ -160,9 +159,7 @@ class AIMemoryService:
             }
         return prefs
 
-    async def store_call_embedding(
-        self, call_id: str, transcript: str, analysis: dict
-    ) -> None:
+    async def store_call_embedding(self, call_id: str, transcript: str, analysis: dict) -> None:
         chroma = self._get_chroma()
         embedder = self._get_embedder()
         if not chroma or not embedder:

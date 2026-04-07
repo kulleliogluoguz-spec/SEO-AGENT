@@ -15,32 +15,37 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class GuardrailSeverity(str, Enum):
-    BLOCK = "block"      # Must stop execution
-    WARN = "warn"        # Flag but continue
-    INFO = "info"        # Informational only
+    BLOCK = "block"  # Must stop execution
+    WARN = "warn"  # Flag but continue
+    INFO = "info"  # Informational only
 
 
 @dataclass
 class GuardrailResult:
     """Result of a guardrail check."""
+
     passed: bool
     issues: list[dict[str, Any]] = field(default_factory=list)
-    sanitized_input: Optional[str] = None  # Cleaned version of input
+    sanitized_input: str | None = None  # Cleaned version of input
     blocked: bool = False
 
-    def add_issue(self, severity: GuardrailSeverity, category: str, message: str, detail: str = "") -> None:
-        self.issues.append({
-            "severity": severity.value,
-            "category": category,
-            "message": message,
-            "detail": detail,
-        })
+    def add_issue(
+        self, severity: GuardrailSeverity, category: str, message: str, detail: str = ""
+    ) -> None:
+        self.issues.append(
+            {
+                "severity": severity.value,
+                "category": category,
+                "message": message,
+                "detail": detail,
+            }
+        )
         if severity == GuardrailSeverity.BLOCK:
             self.passed = False
             self.blocked = True
@@ -169,7 +174,7 @@ class OutputGuardrail:
 
         return result
 
-    def validate_json_output(self, content: str, schema: Optional[dict] = None) -> GuardrailResult:
+    def validate_json_output(self, content: str, schema: dict | None = None) -> GuardrailResult:
         """Validate structured JSON output."""
         import json as json_mod
 
@@ -271,7 +276,7 @@ class GuardrailManager:
 
 
 # Singleton
-_manager: Optional[GuardrailManager] = None
+_manager: GuardrailManager | None = None
 
 
 def get_guardrail_manager() -> GuardrailManager:

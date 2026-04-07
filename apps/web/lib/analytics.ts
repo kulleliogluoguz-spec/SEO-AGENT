@@ -82,7 +82,6 @@ function getPostHog(): any {
   if (!key) return null
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { default: posthog } = require('posthog-js')
     const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com'
     posthog.init(key, {

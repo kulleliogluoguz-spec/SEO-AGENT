@@ -16,9 +16,9 @@ import copy
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class PromptCategory(str, Enum):
 @dataclass
 class PromptExample:
     """Few-shot example for prompt injection."""
+
     input: str
     output: str
     label: str = ""  # e.g. "good", "bad", "preferred"
@@ -53,15 +54,15 @@ class PromptTemplate:
     """A versioned prompt template."""
 
     # Identity
-    id: str                               # e.g. "seo.technical_audit.system"
-    name: str                             # Human-readable
+    id: str  # e.g. "seo.technical_audit.system"
+    name: str  # Human-readable
     category: PromptCategory
     version: str = "1.0.0"
 
     # Content
-    system_template: str = ""             # System instruction template
-    user_template: str = ""               # User message template (optional)
-    assistant_prefix: str = ""            # Force assistant start (optional)
+    system_template: str = ""  # System instruction template
+    user_template: str = ""  # User message template (optional)
+    assistant_prefix: str = ""  # Force assistant start (optional)
 
     # Variables
     variables: list[str] = field(default_factory=list)  # Expected {{var}} names
@@ -71,17 +72,17 @@ class PromptTemplate:
     examples: list[PromptExample] = field(default_factory=list)
 
     # Output contract
-    output_format: Optional[str] = None   # "json", "markdown", "structured"
-    output_schema: Optional[dict] = None  # JSON schema for structured output
+    output_format: str | None = None  # "json", "markdown", "structured"
+    output_schema: dict | None = None  # JSON schema for structured output
 
     # Metadata
     description: str = ""
     author: str = "system"
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     tags: list[str] = field(default_factory=list)
 
     # Eval linkage
-    eval_suite_id: Optional[str] = None
+    eval_suite_id: str | None = None
     min_quality_score: float = 0.0
 
     @property
@@ -137,7 +138,7 @@ class PromptRegistry:
         if template.id not in self._active_versions:
             self._active_versions[template.id] = template.version
 
-    def get(self, prompt_id: str, version: Optional[str] = None) -> Optional[PromptTemplate]:
+    def get(self, prompt_id: str, version: str | None = None) -> PromptTemplate | None:
         versions = self._prompts.get(prompt_id, {})
         if not versions:
             return None
@@ -158,17 +159,19 @@ class PromptRegistry:
             active_v = self._active_versions.get(pid, "")
             active = versions.get(active_v)
             if active:
-                results.append({
-                    "id": pid,
-                    "name": active.name,
-                    "category": active.category.value,
-                    "active_version": active_v,
-                    "versions": list(versions.keys()),
-                    "fingerprint": active.fingerprint,
-                    "output_format": active.output_format,
-                    "variables": active.variables,
-                    "example_count": len(active.examples),
-                })
+                results.append(
+                    {
+                        "id": pid,
+                        "name": active.name,
+                        "category": active.category.value,
+                        "active_version": active_v,
+                        "versions": list(versions.keys()),
+                        "fingerprint": active.fingerprint,
+                        "output_format": active.output_format,
+                        "variables": active.variables,
+                        "example_count": len(active.examples),
+                    }
+                )
         return results
 
     def list_by_category(self, category: PromptCategory) -> list[PromptTemplate]:
@@ -181,7 +184,9 @@ class PromptRegistry:
                     results.append(t)
         return results
 
-    def clone_with_version(self, prompt_id: str, new_version: str, **overrides: Any) -> Optional[PromptTemplate]:
+    def clone_with_version(
+        self, prompt_id: str, new_version: str, **overrides: Any
+    ) -> PromptTemplate | None:
         """Clone an existing prompt with modifications for A/B testing."""
         source = self.get(prompt_id)
         if not source:
@@ -200,11 +205,12 @@ class PromptRegistry:
         """Load all domain-specialized default prompts."""
 
         # ── Platform Base System Prompt ──
-        self.register(PromptTemplate(
-            id="system.base",
-            name="Base System Prompt",
-            category=PromptCategory.SYSTEM,
-            system_template="""You are the AI intelligence engine of AI CMO OS, a growth operations platform.
+        self.register(
+            PromptTemplate(
+                id="system.base",
+                name="Base System Prompt",
+                category=PromptCategory.SYSTEM,
+                system_template="""You are the AI intelligence engine of AI CMO OS, a growth operations platform.
 
 You assist growth teams with SEO analysis, AI visibility optimization, content strategy,
 competitor intelligence, recommendation generation, and marketing execution planning.
@@ -219,16 +225,18 @@ Core principles:
 Current workspace: {{workspace_name}}
 Current site: {{site_url}}
 Autonomy level: {{autonomy_level}} (1=draft only, 2=approval required, 3=low-risk auto)""",
-            variables=["workspace_name", "site_url", "autonomy_level"],
-            defaults={"workspace_name": "Default", "site_url": "", "autonomy_level": "1"},
-        ))
+                variables=["workspace_name", "site_url", "autonomy_level"],
+                defaults={"workspace_name": "Default", "site_url": "", "autonomy_level": "1"},
+            )
+        )
 
         # ── SEO Technical Audit ──
-        self.register(PromptTemplate(
-            id="seo.technical_audit",
-            name="Technical SEO Audit",
-            category=PromptCategory.SEO,
-            system_template="""You are an expert Technical SEO auditor within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="seo.technical_audit",
+                name="Technical SEO Audit",
+                category=PromptCategory.SEO,
+                system_template="""You are an expert Technical SEO auditor within AI CMO OS.
 
 Analyze the provided crawl data and produce a structured technical SEO audit.
 
@@ -249,39 +257,47 @@ For each issue found:
 5. Estimate implementation effort (quick-fix / moderate / major)
 
 Output as structured JSON matching the output schema.""",
-            output_format="json",
-            output_schema={
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string"},
-                    "overall_score": {"type": "number", "minimum": 0, "maximum": 100},
-                    "issues": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "string"},
-                                "title": {"type": "string"},
-                                "severity": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
-                                "category": {"type": "string"},
-                                "description": {"type": "string"},
-                                "affected_urls": {"type": "array", "items": {"type": "string"}},
-                                "recommendation": {"type": "string"},
-                                "effort": {"type": "string", "enum": ["quick-fix", "moderate", "major"]},
+                output_format="json",
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string"},
+                        "overall_score": {"type": "number", "minimum": 0, "maximum": 100},
+                        "issues": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "title": {"type": "string"},
+                                    "severity": {
+                                        "type": "string",
+                                        "enum": ["critical", "high", "medium", "low"],
+                                    },
+                                    "category": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "affected_urls": {"type": "array", "items": {"type": "string"}},
+                                    "recommendation": {"type": "string"},
+                                    "effort": {
+                                        "type": "string",
+                                        "enum": ["quick-fix", "moderate", "major"],
+                                    },
+                                },
                             },
                         },
                     },
                 },
-            },
-            variables=["site_url", "crawl_data"],
-        ))
+                variables=["site_url", "crawl_data"],
+            )
+        )
 
         # ── AI Visibility / GEO Analysis ──
-        self.register(PromptTemplate(
-            id="geo.visibility_analysis",
-            name="AI Visibility Analysis (GEO/AEO)",
-            category=PromptCategory.GEO_AEO,
-            system_template="""You are an AI Visibility analyst specializing in Generative Engine Optimization (GEO) and Answer Engine Optimization (AEO).
+        self.register(
+            PromptTemplate(
+                id="geo.visibility_analysis",
+                name="AI Visibility Analysis (GEO/AEO)",
+                category=PromptCategory.GEO_AEO,
+                system_template="""You are an AI Visibility analyst specializing in Generative Engine Optimization (GEO) and Answer Engine Optimization (AEO).
 
 Analyze how well the provided content and site structure supports visibility in:
 - AI-powered search (Google AI Overviews, Bing Chat, Perplexity)
@@ -302,16 +318,18 @@ For each prompt set provided, assess:
 - What specific improvements would increase citation probability?
 
 Provide confidence levels: high / medium / low / uncertain.""",
-            output_format="json",
-            variables=["site_url", "content_data", "prompt_set"],
-        ))
+                output_format="json",
+                variables=["site_url", "content_data", "prompt_set"],
+            )
+        )
 
         # ── Recommendation Engine ──
-        self.register(PromptTemplate(
-            id="recommendation.generate",
-            name="Generate Recommendations",
-            category=PromptCategory.RECOMMENDATION,
-            system_template="""You are a growth recommendation engine within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="recommendation.generate",
+                name="Generate Recommendations",
+                category=PromptCategory.RECOMMENDATION,
+                system_template="""You are a growth recommendation engine within AI CMO OS.
 
 Generate prioritized, evidence-backed recommendations based on the analysis data provided.
 
@@ -333,16 +351,18 @@ Prioritization factors:
 - Consider the workspace's current autonomy level for risk assessment
 
 Generate between 5-15 recommendations, sorted by priority score.""",
-            output_format="json",
-            variables=["analysis_data", "workspace_context", "existing_recommendations"],
-        ))
+                output_format="json",
+                variables=["analysis_data", "workspace_context", "existing_recommendations"],
+            )
+        )
 
         # ── Content Strategy ──
-        self.register(PromptTemplate(
-            id="content.strategy_brief",
-            name="Content Strategy Brief",
-            category=PromptCategory.CONTENT,
-            system_template="""You are a content strategist within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="content.strategy_brief",
+                name="Content Strategy Brief",
+                category=PromptCategory.CONTENT,
+                system_template="""You are a content strategist within AI CMO OS.
 
 Create a content strategy brief based on the SEO analysis, competitor data, and business context.
 
@@ -364,16 +384,18 @@ For each content piece recommended:
 - Competitor content to outperform
 - Estimated word count
 - CTA strategy""",
-            output_format="json",
-            variables=["seo_data", "competitor_data", "brand_context", "existing_content"],
-        ))
+                output_format="json",
+                variables=["seo_data", "competitor_data", "brand_context", "existing_content"],
+            )
+        )
 
         # ── Competitor Analysis ──
-        self.register(PromptTemplate(
-            id="competitor.analysis",
-            name="Competitor Analysis",
-            category=PromptCategory.COMPETITOR,
-            system_template="""You are a competitive intelligence analyst within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="competitor.analysis",
+                name="Competitor Analysis",
+                category=PromptCategory.COMPETITOR,
+                system_template="""You are a competitive intelligence analyst within AI CMO OS.
 
 Analyze the provided competitor data and produce a strategic comparison.
 
@@ -393,16 +415,18 @@ For each competitor:
 - Threat assessment
 
 Produce a battlecard summary for the top competitors.""",
-            output_format="json",
-            variables=["our_site_data", "competitor_sites", "industry_context"],
-        ))
+                output_format="json",
+                variables=["our_site_data", "competitor_sites", "industry_context"],
+            )
+        )
 
         # ── Report Synthesis ──
-        self.register(PromptTemplate(
-            id="reporting.weekly_summary",
-            name="Weekly Growth Report",
-            category=PromptCategory.REPORTING,
-            system_template="""You are a growth reporting analyst within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="reporting.weekly_summary",
+                name="Weekly Growth Report",
+                category=PromptCategory.REPORTING,
+                system_template="""You are a growth reporting analyst within AI CMO OS.
 
 Synthesize the provided data into a clear, executive-ready weekly growth report.
 
@@ -418,16 +442,24 @@ Report structure:
 
 Tone: Professional, data-driven, concise. Use specific numbers.
 Format: Markdown with clear sections.""",
-            output_format="markdown",
-            variables=["metrics_data", "recommendation_status", "content_data", "competitor_data", "date_range"],
-        ))
+                output_format="markdown",
+                variables=[
+                    "metrics_data",
+                    "recommendation_status",
+                    "content_data",
+                    "competitor_data",
+                    "date_range",
+                ],
+            )
+        )
 
         # ── Social Content Adaptation ──
-        self.register(PromptTemplate(
-            id="social.adapt_content",
-            name="Social Content Adaptation",
-            category=PromptCategory.SOCIAL,
-            system_template="""You are a social content specialist within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="social.adapt_content",
+                name="Social Content Adaptation",
+                category=PromptCategory.SOCIAL,
+                system_template="""You are a social content specialist within AI CMO OS.
 
 Adapt the provided content for the specified social channel(s).
 
@@ -447,16 +479,18 @@ For each adaptation:
 
 IMPORTANT: Never produce deceptive, misleading, or spam-like content.
 All social content must be clearly attributable to the brand.""",
-            output_format="json",
-            variables=["source_content", "channels", "brand_voice", "target_audience"],
-        ))
+                output_format="json",
+                variables=["source_content", "channels", "brand_voice", "target_audience"],
+            )
+        )
 
         # ── Ad Copy ──
-        self.register(PromptTemplate(
-            id="ad.copy_generation",
-            name="Ad Copy Generation",
-            category=PromptCategory.AD_COPY,
-            system_template="""You are an advertising copywriter within AI CMO OS.
+        self.register(
+            PromptTemplate(
+                id="ad.copy_generation",
+                name="Ad Copy Generation",
+                category=PromptCategory.AD_COPY,
+                system_template="""You are an advertising copywriter within AI CMO OS.
 
 Generate ad copy variants for the specified platform and campaign objective.
 
@@ -480,16 +514,24 @@ For each variant, include:
 - Estimated relevance score
 
 IMPORTANT: All copy must be truthful and not misleading.""",
-            output_format="json",
-            variables=["product_info", "campaign_objective", "platform", "target_audience", "brand_voice"],
-        ))
+                output_format="json",
+                variables=[
+                    "product_info",
+                    "campaign_objective",
+                    "platform",
+                    "target_audience",
+                    "brand_voice",
+                ],
+            )
+        )
 
         # ── Guardrail Check ──
-        self.register(PromptTemplate(
-            id="guardrail.content_check",
-            name="Content Safety Guardrail",
-            category=PromptCategory.GUARDRAIL,
-            system_template="""You are a content safety and compliance checker.
+        self.register(
+            PromptTemplate(
+                id="guardrail.content_check",
+                name="Content Safety Guardrail",
+                category=PromptCategory.GUARDRAIL,
+                system_template="""You are a content safety and compliance checker.
 
 Review the provided content and flag any issues:
 
@@ -507,16 +549,18 @@ For each issue:
 - suggestion: How to fix it
 
 If no issues found, return {"passed": true, "issues": []}""",
-            output_format="json",
-            variables=["content_to_check", "content_type", "target_platform"],
-        ))
+                output_format="json",
+                variables=["content_to_check", "content_type", "target_platform"],
+            )
+        )
 
         # ── Routing Classification ──
-        self.register(PromptTemplate(
-            id="routing.classify_task",
-            name="Task Classification for Routing",
-            category=PromptCategory.ROUTING,
-            system_template="""Classify the following task into exactly one category.
+        self.register(
+            PromptTemplate(
+                id="routing.classify_task",
+                name="Task Classification for Routing",
+                category=PromptCategory.ROUTING,
+                system_template="""Classify the following task into exactly one category.
 
 Categories:
 - seo_analysis: Technical SEO audits, on-page analysis, keyword research
@@ -532,15 +576,16 @@ Categories:
 - general: General questions, clarifications
 
 Respond with ONLY a JSON object: {"category": "...", "confidence": 0.0-1.0}""",
-            output_format="json",
-            variables=["task_description"],
-        ))
+                output_format="json",
+                variables=["task_description"],
+            )
+        )
 
         logger.info(f"PromptRegistry loaded {len(self._prompts)} default prompts")
 
 
 # Singleton
-_registry: Optional[PromptRegistry] = None
+_registry: PromptRegistry | None = None
 
 
 def get_prompt_registry() -> PromptRegistry:

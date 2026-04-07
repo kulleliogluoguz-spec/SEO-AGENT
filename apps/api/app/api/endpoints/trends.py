@@ -11,8 +11,8 @@ Provides:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Annotated, Any, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -54,7 +54,7 @@ class TrendDetectRequest(BaseModel):
 @router.get("", response_model=list[TrendResponse])
 async def list_trends(
     workspace_id: Annotated[str, Query(..., description="Workspace ID")],
-    status: Optional[str] = Query(None, description="Filter by status: active, declining, expired"),
+    status: str | None = Query(None, description="Filter by status: active, declining, expired"),
     min_relevance: float = Query(0.0, ge=0.0, le=1.0, description="Minimum relevance score"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -170,12 +170,13 @@ async def _run_trend_detection_background(
     min_document_count: int,
 ) -> None:
     """Detect trends from recent source documents and persist to DB."""
-    from app.agents.trends.trend_detector import TrendDetector
-    from app.core.db.database import get_async_session
-    from sqlalchemy import text
-    from datetime import timezone
     import json
     import uuid
+
+    from sqlalchemy import text
+
+    from app.agents.trends.trend_detector import TrendDetector
+    from app.core.db.database import get_async_session
 
     logger.info(f"Starting trend detection for workspace {workspace_id}")
 
@@ -208,7 +209,9 @@ async def _run_trend_detection_background(
             ]
 
             if not documents:
-                logger.info(f"No documents found for workspace {workspace_id}, skipping trend detection")
+                logger.info(
+                    f"No documents found for workspace {workspace_id}, skipping trend detection"
+                )
                 return
 
             # Load brand profile for relevance scoring
@@ -225,7 +228,7 @@ async def _run_trend_detection_background(
 
             logger.info(f"Detected {len(candidates)} trend candidates for workspace {workspace_id}")
 
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
 
             # Persist trend records
             for candidate in candidates[:50]:  # Top 50 trends

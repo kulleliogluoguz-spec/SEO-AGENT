@@ -10,17 +10,18 @@ Endpoints:
   POST /ads/{ad_id}/pause   — Pause a running campaign
   GET  /ads/{ad_id}/insights — Fetch campaign performance metrics
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies.auth import get_current_user
-from app.services.ads.meta_ads import MetaAdsService
 from app.services.ads.google_ads import GoogleAdsService
+from app.services.ads.meta_ads import MetaAdsService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,10 +29,11 @@ router = APIRouter()
 
 # ─── Request / Response models ────────────────────────────────────────────────
 
+
 class AdLaunchRequest(BaseModel):
     platform: Literal["meta", "google"]
     name: str
-    objective: str = "traffic"           # traffic | conversions | awareness | leads
+    objective: str = "traffic"  # traffic | conversions | awareness | leads
     daily_budget_usd: float = Field(gt=0)
     landing_page_url: str
     # Creative
@@ -40,12 +42,12 @@ class AdLaunchRequest(BaseModel):
     # Targeting
     age_min: int = 18
     age_max: int = 65
-    geo_locations: Optional[list[str]] = None   # e.g. ["US", "CA"]
-    interests: Optional[list[str]] = None       # Meta interest names
+    geo_locations: list[str] | None = None  # e.g. ["US", "CA"]
+    interests: list[str] | None = None  # Meta interest names
     # Google-specific
-    keywords: Optional[list[str]] = None
-    extra_headlines: Optional[list[str]] = None
-    extra_descriptions: Optional[list[str]] = None
+    keywords: list[str] | None = None
+    extra_headlines: list[str] | None = None
+    extra_descriptions: list[str] | None = None
     # Behaviour
     activate_immediately: bool = False
 
@@ -53,14 +55,14 @@ class AdLaunchRequest(BaseModel):
 class AdLaunchResponse(BaseModel):
     success: bool
     platform: str
-    campaign_id: Optional[str] = None
-    ad_set_id: Optional[str] = None
-    ad_id: Optional[str] = None
-    creative_id: Optional[str] = None
-    budget_resource_name: Optional[str] = None
-    ad_group_id: Optional[str] = None
+    campaign_id: str | None = None
+    ad_set_id: str | None = None
+    ad_id: str | None = None
+    creative_id: str | None = None
+    budget_resource_name: str | None = None
+    ad_group_id: str | None = None
     status: str = "paused"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class AdInsightsResponse(BaseModel):
@@ -77,6 +79,7 @@ class AdInsightsResponse(BaseModel):
 
 
 # ─── Launch ───────────────────────────────────────────────────────────────────
+
 
 @router.post("/ads/launch", response_model=AdLaunchResponse)
 async def launch_campaign(
@@ -105,7 +108,9 @@ async def launch_campaign(
         )
         if not result.success:
             return AdLaunchResponse(
-                success=False, platform="meta", error=result.error,
+                success=False,
+                platform="meta",
+                error=result.error,
                 campaign_id=result.campaign_id,
             )
 
@@ -139,7 +144,9 @@ async def launch_campaign(
         )
         if not result.success:
             return AdLaunchResponse(
-                success=False, platform="google", error=result.error,
+                success=False,
+                platform="google",
+                error=result.error,
                 campaign_id=result.campaign_id,
             )
 
@@ -162,6 +169,7 @@ async def launch_campaign(
 
 # ─── Activate ─────────────────────────────────────────────────────────────────
 
+
 @router.post("/ads/{platform}/{campaign_id}/activate")
 async def activate_campaign(
     platform: Literal["meta", "google"],
@@ -174,11 +182,14 @@ async def activate_campaign(
     else:
         ok = await GoogleAdsService(user_id=user_id).activate_campaign(campaign_id)
     if not ok:
-        raise HTTPException(status_code=502, detail="Failed to activate campaign. Check credentials.")
+        raise HTTPException(
+            status_code=502, detail="Failed to activate campaign. Check credentials."
+        )
     return {"success": True, "campaign_id": campaign_id, "status": "active"}
 
 
 # ─── Pause ────────────────────────────────────────────────────────────────────
+
 
 @router.post("/ads/{platform}/{campaign_id}/pause")
 async def pause_campaign(
@@ -197,6 +208,7 @@ async def pause_campaign(
 
 
 # ─── Insights ─────────────────────────────────────────────────────────────────
+
 
 @router.get("/ads/{platform}/{campaign_id}/insights", response_model=AdInsightsResponse)
 async def get_campaign_insights(
@@ -227,9 +239,7 @@ async def get_campaign_insights(
         )
 
     else:
-        data = await GoogleAdsService(user_id=user_id).get_campaign_metrics(
-            campaign_id, days=days
-        )
+        data = await GoogleAdsService(user_id=user_id).get_campaign_metrics(campaign_id, days=days)
         if not data:
             raise HTTPException(status_code=502, detail="Could not fetch Google insights.")
         return AdInsightsResponse(

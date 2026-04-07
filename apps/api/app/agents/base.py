@@ -10,10 +10,10 @@ This ensures consistent:
   - Token usage tracking
   - Failure reporting
 """
+
 import time
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Any, ClassVar, Generic, TypeVar
 
 import structlog
@@ -27,6 +27,7 @@ OutputT = TypeVar("OutputT", bound=BaseModel)
 
 class AgentMetadata(BaseModel):
     """Static metadata declared by each agent class."""
+
     name: str
     layer: int
     description: str
@@ -39,6 +40,7 @@ class AgentMetadata(BaseModel):
 
 class AgentRunContext(BaseModel):
     """Runtime context passed to every agent invocation."""
+
     workspace_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
     workflow_run_id: uuid.UUID | None = None
@@ -51,6 +53,7 @@ class AgentRunContext(BaseModel):
 
 class AgentResult(BaseModel, Generic[OutputT]):
     """Standardized agent result wrapper."""
+
     success: bool
     output: OutputT | None = None
     error: str | None = None
@@ -189,6 +192,7 @@ class LLMAgent(BaseAgent[InputT, OutputT]):
             return self._demo_response(user), 0
 
         from app.core.config.settings import get_settings
+
         settings = get_settings()
 
         messages = [{"role": "user", "content": user}]

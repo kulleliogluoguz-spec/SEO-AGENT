@@ -19,31 +19,32 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class EvalMetric(str, Enum):
-    ACCURACY = "accuracy"               # Factual correctness
-    RELEVANCE = "relevance"             # Answer relevance to query
-    COMPLETENESS = "completeness"       # Covers all required aspects
+    ACCURACY = "accuracy"  # Factual correctness
+    RELEVANCE = "relevance"  # Answer relevance to query
+    COMPLETENESS = "completeness"  # Covers all required aspects
     STRUCTURED_OUTPUT = "structured_output"  # Valid JSON/schema compliance
     HALLUCINATION_RISK = "hallucination_risk"  # Unsupported claims
-    ACTIONABILITY = "actionability"     # Recommendations are actionable
+    ACTIONABILITY = "actionability"  # Recommendations are actionable
     EVIDENCE_QUALITY = "evidence_quality"  # Evidence cited properly
     TONE_COMPLIANCE = "tone_compliance"  # Matches brand/professional tone
-    SAFETY = "safety"                   # No harmful/deceptive content
-    LATENCY = "latency"                 # Response time
+    SAFETY = "safety"  # No harmful/deceptive content
+    LATENCY = "latency"  # Response time
 
 
 @dataclass
 class EvalCase:
     """A single test case in an eval suite."""
+
     id: str
     name: str
     input_text: str
-    expected_output: Optional[str] = None     # Reference output
+    expected_output: str | None = None  # Reference output
     expected_contains: list[str] = field(default_factory=list)  # Must contain
     expected_not_contains: list[str] = field(default_factory=list)  # Must not contain
     expected_json_keys: list[str] = field(default_factory=list)  # Required JSON fields
@@ -55,6 +56,7 @@ class EvalCase:
 @dataclass
 class EvalResult:
     """Result of running a single eval case."""
+
     case_id: str
     passed: bool
     scores: dict[str, float] = field(default_factory=dict)  # metric -> score (0-1)
@@ -68,6 +70,7 @@ class EvalResult:
 @dataclass
 class EvalSuite:
     """A collection of eval cases for a prompt/engine."""
+
     id: str
     name: str
     description: str = ""
@@ -80,11 +83,12 @@ class EvalSuite:
 @dataclass
 class EvalRun:
     """A complete evaluation run."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     suite_id: str = ""
     results: list[EvalResult] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
-    completed_at: Optional[float] = None
+    completed_at: float | None = None
     model_used: str = ""
     prompt_version: str = ""
 
@@ -140,7 +144,7 @@ class EvalHarness:
     def register_suite(self, suite: EvalSuite) -> None:
         self._suites[suite.id] = suite
 
-    def get_suite(self, suite_id: str) -> Optional[EvalSuite]:
+    def get_suite(self, suite_id: str) -> EvalSuite | None:
         return self._suites.get(suite_id)
 
     def list_suites(self) -> list[dict]:
@@ -292,78 +296,84 @@ class EvalHarness:
         """Load default eval suites."""
 
         # SEO Technical Audit eval suite
-        self.register_suite(EvalSuite(
-            id="eval_seo_technical",
-            name="SEO Technical Audit Quality",
-            engine="reasoning",
-            prompt_id="seo.technical_audit",
-            cases=[
-                EvalCase(
-                    id="seo_1",
-                    name="Basic site audit request",
-                    input_text="Analyze this site's technical SEO based on the crawl data provided.",
-                    expected_contains=["issue", "recommendation"],
-                    expected_json_keys=["summary", "issues"],
-                    context={"crawl_data": '{"pages": 50, "errors": 3}'},
-                ),
-                EvalCase(
-                    id="seo_2",
-                    name="Audit with redirect chains",
-                    input_text="Audit for redirect chains and canonical issues.",
-                    expected_contains=["redirect", "canonical"],
-                ),
-            ],
-            tags=["seo", "core"],
-        ))
+        self.register_suite(
+            EvalSuite(
+                id="eval_seo_technical",
+                name="SEO Technical Audit Quality",
+                engine="reasoning",
+                prompt_id="seo.technical_audit",
+                cases=[
+                    EvalCase(
+                        id="seo_1",
+                        name="Basic site audit request",
+                        input_text="Analyze this site's technical SEO based on the crawl data provided.",
+                        expected_contains=["issue", "recommendation"],
+                        expected_json_keys=["summary", "issues"],
+                        context={"crawl_data": '{"pages": 50, "errors": 3}'},
+                    ),
+                    EvalCase(
+                        id="seo_2",
+                        name="Audit with redirect chains",
+                        input_text="Audit for redirect chains and canonical issues.",
+                        expected_contains=["redirect", "canonical"],
+                    ),
+                ],
+                tags=["seo", "core"],
+            )
+        )
 
         # Recommendation quality eval
-        self.register_suite(EvalSuite(
-            id="eval_recommendations",
-            name="Recommendation Quality",
-            engine="recommendation",
-            prompt_id="recommendation.generate",
-            cases=[
-                EvalCase(
-                    id="rec_1",
-                    name="Generate recs from analysis data",
-                    input_text="Generate prioritized recommendations.",
-                    expected_json_keys=["recommendations"],
-                    expected_contains=["priority", "evidence", "implementation"],
-                    context={"analysis_data": '{"traffic_decline": true, "missing_meta": 15}'},
-                ),
-            ],
-            tags=["recommendations", "core"],
-        ))
+        self.register_suite(
+            EvalSuite(
+                id="eval_recommendations",
+                name="Recommendation Quality",
+                engine="recommendation",
+                prompt_id="recommendation.generate",
+                cases=[
+                    EvalCase(
+                        id="rec_1",
+                        name="Generate recs from analysis data",
+                        input_text="Generate prioritized recommendations.",
+                        expected_json_keys=["recommendations"],
+                        expected_contains=["priority", "evidence", "implementation"],
+                        context={"analysis_data": '{"traffic_decline": true, "missing_meta": 15}'},
+                    ),
+                ],
+                tags=["recommendations", "core"],
+            )
+        )
 
         # Guardrail eval
-        self.register_suite(EvalSuite(
-            id="eval_guardrails",
-            name="Guardrail Safety",
-            engine="guardrail",
-            prompt_id="guardrail.content_check",
-            cases=[
-                EvalCase(
-                    id="guard_1",
-                    name="Clean content passes",
-                    input_text="Check this content: 'Our product helps teams grow organic traffic through data-driven SEO recommendations.'",
-                    expected_json_keys=["passed"],
-                ),
-                EvalCase(
-                    id="guard_2",
-                    name="Spammy content flagged",
-                    input_text="Check this content: 'GUARANTEED #1 RANKING IN 24 HOURS! Buy backlinks now!'",
-                    expected_contains=["issue", "spam"],
-                    expected_not_contains=["passed\": true"],
-                ),
-            ],
-            tags=["safety", "core"],
-        ))
+        self.register_suite(
+            EvalSuite(
+                id="eval_guardrails",
+                name="Guardrail Safety",
+                engine="guardrail",
+                prompt_id="guardrail.content_check",
+                cases=[
+                    EvalCase(
+                        id="guard_1",
+                        name="Clean content passes",
+                        input_text="Check this content: 'Our product helps teams grow organic traffic through data-driven SEO recommendations.'",
+                        expected_json_keys=["passed"],
+                    ),
+                    EvalCase(
+                        id="guard_2",
+                        name="Spammy content flagged",
+                        input_text="Check this content: 'GUARANTEED #1 RANKING IN 24 HOURS! Buy backlinks now!'",
+                        expected_contains=["issue", "spam"],
+                        expected_not_contains=['passed": true'],
+                    ),
+                ],
+                tags=["safety", "core"],
+            )
+        )
 
         logger.info(f"EvalHarness loaded {len(self._suites)} default suites")
 
 
 # Singleton
-_harness: Optional[EvalHarness] = None
+_harness: EvalHarness | None = None
 
 
 def get_eval_harness() -> EvalHarness:

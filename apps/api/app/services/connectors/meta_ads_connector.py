@@ -2,6 +2,7 @@
 Meta (Facebook) Ads API Connector
 Handles campaigns, ad sets, ads, and performance metrics via the Marketing API.
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,8 +86,7 @@ class MetaAdsConnector:
                     "status": c[Campaign.Field.status],
                     "objective": c.get(Campaign.Field.objective),
                     "daily_budget": float(c.get(Campaign.Field.daily_budget, 0)) / 100,
-                    "lifetime_budget": float(c.get(Campaign.Field.lifetime_budget, 0))
-                    / 100,
+                    "lifetime_budget": float(c.get(Campaign.Field.lifetime_budget, 0)) / 100,
                     "start_time": c.get(Campaign.Field.start_time),
                     "stop_time": c.get(Campaign.Field.stop_time),
                 }
@@ -127,9 +127,7 @@ class MetaAdsConnector:
             },
             "time_increment": 1,
             "level": level,
-            "filtering": [
-                {"field": "campaign.id", "operator": "EQUAL", "value": campaign_id}
-            ],
+            "filtering": [{"field": "campaign.id", "operator": "EQUAL", "value": campaign_id}],
         }
         try:
             insights = self.account.get_insights(fields=insights_fields, params=params)

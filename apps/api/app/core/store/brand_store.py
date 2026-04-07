@@ -2,11 +2,11 @@
 Simple JSON file-based store for brand profiles and intelligence cache.
 Works without PostgreSQL — designed for local dev / demo mode.
 """
+
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "brand_store.json"
 
@@ -31,7 +31,7 @@ def _save(data: dict):
         json.dump(data, f, indent=2, default=str)
 
 
-def get_brand_profile(user_id: str) -> Optional[dict]:
+def get_brand_profile(user_id: str) -> dict | None:
     data = _load()
     for p in data.get("brand_profiles", []):
         if p.get("user_id") == user_id:
@@ -39,7 +39,7 @@ def get_brand_profile(user_id: str) -> Optional[dict]:
     return None
 
 
-def get_brand_profile_by_id(profile_id: str) -> Optional[dict]:
+def get_brand_profile_by_id(profile_id: str) -> dict | None:
     data = _load()
     for p in data.get("brand_profiles", []):
         if p.get("id") == profile_id:
@@ -49,29 +49,35 @@ def get_brand_profile_by_id(profile_id: str) -> Optional[dict]:
 
 def create_brand_profile(user_id: str, profile: dict) -> dict:
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     record = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "created_at": now,
         "updated_at": now,
-        **{k: v for k, v in profile.items() if k not in ("id", "user_id", "created_at", "updated_at")},
+        **{
+            k: v
+            for k, v in profile.items()
+            if k not in ("id", "user_id", "created_at", "updated_at")
+        },
     }
     # Remove existing profile for this user first (single-profile model)
-    data["brand_profiles"] = [p for p in data.get("brand_profiles", []) if p.get("user_id") != user_id]
+    data["brand_profiles"] = [
+        p for p in data.get("brand_profiles", []) if p.get("user_id") != user_id
+    ]
     data["brand_profiles"].append(record)
     _save(data)
     return record
 
 
-def update_brand_profile(profile_id: str, updates: dict) -> Optional[dict]:
+def update_brand_profile(profile_id: str, updates: dict) -> dict | None:
     data = _load()
     for p in data.get("brand_profiles", []):
         if p.get("id") == profile_id:
             for k, v in updates.items():
                 if v is not None and k not in ("id", "user_id", "created_at"):
                     p[k] = v
-            p["updated_at"] = datetime.now(timezone.utc).isoformat()
+            p["updated_at"] = datetime.now(UTC).isoformat()
             _save(data)
             return p
     return None

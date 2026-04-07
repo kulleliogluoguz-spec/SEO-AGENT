@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ try:
     from connector_sdk.base import (
         BaseConnector,
         ComplianceMode,
-        ConnectorConfig,
         ConnectionTestResult,
+        ConnectorConfig,
         RateLimitPolicy,
         RawDocument,
         ValidationResult,
@@ -49,13 +49,17 @@ try:
     )
     from connector_sdk.registry import ConnectorRegistry
 except ImportError:
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../packages/connector-sdk"))
+    import os
+    import sys
+
+    sys.path.insert(
+        0, os.path.join(os.path.dirname(__file__), "../../../../packages/connector-sdk")
+    )
     from connector_sdk.base import (
         BaseConnector,
         ComplianceMode,
-        ConnectorConfig,
         ConnectionTestResult,
+        ConnectorConfig,
         RateLimitPolicy,
         RawDocument,
         ValidationResult,
@@ -77,7 +81,9 @@ class RedditConnector(BaseConnector):
     source_type = "reddit"
     compliance_mode = ComplianceMode.OFFICIAL_API
     display_name = "Reddit"
-    description = "Monitor subreddits for trending discussions and pain points (official Reddit API)"
+    description = (
+        "Monitor subreddits for trending discussions and pain points (official Reddit API)"
+    )
 
     async def validate_config(self, config: ConnectorConfig) -> ValidationResult:
         errors = []
@@ -107,7 +113,7 @@ class RedditConnector(BaseConnector):
     async def fetch(
         self,
         config: ConnectorConfig,
-        since: Optional[datetime] = None,
+        since: datetime | None = None,
     ) -> AsyncIterator[RawDocument]:
         subreddits = config.params.get("subreddits", [])
         keywords = config.params.get("keywords", [])
@@ -138,8 +144,8 @@ class RedditConnector(BaseConnector):
 
                     # Incremental fetch filter
                     if since:
-                        post_created = datetime.fromtimestamp(post["created_utc"], tz=timezone.utc)
-                        if post_created <= since.replace(tzinfo=timezone.utc):
+                        post_created = datetime.fromtimestamp(post["created_utc"], tz=UTC)
+                        if post_created <= since.replace(tzinfo=UTC):
                             continue
 
                     # Keyword filter
@@ -159,9 +165,7 @@ class RedditConnector(BaseConnector):
                         raw_text=raw_text,
                         title=post["title"],
                         author=post.get("author", "[deleted]"),
-                        published_at=datetime.fromtimestamp(
-                            post["created_utc"], tz=timezone.utc
-                        ),
+                        published_at=datetime.fromtimestamp(post["created_utc"], tz=UTC),
                         compliance_mode=self.compliance_mode.value,
                         metadata={
                             "subreddit": subreddit_name,
@@ -186,9 +190,7 @@ class RedditConnector(BaseConnector):
         try:
             import praw
         except ImportError:
-            raise RuntimeError(
-                "praw is not installed. Run: pip install praw"
-            )
+            raise RuntimeError("praw is not installed. Run: pip install praw")
 
         return praw.Reddit(
             client_id=config.credentials["client_id"],
@@ -221,19 +223,21 @@ class RedditConnector(BaseConnector):
 
         posts = []
         for sub in submissions:
-            posts.append({
-                "id": sub.id,
-                "title": sub.title,
-                "selftext": sub.selftext,
-                "url": f"https://reddit.com{sub.permalink}",
-                "score": sub.score,
-                "upvote_ratio": sub.upvote_ratio,
-                "num_comments": sub.num_comments,
-                "created_utc": sub.created_utc,
-                "author": str(sub.author) if sub.author else "[deleted]",
-                "is_self": sub.is_self,
-                "link_flair_text": sub.link_flair_text,
-            })
+            posts.append(
+                {
+                    "id": sub.id,
+                    "title": sub.title,
+                    "selftext": sub.selftext,
+                    "url": f"https://reddit.com{sub.permalink}",
+                    "score": sub.score,
+                    "upvote_ratio": sub.upvote_ratio,
+                    "num_comments": sub.num_comments,
+                    "created_utc": sub.created_utc,
+                    "author": str(sub.author) if sub.author else "[deleted]",
+                    "is_self": sub.is_self,
+                    "link_flair_text": sub.link_flair_text,
+                }
+            )
         return posts
 
     def _build_post_text(self, post: dict) -> str:
@@ -246,7 +250,7 @@ class RedditConnector(BaseConnector):
     def get_rate_limit_policy(self) -> RateLimitPolicy:
         return RateLimitPolicy(
             requests_per_second=1.0,
-            requests_per_minute=60,   # Reddit free tier: 60/min
+            requests_per_minute=60,  # Reddit free tier: 60/min
             requests_per_day=86400,
             retry_after_seconds=60,
         )

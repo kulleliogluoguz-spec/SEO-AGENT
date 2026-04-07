@@ -3,6 +3,7 @@ Marketing Mix Modeling Engine
 Bayesian MMM via PyMC-Marketing with a correlation-based fallback when
 PyMC isn't available. Includes scipy-based budget optimization.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,9 +15,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-MMM_MODELS_DIR = (
-    Path(__file__).resolve().parents[3] / "storage" / "mmm_models"
-)
+MMM_MODELS_DIR = Path(__file__).resolve().parents[3] / "storage" / "mmm_models"
 MMM_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -113,9 +112,7 @@ class MMMEngine:
             self.model = mmm
             try:
                 with open(self.model_path, "wb") as f:
-                    pickle.dump(
-                        {"mmm": mmm, "trace": trace, "channels": channel_cols}, f
-                    )
+                    pickle.dump({"mmm": mmm, "trace": trace, "channels": channel_cols}, f)
             except Exception as e:
                 logger.debug("[mmm] pickle save failed: %s", e)
 
@@ -204,7 +201,7 @@ class MMMEngine:
                 ch_data = current_spend.get(ch, {}) or {}
                 hist_roas = float(ch_data.get("roas", 2.0))
                 # Diminishing returns saturation
-                channel_return = hist_roas * (spend ** 0.7)
+                channel_return = hist_roas * (spend**0.7)
                 total_return += channel_return
             return -total_return  # minimize negative => maximize positive
 
@@ -221,16 +218,13 @@ class MMMEngine:
                 options={"maxiter": 1000},
             )
             if result.success:
-                allocation = {
-                    channel_cols[i]: round(float(result.x[i]), 2) for i in range(n)
-                }
+                allocation = {channel_cols[i]: round(float(result.x[i]), 2) for i in range(n)}
             else:
                 raise RuntimeError(result.message)
         except Exception as e:
             logger.warning("[mmm] SLSQP failed (%s), falling back to ROAS-weighted", e)
             roas_weights = [
-                float((current_spend.get(ch, {}) or {}).get("roas", 1.0))
-                for ch in channel_cols
+                float((current_spend.get(ch, {}) or {}).get("roas", 1.0)) for ch in channel_cols
             ]
             total_w = sum(roas_weights) or 1
             allocation = {

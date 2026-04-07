@@ -2,14 +2,15 @@
 Pydantic v2 schemas for API request/response validation.
 Strict typing, no silent coercion for security-sensitive fields.
 """
+
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
-
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # ─── Base Schemas ─────────────────────────────────────────────────────────────
+
 
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -24,6 +25,7 @@ class PaginatedResponse(BaseSchema):
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -54,6 +56,7 @@ class RegisterRequest(BaseModel):
 
 # ─── Users ────────────────────────────────────────────────────────────────────
 
+
 class UserResponse(BaseSchema):
     id: uuid.UUID
     email: str
@@ -71,6 +74,7 @@ class UserUpdateRequest(BaseModel):
 
 # ─── Organizations ────────────────────────────────────────────────────────────
 
+
 class OrgCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
@@ -86,6 +90,7 @@ class OrgResponse(BaseSchema):
 
 
 # ─── Workspaces ───────────────────────────────────────────────────────────────
+
 
 class WorkspaceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -106,6 +111,7 @@ class WorkspaceResponse(BaseSchema):
 
 
 # ─── Sites ────────────────────────────────────────────────────────────────────
+
 
 class SiteOnboardRequest(BaseModel):
     url: str = Field(description="The website URL to onboard")
@@ -136,6 +142,7 @@ class SiteResponse(BaseSchema):
 
 # ─── Crawls ───────────────────────────────────────────────────────────────────
 
+
 class CrawlResponse(BaseSchema):
     id: uuid.UUID
     site_id: uuid.UUID
@@ -163,6 +170,7 @@ class CrawlPageResponse(BaseSchema):
 
 
 # ─── Recommendations ──────────────────────────────────────────────────────────
+
 
 class RecommendationResponse(BaseSchema):
     id: uuid.UUID
@@ -195,6 +203,7 @@ class RecommendationUpdateRequest(BaseModel):
 
 # ─── Content ──────────────────────────────────────────────────────────────────
 
+
 class ContentBriefRequest(BaseModel):
     site_id: uuid.UUID
     content_type: str = Field(description="blog|landing_page|comparison|faq|social_post")
@@ -225,6 +234,7 @@ class ContentGenerateRequest(BaseModel):
 
 # ─── Approvals ────────────────────────────────────────────────────────────────
 
+
 class ApprovalResponse(BaseSchema):
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -245,6 +255,7 @@ class ApprovalActionRequest(BaseModel):
 
 # ─── Reports ─────────────────────────────────────────────────────────────────
 
+
 class ReportResponse(BaseSchema):
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -263,6 +274,7 @@ class ReportDetailResponse(ReportResponse):
 
 
 # ─── Error Responses ──────────────────────────────────────────────────────────
+
 
 class ErrorDetail(BaseModel):
     code: str

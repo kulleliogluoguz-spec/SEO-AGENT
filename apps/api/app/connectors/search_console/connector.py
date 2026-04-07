@@ -4,6 +4,7 @@ Google Search Console Connector.
 REAL mode: Requires google-auth and Search Console API access.
 MOCK mode: Returns realistic demo data (default in development).
 """
+
 from dataclasses import dataclass
 from datetime import date, timedelta
 

@@ -15,10 +15,11 @@ Usage:
   publisher = get_publisher("x", user_id)
   result = await publisher.publish_text_post(text="Hello world", user_id=user_id)
 """
-from app.services.publishers.base import PublisherService, PublishResult, PublisherStatus
-from app.services.publishers.x_publisher import XPublisher
+
+from app.services.publishers.base import PublisherService, PublisherStatus, PublishResult
 from app.services.publishers.instagram_publisher import InstagramPublisher
 from app.services.publishers.tiktok_publisher import TikTokPublisher
+from app.services.publishers.x_publisher import XPublisher
 
 PUBLISHER_REGISTRY: dict[str, type[PublisherService]] = {
     "x": XPublisher,
@@ -32,12 +33,19 @@ def get_publisher(channel: str, user_id: str) -> PublisherService:
     """Return the publisher instance for a channel, initialized with the user's credentials."""
     cls = PUBLISHER_REGISTRY.get(channel.lower())
     if not cls:
-        raise ValueError(f"No publisher available for channel '{channel}'. Available: {list(PUBLISHER_REGISTRY)}")
+        raise ValueError(
+            f"No publisher available for channel '{channel}'. Available: {list(PUBLISHER_REGISTRY)}"
+        )
     return cls(user_id=user_id)
 
 
 __all__ = [
-    "PublisherService", "PublishResult", "PublisherStatus",
-    "XPublisher", "InstagramPublisher", "TikTokPublisher",
-    "PUBLISHER_REGISTRY", "get_publisher",
+    "PublisherService",
+    "PublishResult",
+    "PublisherStatus",
+    "XPublisher",
+    "InstagramPublisher",
+    "TikTokPublisher",
+    "PUBLISHER_REGISTRY",
+    "get_publisher",
 ]

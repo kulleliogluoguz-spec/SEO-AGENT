@@ -1,8 +1,11 @@
 """Reports endpoint. Falls back to demo store when DB is unavailable."""
+
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies.auth import get_current_user
 from app.core.db.database import get_db
 from app.models.models import Report, User
@@ -21,22 +24,34 @@ async def list_reports(
 ):
     try:
         from sqlalchemy import func as sqlfunc
-        q = select(Report).where(Report.workspace_id == workspace_id).order_by(Report.created_at.desc())
+
+        q = (
+            select(Report)
+            .where(Report.workspace_id == workspace_id)
+            .order_by(Report.created_at.desc())
+        )
         total = (await db.execute(select(sqlfunc.count()).select_from(q.subquery()))).scalar()
-        items = (await db.execute(q.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+        items = (
+            (await db.execute(q.offset((page - 1) * page_size).limit(page_size))).scalars().all()
+        )
         return PaginatedResponse(
             items=[ReportResponse.model_validate(i) for i in items],
-            total=total, page=page, page_size=page_size,
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
     except Exception:
         from app.core.store.demo_store import get_reports
+
         items = get_reports(str(workspace_id))
         total = len(items)
         start = (page - 1) * page_size
         return PaginatedResponse(
-            items=items[start: start + page_size],
-            total=total, page=page, page_size=page_size,
+            items=items[start : start + page_size],
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
 
@@ -57,6 +72,7 @@ async def get_report(
         raise
     except Exception:
         from app.core.store.demo_store import get_report
+
         record = get_report(str(report_id))
         if not record:
             raise HTTPException(status_code=404, detail="Report not found")

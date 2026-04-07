@@ -5,11 +5,11 @@ The bridge owns all writes to `contacts`, `leads`, `lead_timeline`, and is the
 single place where call analytics, finance, ad attribution, and email modules
 push updates against a unified contact/lead profile.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,10 +30,10 @@ class DataBridge:
 
     async def get_or_create_contact(
         self,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        full_name: Optional[str] = None,
-        company_name: Optional[str] = None,
+        email: str | None = None,
+        phone: str | None = None,
+        full_name: str | None = None,
+        company_name: str | None = None,
         source: str = "manual",
     ) -> dict:
         for field, val in (("email", email), ("phone", phone)):
@@ -69,9 +69,7 @@ class DataBridge:
 
     async def get_or_create_lead(self, contact_id: str) -> dict:
         r = await self.db.execute(
-            text(
-                "SELECT * FROM leads WHERE contact_id=:cid AND workspace_id=:wid LIMIT 1"
-            ),
+            text("SELECT * FROM leads WHERE contact_id=:cid AND workspace_id=:wid LIMIT 1"),
             {"cid": contact_id, "wid": self.workspace_id},
         )
         row = r.fetchone()
@@ -95,8 +93,8 @@ class DataBridge:
         lead_id: str,
         event_type: str,
         title: str,
-        description: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        description: str | None = None,
+        metadata: dict | None = None,
     ) -> None:
         await self.db.execute(
             text(

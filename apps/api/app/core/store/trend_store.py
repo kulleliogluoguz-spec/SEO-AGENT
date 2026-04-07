@@ -7,13 +7,12 @@ Structure:
 Signals are refreshed by the background trend_refresh_job every 6 hours.
 Falls back to seeded niche_data.py values when cache is cold or external fetch fails.
 """
+
 from __future__ import annotations
 
 import json
-import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "trend_store.json"
 CACHE_TTL_HOURS = 6
@@ -49,8 +48,8 @@ def is_cache_fresh(niche: str) -> bool:
     try:
         expiry = datetime.fromisoformat(expires_at)
         if expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) < expiry
+            expiry = expiry.replace(tzinfo=UTC)
+        return datetime.now(UTC) < expiry
     except (ValueError, TypeError):
         return False
 
@@ -67,7 +66,7 @@ def get_signals(niche: str) -> list[dict]:
 def store_signals(niche: str, signals: list[dict]) -> None:
     """Persist signals for a niche with TTL."""
     data = _load()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data.setdefault("niche_signals", {})[niche] = {
         "signals": signals,
         "fetched_at": now.isoformat(),
@@ -77,7 +76,7 @@ def store_signals(niche: str, signals: list[dict]) -> None:
     _save(data)
 
 
-def get_last_refresh(niche: str) -> Optional[str]:
+def get_last_refresh(niche: str) -> str | None:
     data = _load()
     entry = data.get("niche_signals", {}).get(niche)
     return entry.get("fetched_at") if entry else None

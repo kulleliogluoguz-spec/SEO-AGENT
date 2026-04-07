@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "ad_accounts",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False),
+        sa.Column(
+            "workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False
+        ),
         sa.Column("platform", sa.String(50), nullable=False),
         sa.Column("account_id", sa.String(255), nullable=False),
         sa.Column("account_name", sa.String(500)),
@@ -41,7 +43,12 @@ def upgrade() -> None:
     op.create_table(
         "analytics_ad_campaigns",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("ad_account_id", UUID(as_uuid=True), sa.ForeignKey("ad_accounts.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "ad_account_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("ad_accounts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("platform_campaign_id", sa.String(255), nullable=False),
         sa.Column("name", sa.String(500)),
         sa.Column("status", sa.String(50)),
@@ -63,7 +70,12 @@ def upgrade() -> None:
     op.create_table(
         "ad_performance_daily",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("campaign_id", UUID(as_uuid=True), sa.ForeignKey("analytics_ad_campaigns.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "campaign_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("analytics_ad_campaigns.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("date", sa.Date, nullable=False),
         sa.Column("impressions", sa.BigInteger, server_default="0"),
         sa.Column("clicks", sa.BigInteger, server_default="0"),
@@ -87,8 +99,15 @@ def upgrade() -> None:
     op.create_table(
         "ai_recommendations",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False),
-        sa.Column("campaign_id", UUID(as_uuid=True), sa.ForeignKey("analytics_ad_campaigns.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False
+        ),
+        sa.Column(
+            "campaign_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("analytics_ad_campaigns.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("recommendation_type", sa.String(100)),
         sa.Column("priority", sa.String(20)),
         sa.Column("title", sa.String(500)),
@@ -101,14 +120,18 @@ def upgrade() -> None:
         sa.Column("applied_at", sa.DateTime(timezone=True)),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_ai_recommendations_workspace_status", "ai_recommendations", ["workspace_id", "status"])
+    op.create_index(
+        "ix_ai_recommendations_workspace_status", "ai_recommendations", ["workspace_id", "status"]
+    )
     op.create_index("ix_ai_recommendations_priority", "ai_recommendations", ["priority"])
 
     # 5. Budget Optimization Results (from MMM)
     op.create_table(
         "budget_optimizations",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False),
+        sa.Column(
+            "workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False
+        ),
         sa.Column("total_budget", sa.Numeric(14, 2)),
         sa.Column("optimization_date", sa.Date),
         sa.Column("current_allocation", JSONB),
@@ -126,7 +149,9 @@ def upgrade() -> None:
     op.create_table(
         "mmm_models",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False),
+        sa.Column(
+            "workspace_id", UUID(as_uuid=True), sa.ForeignKey("workspaces.id"), nullable=False
+        ),
         sa.Column("model_version", sa.String(50)),
         sa.Column("training_start_date", sa.Date),
         sa.Column("training_end_date", sa.Date),
@@ -146,7 +171,12 @@ def upgrade() -> None:
     op.create_table(
         "ad_forecasts",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("campaign_id", UUID(as_uuid=True), sa.ForeignKey("analytics_ad_campaigns.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "campaign_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("analytics_ad_campaigns.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("forecast_date", sa.Date),
         sa.Column("metric", sa.String(50)),
         sa.Column("predicted_value", sa.Numeric(14, 4)),

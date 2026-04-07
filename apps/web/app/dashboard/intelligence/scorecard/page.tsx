@@ -117,7 +117,7 @@ export default function ScorecardPage() {
         </div>
 
         <div>
-          <p className="text-xs font-semibold text-slate-600 mb-3">This Week's Metrics <span className="text-slate-400 font-normal">(fill in what you have)</span></p>
+          <p className="text-xs font-semibold text-slate-600 mb-3">This Week&rsquo;s Metrics <span className="text-slate-400 font-normal">(fill in what you have)</span></p>
           <div className="grid grid-cols-2 gap-3">
             {DEFAULT_METRICS.map(({ key, label, placeholder }) => (
               <div key={key}>
@@ -186,7 +186,7 @@ export default function ScorecardPage() {
             {result.losses?.length > 0 && (
               <div className="bg-white border border-slate-200 rounded-xl p-5">
                 <h3 className="text-sm font-semibold text-red-700 mb-3 flex items-center gap-2">
-                  <XCircle size={14} /> What Didn't Work
+                  <XCircle size={14} /> What Didn&rsquo;t Work
                 </h3>
                 <div className="space-y-2">
                   {result.losses.map((l, i) => (

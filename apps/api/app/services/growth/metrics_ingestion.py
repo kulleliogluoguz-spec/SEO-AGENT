@@ -16,19 +16,18 @@ Runs two loops (called from main.py lifespan):
 These loops are passive observers — they never publish or modify content.
 All failures are swallowed so they never crash the main app.
 """
+
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
+from app.core.store.content_metrics_store import get_post_metrics, record_post_metrics
 from app.core.store.content_queue_store import get_published_posts_for_metrics
-from app.core.store.content_metrics_store import record_post_metrics, get_post_metrics
-from app.core.store.growth_metrics_store import append_follower_snapshot
 from app.core.store.credential_store import get_credential
+from app.core.store.growth_metrics_store import append_follower_snapshot
 from app.services.publishers import get_publisher
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,8 @@ GRAPH_API_BASE = "https://graph.facebook.com/v20.0"
 
 # ── Follower fetching ─────────────────────────────────────────────────────────
 
-async def _fetch_x_follower_count(user_id: str) -> Optional[int]:
+
+async def _fetch_x_follower_count(user_id: str) -> int | None:
     """
     Fetch current follower count for the connected X account.
     Uses GET /2/users/me?user.fields=public_metrics
@@ -72,7 +72,7 @@ async def _fetch_x_follower_count(user_id: str) -> Optional[int]:
         return None
 
 
-async def _fetch_instagram_follower_count(user_id: str) -> Optional[int]:
+async def _fetch_instagram_follower_count(user_id: str) -> int | None:
     """
     Fetch current follower count for the connected Instagram Business account.
     Uses GET /{ig-user-id}?fields=followers_count
@@ -85,13 +85,13 @@ async def _fetch_instagram_follower_count(user_id: str) -> Optional[int]:
         return None
 
     # Resolve Instagram user ID
-    account_id = (
-        cred.get("instagram_account_id")
-        or cred.get("extra", {}).get("instagram_account_id")
+    account_id = cred.get("instagram_account_id") or cred.get("extra", {}).get(
+        "instagram_account_id"
     )
     if not account_id:
         # Try to find it from linked accounts
         from app.core.store.credential_store import get_linked_accounts
+
         ig_accounts = get_linked_accounts(user_id, "instagram")
         if ig_accounts:
             account_id = ig_accounts[0].get("account_id")
@@ -119,6 +119,7 @@ async def _fetch_instagram_follower_count(user_id: str) -> Optional[int]:
 
 # ── Post metrics ingestion ────────────────────────────────────────────────────
 
+
 async def _ingest_post_metrics_for_user(user_id: str) -> int:
     """
     Fetch and store metrics for all published posts (last 7 days) for a user.
@@ -144,7 +145,7 @@ async def _ingest_post_metrics_for_user(user_id: str) -> int:
             if last_ts:
                 try:
                     last_dt = datetime.fromisoformat(last_ts)
-                    if datetime.now(timezone.utc) - last_dt < timedelta(hours=2):
+                    if datetime.now(UTC) - last_dt < timedelta(hours=2):
                         continue
                 except Exception:
                     pass
@@ -179,7 +180,6 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
     If a post has notable engagement, automatically record a strategy outcome
     to feed the learning loop without requiring manual input.
     """
-    from math import tanh
     likes = metrics.get("likes", 0) + metrics.get("like_count", 0)
     comments = metrics.get("comments", 0) + metrics.get("reply_count", 0)
     shares = metrics.get("shares", 0) + metrics.get("retweet_count", 0)
@@ -210,6 +210,7 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
     try:
         from app.core.store.growth_experiment_store import get_experiment
         from app.core.store.learning_store import record_strategy, update_strategy_outcome
+
         exp = get_experiment(experiment_id, user_id)
         if not exp:
             return
@@ -219,6 +220,7 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
 
         # Check if we already have a strategy record for this post
         from app.core.store.learning_store import get_strategy_records
+
         existing = get_strategy_records(
             user_id,
             niche=niche,
@@ -227,8 +229,7 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
         # Only record once per post
         post_id = post["id"]
         already_recorded = any(
-            r.get("recommendation_data", {}).get("post_id") == post_id
-            for r in existing
+            r.get("recommendation_data", {}).get("post_id") == post_id for r in existing
         )
         if already_recorded:
             return
@@ -260,7 +261,9 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
         )
         logger.info(
             "[metrics_ingestion] Auto-recorded %s outcome for post %s (eng_rate=%.3f)",
-            outcome, post_id, eng_rate,
+            outcome,
+            post_id,
+            eng_rate,
         )
     except Exception as e:
         logger.debug("[metrics_ingestion] Auto strategy outcome failed: %s", e)
@@ -268,12 +271,14 @@ async def _auto_record_strategy_outcome(user_id: str, post: dict, metrics: dict)
 
 # ── All-users helpers ─────────────────────────────────────────────────────────
 
+
 def _get_all_user_ids() -> list[str]:
     """
     Return all user IDs that have any stored credentials.
     Reads the credential store directly to avoid DB dependency.
     """
     from app.core.store.credential_store import _load as load_credentials
+
     try:
         data = load_credentials()
         return list({c["user_id"] for c in data.get("credentials", []) if "user_id" in c})
@@ -282,6 +287,7 @@ def _get_all_user_ids() -> list[str]:
 
 
 # ── Background loop functions (called from main.py) ──────────────────────────
+
 
 async def run_post_metrics_ingestion() -> None:
     """
@@ -301,7 +307,9 @@ async def run_post_metrics_ingestion() -> None:
             logger.debug("[metrics_ingestion] Error for user %s: %s", uid, e)
 
     if total_updated:
-        logger.info("[metrics_ingestion] post_metrics updated=%d users=%d", total_updated, len(user_ids))
+        logger.info(
+            "[metrics_ingestion] post_metrics updated=%d users=%d", total_updated, len(user_ids)
+        )
 
 
 async def run_follower_count_ingestion() -> None:

@@ -86,9 +86,21 @@ _init_db()
 # Auto-migrate: add missing columns to existing DBs
 _MIGRATIONS = [
     ("tweet_queue", "account_id", "ALTER TABLE tweet_queue ADD COLUMN account_id INTEGER"),
-    ("twitter_accounts", "niche", "ALTER TABLE twitter_accounts ADD COLUMN niche TEXT DEFAULT 'general'"),
-    ("twitter_accounts", "target_audience", "ALTER TABLE twitter_accounts ADD COLUMN target_audience TEXT DEFAULT 'general audience'"),
-    ("twitter_accounts", "auto_generate", "ALTER TABLE twitter_accounts ADD COLUMN auto_generate INTEGER DEFAULT 1"),
+    (
+        "twitter_accounts",
+        "niche",
+        "ALTER TABLE twitter_accounts ADD COLUMN niche TEXT DEFAULT 'general'",
+    ),
+    (
+        "twitter_accounts",
+        "target_audience",
+        "ALTER TABLE twitter_accounts ADD COLUMN target_audience TEXT DEFAULT 'general audience'",
+    ),
+    (
+        "twitter_accounts",
+        "auto_generate",
+        "ALTER TABLE twitter_accounts ADD COLUMN auto_generate INTEGER DEFAULT 1",
+    ),
 ]
 for _tbl, _col, _sql in _MIGRATIONS:
     try:
@@ -117,6 +129,7 @@ def _db(sql: str, params: tuple = (), *, fetch: bool = True):
 
 
 # ─── Account Credentials Helper ──────────────────────────────────────────────
+
 
 def _get_account(account_id: int | None = None) -> dict | None:
     """Get account credentials from DB. Falls back to first active account, then .env."""
@@ -147,7 +160,9 @@ def _get_account(account_id: int | None = None) -> dict | None:
     return None
 
 
-def _build_auth_header(method: str, url: str, account: dict, query_params: dict | None = None) -> str:
+def _build_auth_header(
+    method: str, url: str, account: dict, query_params: dict | None = None
+) -> str:
     """Build OAuth 1.0a header for an account."""
     from app.core.config.settings import get_settings
     from app.core.security.oauth1 import build_auth_header
@@ -210,7 +225,11 @@ async def _post_to_x(text: str, account: dict, reply_to_id: str | None = None) -
             if resp.status_code == 201:
                 data = resp.json().get("data", {})
                 post_id = data.get("id", "")
-                return {"success": True, "post_id": post_id, "post_url": f"https://x.com/i/web/status/{post_id}"}
+                return {
+                    "success": True,
+                    "post_id": post_id,
+                    "post_url": f"https://x.com/i/web/status/{post_id}",
+                }
             return {"success": False, "error": f"X API {resp.status_code}: {resp.text[:200]}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -261,6 +280,7 @@ def _extract_json(text: str) -> dict:
 
 # ─── Pydantic Models ─────────────────────────────────────────────────────────
 
+
 class GenerateRequest(BaseModel):
     niche: str
     target_audience: str
@@ -296,6 +316,7 @@ class UpdateAccountRequest(BaseModel):
 
 # ─── Account Management ──────────────────────────────────────────────────────
 
+
 @router.post("/accounts/connect")
 async def connect_account(req: ConnectAccountRequest):
     """Validate and store a new X account's access tokens."""
@@ -305,7 +326,10 @@ async def connect_account(req: ConnectAccountRequest):
     }
     info = await _verify_account(account)
     if not info:
-        raise HTTPException(400, "Invalid credentials — could not authenticate with X API. Check your tokens and ensure app has Read+Write permissions.")
+        raise HTTPException(
+            400,
+            "Invalid credentials — could not authenticate with X API. Check your tokens and ensure app has Read+Write permissions.",
+        )
 
     # Check if this twitter user is already connected
     existing = _db(
@@ -320,9 +344,13 @@ async def connect_account(req: ConnectAccountRequest):
                    display_name=?, followers=?, connected_at=?
                WHERE id=?""",
             (
-                req.access_token, req.access_token_secret,
-                info["username"], info["display_name"], info["followers"],
-                datetime.now().isoformat(), existing[0]["id"],
+                req.access_token,
+                req.access_token_secret,
+                info["username"],
+                info["display_name"],
+                info["followers"],
+                datetime.now().isoformat(),
+                existing[0]["id"],
             ),
             fetch=False,
         )
@@ -344,9 +372,16 @@ async def connect_account(req: ConnectAccountRequest):
             access_token, access_token_secret, followers, niche, target_audience, connected_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            req.workspace_id, info["twitter_user_id"], info["username"],
-            info["display_name"], req.access_token, req.access_token_secret,
-            info["followers"], req.niche, req.target_audience, datetime.now().isoformat(),
+            req.workspace_id,
+            info["twitter_user_id"],
+            info["username"],
+            info["display_name"],
+            req.access_token,
+            req.access_token_secret,
+            info["followers"],
+            req.niche,
+            req.target_audience,
+            datetime.now().isoformat(),
         ),
         fetch=False,
     )
@@ -417,11 +452,16 @@ async def update_account(account_id: int, req: UpdateAccountRequest):
         params.append(1 if req.auto_generate else 0)
     if updates:
         params.append(account_id)
-        _db(f"UPDATE twitter_accounts SET {', '.join(updates)} WHERE id=?", tuple(params), fetch=False)
+        _db(
+            f"UPDATE twitter_accounts SET {', '.join(updates)} WHERE id=?",
+            tuple(params),
+            fetch=False,
+        )
     return {"updated": True, "id": account_id}
 
 
 # ─── Health & Stats ───────────────────────────────────────────────────────────
+
 
 @router.get("/health")
 async def twitter_health():
@@ -461,15 +501,19 @@ async def twitter_health():
             username = extra.get("x_username", "")
             return {
                 "status": "connected",
-                "message": f"@{username} connected via OAuth" if username else "Token stored via OAuth",
-                "accounts": [{
-                    "id": None,
-                    "username": username,
-                    "display_name": "",
-                    "followers": extra.get("followers", 0),
-                    "valid": True,
-                    "source": "oauth",
-                }],
+                "message": f"@{username} connected via OAuth"
+                if username
+                else "Token stored via OAuth",
+                "accounts": [
+                    {
+                        "id": None,
+                        "username": username,
+                        "display_name": "",
+                        "followers": extra.get("followers", 0),
+                        "valid": True,
+                        "source": "oauth",
+                    }
+                ],
             }
     except Exception as e:
         logger.debug("[health] credential_store check failed: %s", e)
@@ -480,14 +524,16 @@ async def twitter_health():
         return {
             "status": "connected",
             "message": "Token configured via .env",
-            "accounts": [{
-                "id": None,
-                "username": "env",
-                "display_name": "",
-                "followers": 0,
-                "valid": True,
-                "source": "env",
-            }],
+            "accounts": [
+                {
+                    "id": None,
+                    "username": "env",
+                    "display_name": "",
+                    "followers": 0,
+                    "valid": True,
+                    "source": "env",
+                }
+            ],
         }
 
     return {
@@ -518,9 +564,15 @@ async def twitter_stats():
         (month_start,),
     )[0]["c"]
 
-    total_likes = _db("SELECT COALESCE(SUM(likes),0) as s FROM tweet_queue WHERE status='posted'")[0]["s"]
-    total_retweets = _db("SELECT COALESCE(SUM(retweets),0) as s FROM tweet_queue WHERE status='posted'")[0]["s"]
-    total_impressions = _db("SELECT COALESCE(SUM(impressions),0) as s FROM tweet_queue WHERE status='posted'")[0]["s"]
+    total_likes = _db("SELECT COALESCE(SUM(likes),0) as s FROM tweet_queue WHERE status='posted'")[
+        0
+    ]["s"]
+    total_retweets = _db(
+        "SELECT COALESCE(SUM(retweets),0) as s FROM tweet_queue WHERE status='posted'"
+    )[0]["s"]
+    total_impressions = _db(
+        "SELECT COALESCE(SUM(impressions),0) as s FROM tweet_queue WHERE status='posted'"
+    )[0]["s"]
 
     return {
         "queue": {
@@ -543,6 +595,7 @@ async def twitter_stats():
 
 
 # ─── Content Generation ───────────────────────────────────────────────────────
+
 
 @router.post("/generate")
 async def generate_tweets(req: GenerateRequest):
@@ -612,16 +665,18 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             ),
             fetch=False,
         )
-        added.append({
-            "id": tweet_id,
-            "type": "single",
-            "content": content,
-            "hook_type": tweet.get("hook_type"),
-            "pillar": tweet.get("pillar"),
-            "ai_score": tweet.get("ai_score", 70),
-            "best_time": tweet.get("best_time", ""),
-            "status": "pending",
-        })
+        added.append(
+            {
+                "id": tweet_id,
+                "type": "single",
+                "content": content,
+                "hook_type": tweet.get("hook_type"),
+                "pillar": tweet.get("pillar"),
+                "ai_score": tweet.get("ai_score", 70),
+                "best_time": tweet.get("best_time", ""),
+                "status": "pending",
+            }
+        )
 
     thread = data.get("thread")
     if thread and req.include_threads:
@@ -631,18 +686,26 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             """INSERT INTO tweet_queue
                (content, tweet_type, thread_tweets, niche, hook_type, pillar, ai_score, account_id, status)
                VALUES (?, 'thread', ?, ?, 'thread', 'education', ?, ?, 'pending')""",
-            (hook, json.dumps(thread_tweets), req.niche, thread.get("ai_score", 85), req.account_id),
+            (
+                hook,
+                json.dumps(thread_tweets),
+                req.niche,
+                thread.get("ai_score", 85),
+                req.account_id,
+            ),
             fetch=False,
         )
-        added.append({
-            "id": thread_id,
-            "type": "thread",
-            "content": hook,
-            "tweets_count": len(thread_tweets),
-            "topic": thread.get("topic", ""),
-            "ai_score": thread.get("ai_score", 85),
-            "status": "pending",
-        })
+        added.append(
+            {
+                "id": thread_id,
+                "type": "thread",
+                "content": hook,
+                "tweets_count": len(thread_tweets),
+                "topic": thread.get("topic", ""),
+                "ai_score": thread.get("ai_score", 85),
+                "status": "pending",
+            }
+        )
 
     return {
         "generated": len(added),
@@ -652,6 +715,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 
 
 # ─── Queue Management ─────────────────────────────────────────────────────────
+
 
 @router.get("/queue")
 async def get_queue(status: str = "pending", limit: int = 50):
@@ -709,7 +773,11 @@ async def approve_tweet(
         raise HTTPException(404, "Tweet not found")
 
     if account_id:
-        _db("UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?", (account_id, tweet_id), fetch=False)
+        _db(
+            "UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?",
+            (account_id, tweet_id),
+            fetch=False,
+        )
     else:
         _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (tweet_id,), fetch=False)
 
@@ -744,7 +812,11 @@ async def approve_all_pending(
     pending = _db("SELECT id, account_id FROM tweet_queue WHERE status='pending'")
     for row in pending:
         if account_id:
-            _db("UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?", (account_id, row["id"]), fetch=False)
+            _db(
+                "UPDATE tweet_queue SET status='approved', account_id=? WHERE id=?",
+                (account_id, row["id"]),
+                fetch=False,
+            )
         else:
             _db("UPDATE tweet_queue SET status='approved' WHERE id=?", (row["id"],), fetch=False)
         if post_now:
@@ -753,6 +825,7 @@ async def approve_all_pending(
 
 
 # ─── Posting ──────────────────────────────────────────────────────────────────
+
 
 async def _post_tweet(tweet_id: int, account_id: int | None = None):
     """Post a tweet or thread using account credentials."""
@@ -783,7 +856,8 @@ async def _post_tweet(tweet_id: int, account_id: int | None = None):
             if not result["success"]:
                 _db(
                     "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-                    (result["error"], tweet_id), fetch=False,
+                    (result["error"], tweet_id),
+                    fetch=False,
                 )
                 return
 
@@ -793,6 +867,7 @@ async def _post_tweet(tweet_id: int, account_id: int | None = None):
             # Post reply chain
             for t in thread_tweets[1:]:
                 import asyncio
+
                 await asyncio.sleep(1)
                 r = await _post_to_x(t, account, reply_to_id=last_id)
                 if r["success"]:
@@ -814,24 +889,33 @@ async def _post_tweet(tweet_id: int, account_id: int | None = None):
                     """UPDATE tweet_queue
                        SET status='posted', posted_at=?, tweet_id=?, post_url=?
                        WHERE id=?""",
-                    (datetime.now().isoformat(), result["post_id"], result.get("post_url"), tweet_id),
+                    (
+                        datetime.now().isoformat(),
+                        result["post_id"],
+                        result.get("post_url"),
+                        tweet_id,
+                    ),
                     fetch=False,
                 )
             else:
                 _db(
                     "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-                    (result["error"], tweet_id), fetch=False,
+                    (result["error"], tweet_id),
+                    fetch=False,
                 )
     except Exception as e:
         logger.error("Tweet posting failed: %s", e)
         _db(
             "UPDATE tweet_queue SET status='error', error_message=? WHERE id=?",
-            (str(e), tweet_id), fetch=False,
+            (str(e), tweet_id),
+            fetch=False,
         )
 
 
 @router.post("/queue/{tweet_id}/post")
-async def post_tweet_now(tweet_id: int, background_tasks: BackgroundTasks, account_id: int | None = None):
+async def post_tweet_now(
+    tweet_id: int, background_tasks: BackgroundTasks, account_id: int | None = None
+):
     """Post a specific tweet immediately."""
     rows = _db("SELECT * FROM tweet_queue WHERE id=?", (tweet_id,))
     if not rows:
@@ -841,6 +925,7 @@ async def post_tweet_now(tweet_id: int, background_tasks: BackgroundTasks, accou
 
 
 # ─── Manual Tweet ─────────────────────────────────────────────────────────────
+
 
 @router.post("/tweet/manual")
 async def manual_tweet(req: ManualTweetRequest, background_tasks: BackgroundTasks):
@@ -863,6 +948,7 @@ async def manual_tweet(req: ManualTweetRequest, background_tasks: BackgroundTask
 
 
 # ─── Posted History ───────────────────────────────────────────────────────────
+
 
 @router.get("/posted")
 async def get_posted_tweets(limit: int = 20):
@@ -891,7 +977,11 @@ def _get_top_trends(niche: str, limit: int = 5) -> list[str]:
         signals = get_signals(niche)
         if signals:
             sorted_signals = sorted(signals, key=lambda s: s.get("momentum_score", 0), reverse=True)
-            return [s.get("headline") or s.get("title", "") for s in sorted_signals[:limit] if s.get("headline") or s.get("title")]
+            return [
+                s.get("headline") or s.get("title", "")
+                for s in sorted_signals[:limit]
+                if s.get("headline") or s.get("title")
+            ]
     except Exception as e:
         logger.debug("[auto-gen] trend fetch failed: %s", e)
     return []
@@ -978,12 +1068,20 @@ Respond ONLY with valid JSON (no markdown, no explanation):
                (content, tweet_type, niche, hook_type, pillar, ai_score, best_time, account_id, status)
                VALUES (?, 'single', ?, ?, ?, ?, ?, ?, ?)""",
             (
-                content, niche, tweet.get("hook_type", ""), tweet.get("pillar", ""),
-                tweet.get("ai_score", 70), tweet.get("best_time", ""), account_id, initial_status,
+                content,
+                niche,
+                tweet.get("hook_type", ""),
+                tweet.get("pillar", ""),
+                tweet.get("ai_score", 70),
+                tweet.get("best_time", ""),
+                account_id,
+                initial_status,
             ),
             fetch=False,
         )
-        added.append({"id": tweet_id, "type": "single", "content": content, "status": initial_status})
+        added.append(
+            {"id": tweet_id, "type": "single", "content": content, "status": initial_status}
+        )
 
     thread = data.get("thread")
     if thread:
@@ -994,10 +1092,19 @@ Respond ONLY with valid JSON (no markdown, no explanation):
                 """INSERT INTO tweet_queue
                    (content, tweet_type, thread_tweets, niche, hook_type, pillar, ai_score, account_id, status)
                    VALUES (?, 'thread', ?, ?, 'thread', 'education', ?, ?, ?)""",
-                (hook, json.dumps(thread_tweets), niche, thread.get("ai_score", 85), account_id, initial_status),
+                (
+                    hook,
+                    json.dumps(thread_tweets),
+                    niche,
+                    thread.get("ai_score", 85),
+                    account_id,
+                    initial_status,
+                ),
                 fetch=False,
             )
-            added.append({"id": thread_id, "type": "thread", "content": hook, "status": initial_status})
+            added.append(
+                {"id": thread_id, "type": "thread", "content": hook, "status": initial_status}
+            )
 
     return {
         "auto_generated": True,
@@ -1029,8 +1136,15 @@ async def run_daily_auto_generation() -> dict:
             (account_id, today),
         )[0]["c"]
         if today_count >= 10:
-            logger.info("[daily-gen] account=%s already has %d items today, skipping", acct["username"], today_count)
-            results[acct["username"]] = {"skipped": True, "reason": f"already {today_count} items today"}
+            logger.info(
+                "[daily-gen] account=%s already has %d items today, skipping",
+                acct["username"],
+                today_count,
+            )
+            results[acct["username"]] = {
+                "skipped": True,
+                "reason": f"already {today_count} items today",
+            }
             continue
 
         try:
@@ -1047,7 +1161,9 @@ async def run_daily_auto_generation() -> dict:
             }
             logger.info(
                 "[daily-gen] account=@%s generated=%d trends=%d",
-                acct["username"], result.get("generated", 0), len(result.get("trends_used", [])),
+                acct["username"],
+                result.get("generated", 0),
+                len(result.get("trends_used", [])),
             )
         except Exception as e:
             logger.error("[daily-gen] account=@%s failed: %s", acct["username"], e)
@@ -1058,7 +1174,9 @@ async def run_daily_auto_generation() -> dict:
 
 async def run_auto_post_approved() -> dict:
     """Post all approved tweets that haven't been posted yet. Called by background scheduler."""
-    approved = _db("SELECT * FROM tweet_queue WHERE status='approved' ORDER BY ai_score DESC LIMIT 17")
+    approved = _db(
+        "SELECT * FROM tweet_queue WHERE status='approved' ORDER BY ai_score DESC LIMIT 17"
+    )
     if not approved:
         return {"posted": 0}
 
@@ -1069,6 +1187,7 @@ async def run_auto_post_approved() -> dict:
             posted += 1
             # Respect rate limits — space posts 2 minutes apart
             import asyncio
+
             await asyncio.sleep(120)
         except Exception as e:
             logger.error("[auto-post] tweet %d failed: %s", item["id"], e)
@@ -1079,8 +1198,11 @@ async def run_auto_post_approved() -> dict:
 
 # ─── Strategy Generator ──────────────────────────────────────────────────────
 
+
 @router.post("/strategy")
-async def generate_strategy(niche: str, target_audience: str, account_goal: str = "grow followers and build authority"):
+async def generate_strategy(
+    niche: str, target_audience: str, account_goal: str = "grow followers and build authority"
+):
     """Generate a complete Twitter growth strategy using AI."""
     prompt = f"""Create a complete Twitter/X growth strategy for a brand new account.
 
@@ -1132,6 +1254,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 
 
 # ─── Delete ───────────────────────────────────────────────────────────────────
+
 
 @router.delete("/queue/{tweet_id}")
 async def delete_queue_item(tweet_id: int):

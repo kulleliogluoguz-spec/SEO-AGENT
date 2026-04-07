@@ -12,20 +12,27 @@ and attempts to publish them via the appropriate channel abstraction.
 
 Migration path: Replace with PostgreSQL content_drafts + scheduled_posts tables.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
-STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "content_queue_store.json"
+STORE_PATH = (
+    Path(__file__).parent.parent.parent.parent.parent / "storage" / "content_queue_store.json"
+)
 
 VALID_STATUSES = {
-    "generated", "needs_review", "approved",
-    "scheduled", "publishing", "published",
-    "failed", "archived",
+    "generated",
+    "needs_review",
+    "approved",
+    "scheduled",
+    "publishing",
+    "published",
+    "failed",
+    "archived",
 }
 
 VALID_CHANNELS = {"instagram", "x", "tiktok", "linkedin", "youtube", "website"}
@@ -56,20 +63,21 @@ def _save(data: dict) -> None:
 
 # ── ContentDraft CRUD ─────────────────────────────────────────────────────────
 
+
 def create_draft(
     user_id: str,
     title: str,
     content_type: str,
     topic: str,
     generated_text: str,
-    niche: Optional[str] = None,
-    trend_keyword: Optional[str] = None,
-    objective: Optional[str] = None,
-    channels: Optional[list[str]] = None,
+    niche: str | None = None,
+    trend_keyword: str | None = None,
+    objective: str | None = None,
+    channels: list[str] | None = None,
 ) -> dict:
     """Create a new content draft from generation output."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     draft = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -95,7 +103,7 @@ def create_draft(
     return draft
 
 
-def get_draft(draft_id: str) -> Optional[dict]:
+def get_draft(draft_id: str) -> dict | None:
     data = _load()
     for d in data.get("content_drafts", []):
         if d.get("id") == draft_id:
@@ -105,8 +113,8 @@ def get_draft(draft_id: str) -> Optional[dict]:
 
 def list_drafts(
     user_id: str,
-    status: Optional[str] = None,
-    content_type: Optional[str] = None,
+    status: str | None = None,
+    content_type: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     data = _load()
@@ -118,13 +126,15 @@ def list_drafts(
     return sorted(drafts, key=lambda d: d.get("created_at", ""), reverse=True)[:limit]
 
 
-def transition_status(draft_id: str, new_status: str, actor: Optional[str] = None, reason: Optional[str] = None) -> Optional[dict]:
+def transition_status(
+    draft_id: str, new_status: str, actor: str | None = None, reason: str | None = None
+) -> dict | None:
     """Move a draft to a new lifecycle status."""
     if new_status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{new_status}'. Valid: {VALID_STATUSES}")
 
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for draft in data.get("content_drafts", []):
         if draft.get("id") == draft_id:
             old_status = draft.get("status")
@@ -139,19 +149,24 @@ def transition_status(draft_id: str, new_status: str, actor: Optional[str] = Non
                 draft["last_error"] = reason
                 draft["retry_count"] = draft.get("retry_count", 0) + 1
             # Append to lifecycle log
-            draft.setdefault("lifecycle_log", []).append({
-                "from": old_status, "to": new_status,
-                "actor": actor, "reason": reason, "at": now,
-            })
+            draft.setdefault("lifecycle_log", []).append(
+                {
+                    "from": old_status,
+                    "to": new_status,
+                    "actor": actor,
+                    "reason": reason,
+                    "at": now,
+                }
+            )
             _save(data)
             return draft
     return None
 
 
-def update_draft_text(draft_id: str, generated_text: str) -> Optional[dict]:
+def update_draft_text(draft_id: str, generated_text: str) -> dict | None:
     """Update the generated text (e.g. after re-generation)."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for draft in data.get("content_drafts", []):
         if draft.get("id") == draft_id:
             draft["generated_text"] = generated_text
@@ -163,19 +178,20 @@ def update_draft_text(draft_id: str, generated_text: str) -> Optional[dict]:
 
 # ── ScheduledPost CRUD ────────────────────────────────────────────────────────
 
+
 def schedule_post(
     draft_id: str,
     user_id: str,
     channel: str,
     scheduled_at: str,
-    caption_override: Optional[str] = None,
+    caption_override: str | None = None,
 ) -> dict:
     """Schedule a draft for posting on a channel at a specific time."""
     if channel not in VALID_CHANNELS:
         raise ValueError(f"Invalid channel '{channel}'. Valid: {VALID_CHANNELS}")
 
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     post = {
         "id": str(uuid.uuid4()),
@@ -208,16 +224,17 @@ def schedule_post(
 def get_due_scheduled_posts() -> list[dict]:
     """Return scheduled posts whose scheduled_at is in the past and status is 'scheduled'."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     return [
-        p for p in data.get("scheduled_posts", [])
+        p
+        for p in data.get("scheduled_posts", [])
         if p.get("status") == "scheduled" and p.get("scheduled_at", "9999") <= now
     ]
 
 
-def mark_post_published(post_id: str, platform_post_id: Optional[str] = None) -> Optional[dict]:
+def mark_post_published(post_id: str, platform_post_id: str | None = None) -> dict | None:
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for post in data.get("scheduled_posts", []):
         if post.get("id") == post_id:
             post["status"] = "published"
@@ -228,17 +245,21 @@ def mark_post_published(post_id: str, platform_post_id: Optional[str] = None) ->
                 if d.get("id") == post.get("draft_id"):
                     d["status"] = "published"
                     d["updated_at"] = now
-            data.setdefault("publish_log", []).append({
-                "post_id": post_id, "action": "published", "at": now,
-            })
+            data.setdefault("publish_log", []).append(
+                {
+                    "post_id": post_id,
+                    "action": "published",
+                    "at": now,
+                }
+            )
             _save(data)
             return post
     return None
 
 
-def mark_post_failed(post_id: str, error: str) -> Optional[dict]:
+def mark_post_failed(post_id: str, error: str) -> dict | None:
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for post in data.get("scheduled_posts", []):
         if post.get("id") == post_id:
             post["status"] = "failed"
@@ -249,7 +270,7 @@ def mark_post_failed(post_id: str, error: str) -> Optional[dict]:
             if post["publish_attempt_count"] < 3:
                 post["status"] = "scheduled"
                 post["scheduled_at"] = (
-                    datetime.now(timezone.utc).replace(second=0, microsecond=0).isoformat()
+                    datetime.now(UTC).replace(second=0, microsecond=0).isoformat()
                 )  # retry immediately next sweep
             else:
                 # Give up — mark draft as failed
@@ -258,15 +279,20 @@ def mark_post_failed(post_id: str, error: str) -> Optional[dict]:
                         d["status"] = "failed"
                         d["last_error"] = error
                         d["updated_at"] = now
-            data.setdefault("publish_log", []).append({
-                "post_id": post_id, "action": "failed", "error": error, "at": now,
-            })
+            data.setdefault("publish_log", []).append(
+                {
+                    "post_id": post_id,
+                    "action": "failed",
+                    "error": error,
+                    "at": now,
+                }
+            )
             _save(data)
             return post
     return None
 
 
-def list_scheduled_posts(user_id: str, status: Optional[str] = None) -> list[dict]:
+def list_scheduled_posts(user_id: str, status: str | None = None) -> list[dict]:
     data = _load()
     posts = [p for p in data.get("scheduled_posts", []) if p.get("user_id") == user_id]
     if status:
@@ -280,7 +306,7 @@ def get_published_posts_for_metrics(user_id: str, days: int = 7) -> list[dict]:
     Used by the metrics ingestion background job to poll for engagement data.
     Also enriches each post with its parent draft metadata (topic, content_type).
     """
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     data = _load()
 
     # Build a draft lookup for enrichment

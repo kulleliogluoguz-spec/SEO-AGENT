@@ -1,6 +1,9 @@
 """SiteService — site onboarding and workflow trigger."""
+
 import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config.settings import get_settings
 
 settings = get_settings()
@@ -18,6 +21,7 @@ class SiteService:
         Returns workflow run ID or None if Temporal not available.
         """
         from sqlalchemy import select
+
         from app.models.models import Site
 
         site_result = await self._db.execute(select(Site).where(Site.id == site_id))
@@ -27,17 +31,22 @@ class SiteService:
 
         try:
             from temporalio.client import Client
-            client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
+
+            client = await Client.connect(
+                settings.temporal_host, namespace=settings.temporal_namespace
+            )
 
             handle = await client.start_workflow(
                 "SiteOnboardingWorkflow",
-                args=[{
-                    "site_id": str(site_id),
-                    "crawl_id": str(crawl_id),
-                    "url": site.url,
-                    "workspace_id": str(site.workspace_id),
-                    "max_pages": 100,
-                }],
+                args=[
+                    {
+                        "site_id": str(site_id),
+                        "crawl_id": str(crawl_id),
+                        "url": site.url,
+                        "workspace_id": str(site.workspace_id),
+                        "max_pages": 100,
+                    }
+                ],
                 id=f"onboarding-{site_id}",
                 task_queue=settings.temporal_task_queue,
             )
@@ -45,14 +54,16 @@ class SiteService:
         except Exception:
             # Temporal not running in dev — fall back to direct execution
             import asyncio
+
             asyncio.create_task(self._direct_onboard(site, crawl_id))
             return None
 
     async def _direct_onboard(self, site, crawl_id: uuid.UUID) -> None:
         """Fallback: run onboarding directly when Temporal is unavailable."""
-        from app.workflows.onboarding_graph import run_onboarding_workflow
-        from app.models.models import Site, SiteStatus, Crawl, CrawlStatus
         from sqlalchemy import select
+
+        from app.models.models import Crawl, CrawlStatus, Site, SiteStatus
+        from app.workflows.onboarding_graph import run_onboarding_workflow
 
         try:
             state = await run_onboarding_workflow(
@@ -82,4 +93,5 @@ class SiteService:
             await self._db.commit()
         except Exception as e:
             import structlog
+
             structlog.get_logger().error("direct_onboard_failed", error=str(e))

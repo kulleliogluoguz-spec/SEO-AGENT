@@ -11,6 +11,7 @@ Usage:
     pytest tests/evaluations/ -v
     python -m app.evaluations.harness --run-all
 """
+
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from pydantic import BaseModel
 @dataclass
 class EvalCase:
     """A single evaluation test case."""
+
     id: str
     description: str
     input_data: dict
@@ -57,6 +59,7 @@ class EvaluationHarness:
     async def run_all(self, demo_mode: bool = True) -> dict:
         """Run all registered evaluation cases."""
         from app.agents.base import AgentRunContext
+
         ctx = AgentRunContext(demo_mode=demo_mode, autonomy_level=1)
         passed = 0
         failed = 0
@@ -122,8 +125,14 @@ BENCHMARK_CASES: list[EvalCase] = [
             "site_id": str(uuid.uuid4()),
             "crawl_id": str(uuid.uuid4()),
             "pages": [
-                {"url": "https://ex.com/", "title": None, "meta_description": None,
-                 "h1": "Home", "word_count": 300, "status_code": 200}
+                {
+                    "url": "https://ex.com/",
+                    "title": None,
+                    "meta_description": None,
+                    "h1": "Home",
+                    "word_count": 300,
+                    "status_code": 200,
+                }
             ],
         },
         expected_contains=["site_id", "pages"],

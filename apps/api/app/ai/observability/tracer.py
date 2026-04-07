@@ -19,7 +19,7 @@ import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AITrace:
     """A single AI operation trace."""
+
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
 
@@ -44,8 +45,8 @@ class AITrace:
     was_fallback: bool = False
 
     # Input/Output
-    input_preview: str = ""       # First 200 chars of input
-    output_preview: str = ""      # First 200 chars of output
+    input_preview: str = ""  # First 200 chars of input
+    output_preview: str = ""  # First 200 chars of output
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -66,7 +67,7 @@ class AITrace:
 
     # Status
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
 
     # Context
     workspace_id: str = ""
@@ -77,6 +78,7 @@ class AITrace:
 @dataclass
 class MetricBucket:
     """Aggregated metrics for a time window."""
+
     count: int = 0
     errors: int = 0
     total_latency_ms: float = 0.0
@@ -121,7 +123,7 @@ class AITracer:
 
         # Trim old traces
         if len(self._traces) > self._max_traces:
-            self._traces = self._traces[-self._max_traces:]
+            self._traces = self._traces[-self._max_traces :]
 
         # Update model metrics
         m = self._model_metrics[trace.model_used]
@@ -215,8 +217,7 @@ class AITracer:
         total_errors = sum(m.errors for m in self._model_metrics.values())
         total_cost = sum(m.total_cost_usd for m in self._model_metrics.values())
         total_tokens = sum(
-            m.total_input_tokens + m.total_output_tokens
-            for m in self._model_metrics.values()
+            m.total_input_tokens + m.total_output_tokens for m in self._model_metrics.values()
         )
 
         return {
@@ -231,11 +232,9 @@ class AITracer:
             "model_breakdown": self.get_model_metrics(),
             "provider_breakdown": self.get_provider_metrics(),
             "engine_breakdown": self.get_engine_metrics(),
-            "recent_errors": [
-                self._trace_to_dict(t)
-                for t in self._traces[-100:]
-                if not t.success
-            ][-10:],
+            "recent_errors": [self._trace_to_dict(t) for t in self._traces[-100:] if not t.success][
+                -10:
+            ],
         }
 
     def get_cost_report(self) -> dict[str, Any]:
@@ -243,20 +242,17 @@ class AITracer:
         return {
             "total_cost_usd": round(sum(m.total_cost_usd for m in self._model_metrics.values()), 4),
             "by_model": {
-                model: round(m.total_cost_usd, 4)
-                for model, m in self._model_metrics.items()
+                model: round(m.total_cost_usd, 4) for model, m in self._model_metrics.items()
             },
             "by_provider": {
                 provider: round(m.total_cost_usd, 4)
                 for provider, m in self._provider_metrics.items()
             },
             "self_hosted_calls": sum(
-                m.count for model, m in self._model_metrics.items()
-                if m.total_cost_usd == 0
+                m.count for model, m in self._model_metrics.items() if m.total_cost_usd == 0
             ),
             "api_calls": sum(
-                m.count for model, m in self._model_metrics.items()
-                if m.total_cost_usd > 0
+                m.count for model, m in self._model_metrics.items() if m.total_cost_usd > 0
             ),
         }
 
@@ -283,7 +279,7 @@ class AITracer:
 
 
 # Singleton
-_tracer: Optional[AITracer] = None
+_tracer: AITracer | None = None
 
 
 def get_ai_tracer() -> AITracer:

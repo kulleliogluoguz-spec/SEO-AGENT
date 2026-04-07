@@ -4,19 +4,20 @@ Alembic environment for async SQLAlchemy migrations.
 Supports both offline (SQL generation) and online (live DB) migration.
 Uses DATABASE_URL from settings, falling back to alembic.ini for offline mode.
 """
+
 import asyncio
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
+import app.models.models  # noqa: F401 — registers all ORM models
 
 # Import all models so Alembic detects schema changes
 from app.core.db.database import Base
-import app.models.models  # noqa: F401 — registers all ORM models
 
 config = context.config
 

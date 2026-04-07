@@ -21,14 +21,14 @@ Rate limit: 50 API calls / hour per Instagram account, 25 posts/day
 
 Reference: https://developers.facebook.com/docs/instagram-api/guides/content-publishing
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
-from app.services.publishers.base import PublisherService, PublishResult, PublisherStatus
+from app.services.publishers.base import PublisherService, PublisherStatus, PublishResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ REQUIRED_SCOPES = {"instagram_basic", "instagram_content_publish"}
 class InstagramPublisher(PublisherService):
     channel = "instagram"
 
-    def _get_creds(self) -> Optional[dict]:
+    def _get_creds(self) -> dict | None:
         cred = self._load_credentials()
         if not cred:
             return None
@@ -73,8 +73,8 @@ class InstagramPublisher(PublisherService):
     async def publish_text_post(
         self,
         text: str,
-        reply_to_id: Optional[str] = None,
-        schedule_at: Optional[str] = None,
+        reply_to_id: str | None = None,
+        schedule_at: str | None = None,
     ) -> PublishResult:
         """
         Instagram does not support text-only posts via the Graph API.
@@ -93,7 +93,7 @@ class InstagramPublisher(PublisherService):
         self,
         caption: str,
         image_url: str,
-        ig_user_id: Optional[str] = None,
+        ig_user_id: str | None = None,
     ) -> PublishResult:
         """
         Publish a single image post to Instagram.
@@ -101,12 +101,18 @@ class InstagramPublisher(PublisherService):
         """
         cred = self._get_creds()
         if not cred:
-            result = PublishResult.fail("No Instagram credentials. Connect your account in Connections.")
+            result = PublishResult.fail(
+                "No Instagram credentials. Connect your account in Connections."
+            )
             self._audit("image_post", result)
             return result
 
         token = cred.get("access_token")
-        account_id = ig_user_id or cred.get("instagram_account_id") or cred.get("extra", {}).get("instagram_account_id")
+        account_id = (
+            ig_user_id
+            or cred.get("instagram_account_id")
+            or cred.get("extra", {}).get("instagram_account_id")
+        )
 
         if not account_id:
             result = PublishResult.fail(
@@ -127,7 +133,11 @@ class InstagramPublisher(PublisherService):
                     },
                 )
                 if container_resp.status_code != 200:
-                    err = container_resp.json().get("error", {}).get("message", container_resp.text[:200])
+                    err = (
+                        container_resp.json()
+                        .get("error", {})
+                        .get("message", container_resp.text[:200])
+                    )
                     result = PublishResult.fail(f"Instagram media container error: {err}")
                     self._audit("image_post", result)
                     return result
@@ -146,7 +156,9 @@ class InstagramPublisher(PublisherService):
                 if publish_resp.status_code == 200:
                     post_id = publish_resp.json().get("id", "")
                     post_url = f"https://www.instagram.com/p/{post_id}/" if post_id else None
-                    result = PublishResult.ok(post_id=post_id, post_url=post_url, raw=publish_resp.json())
+                    result = PublishResult.ok(
+                        post_id=post_id, post_url=post_url, raw=publish_resp.json()
+                    )
                     self._audit("image_post", result)
                     logger.info("[instagram] image post published: id=%s", post_id)
                     return result
@@ -165,7 +177,7 @@ class InstagramPublisher(PublisherService):
             self._audit("image_post", result)
             return result
 
-    async def get_post_metrics(self, post_id: str) -> Optional[dict]:
+    async def get_post_metrics(self, post_id: str) -> dict | None:
         """Fetch Instagram media insights."""
         cred = self._get_creds()
         if not cred:
@@ -182,7 +194,10 @@ class InstagramPublisher(PublisherService):
                 )
                 if resp.status_code == 200:
                     data_list = resp.json().get("data", [])
-                    metrics = {item["name"]: item.get("values", [{}])[0].get("value", 0) for item in data_list}
+                    metrics = {
+                        item["name"]: item.get("values", [{}])[0].get("value", 0)
+                        for item in data_list
+                    }
                     return metrics
         except Exception as e:
             logger.debug("[instagram] metrics fetch failed for %s: %s", post_id, e)

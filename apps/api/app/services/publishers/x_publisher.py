@@ -54,7 +54,9 @@ class XPublisher(PublisherService):
             cred = get_credential(self.user_id, "twitter")
         return cred
 
-    def _auth_header(self, method: str, url: str, cred: dict, query_params: dict | None = None) -> str:
+    def _auth_header(
+        self, method: str, url: str, cred: dict, query_params: dict | None = None
+    ) -> str:
         """Build the correct Authorization header for the credential type."""
         token = cred.get("access_token") or cred.get("api_key") or ""
         if (cred.get("extra") or {}).get("token_type") == "oauth1":
@@ -237,7 +239,11 @@ class XPublisher(PublisherService):
             async with httpx.AsyncClient(timeout=8.0) as client:
                 resp = await client.get(
                     metrics_url,
-                    headers={"Authorization": self._auth_header("GET", metrics_url, cred, query_params=qp)},
+                    headers={
+                        "Authorization": self._auth_header(
+                            "GET", metrics_url, cred, query_params=qp
+                        )
+                    },
                     params=qp,
                 )
                 if resp.status_code == 200:

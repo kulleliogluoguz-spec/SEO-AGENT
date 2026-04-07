@@ -11,7 +11,8 @@ import json
 import logging
 import os
 import time
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -33,14 +34,14 @@ class AnthropicProvider(BaseProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://api.anthropic.com",
         timeout: float = 120.0,
     ) -> None:
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY", "")
         self.base_url = base_url
         self.timeout = timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     def is_configured(self) -> bool:
         return bool(self.api_key) and self.api_key != "your-anthropic-api-key-here"
@@ -115,14 +116,16 @@ class AnthropicProvider(BaseProvider):
             if block["type"] == "text":
                 content_text += block["text"]
             elif block["type"] == "tool_use":
-                tool_calls.append(ToolCall(
-                    id=block.get("id", ""),
-                    name=block["name"],
-                    arguments=block.get("input", {}),
-                ))
+                tool_calls.append(
+                    ToolCall(
+                        id=block.get("id", ""),
+                        name=block["name"],
+                        arguments=block.get("input", {}),
+                    )
+                )
 
         usage = data.get("usage", {})
-        stop_reason = data.get("stop_reason", "end_turn")
+        data.get("stop_reason", "end_turn")
         finish_reason = FinishReason.TOOL_CALLS if tool_calls else FinishReason.STOP
 
         return AIMessage(
@@ -188,11 +191,13 @@ class AnthropicProvider(BaseProvider):
         for tool in openai_tools:
             if tool.get("type") == "function":
                 fn = tool["function"]
-                anthropic_tools.append({
-                    "name": fn["name"],
-                    "description": fn.get("description", ""),
-                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-                })
+                anthropic_tools.append(
+                    {
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                )
         return anthropic_tools
 
     def _estimate_cost(self, input_tokens: int, output_tokens: int, model: str) -> float:

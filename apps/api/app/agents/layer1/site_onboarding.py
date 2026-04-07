@@ -6,10 +6,11 @@ Coordinates: domain validation → robots/sitemap → crawl planning →
 
 This agent acts as a subgraph entry point in LangGraph.
 """
+
 import uuid
 from typing import ClassVar
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from app.agents.base import AgentMetadata, AgentRunContext, LLMAgent
 
@@ -66,7 +67,9 @@ class SiteOnboardingAgent(LLMAgent[SiteOnboardingInput, SiteOnboardingOutput]):
             )
 
         # Step 2: Robots.txt + sitemap discovery
-        robots_found, sitemap_found, sitemap_urls = await self._discover_robots_sitemap(input_data.url)
+        robots_found, sitemap_found, sitemap_urls = await self._discover_robots_sitemap(
+            input_data.url
+        )
         if not robots_found:
             warnings.append("robots.txt not found — will crawl with default rules")
 
@@ -106,7 +109,9 @@ class SiteOnboardingAgent(LLMAgent[SiteOnboardingInput, SiteOnboardingOutput]):
     async def _validate_domain(self, url: str) -> bool:
         """Quick HTTP check to verify domain is reachable."""
         import httpx
+
         from app.core.config.settings import get_settings
+
         settings = get_settings()
 
         try:
@@ -121,12 +126,11 @@ class SiteOnboardingAgent(LLMAgent[SiteOnboardingInput, SiteOnboardingOutput]):
             self._log.warning("domain_validation_failed", url=url, error=str(e))
             return False
 
-    async def _discover_robots_sitemap(
-        self, base_url: str
-    ) -> tuple[bool, bool, list[str]]:
+    async def _discover_robots_sitemap(self, base_url: str) -> tuple[bool, bool, list[str]]:
         """Fetch and parse robots.txt, discover sitemap URLs."""
-        import httpx
         from urllib.parse import urljoin
+
+        import httpx
 
         robots_url = urljoin(base_url, "/robots.txt")
         robots_found = False

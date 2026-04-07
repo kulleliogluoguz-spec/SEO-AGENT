@@ -15,6 +15,7 @@ Scoring:
 
 Refresh cadence: every 6 hours via background job in main.py lifespan.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,8 +23,7 @@ import hashlib
 import logging
 import math
 import re
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -36,17 +36,17 @@ logger = logging.getLogger(__name__)
 # Each niche maps to 2-4 high-signal subreddits to maximize relevance.
 
 NICHE_SUBREDDITS: dict[str, list[str]] = {
-    "tech":      ["technology", "artificial", "programming", "MachineLearning"],
-    "fashion":   ["femalefashionadvice", "malefashionadvice", "streetwear", "frugalmalefashion"],
-    "food":      ["food", "recipes", "Cooking", "EatCheapAndHealthy"],
-    "fitness":   ["fitness", "bodybuilding", "loseit", "running"],
-    "travel":    ["travel", "solotravel", "backpacking", "TravelHacks"],
+    "tech": ["technology", "artificial", "programming", "MachineLearning"],
+    "fashion": ["femalefashionadvice", "malefashionadvice", "streetwear", "frugalmalefashion"],
+    "food": ["food", "recipes", "Cooking", "EatCheapAndHealthy"],
+    "fitness": ["fitness", "bodybuilding", "loseit", "running"],
+    "travel": ["travel", "solotravel", "backpacking", "TravelHacks"],
     "ecommerce": ["entrepreneur", "smallbusiness", "Flipping", "dropship"],
-    "creator":   ["NewTubers", "podcasting", "content_marketing", "Blogging"],
-    "beauty":    ["SkincareAddiction", "MakeupAddiction", "beauty", "HaircareScience"],
-    "b2b":       ["marketing", "sales", "startups", "analytics"],
-    "wellness":  ["selfimprovement", "meditation", "mentalhealth", "Mindfulness"],
-    "general":   ["AskReddit", "worldnews", "technology", "todayilearned"],
+    "creator": ["NewTubers", "podcasting", "content_marketing", "Blogging"],
+    "beauty": ["SkincareAddiction", "MakeupAddiction", "beauty", "HaircareScience"],
+    "b2b": ["marketing", "sales", "startups", "analytics"],
+    "wellness": ["selfimprovement", "meditation", "mentalhealth", "Mindfulness"],
+    "general": ["AskReddit", "worldnews", "technology", "todayilearned"],
 }
 
 # Normalization constants (tuned to typical subreddit hot post volumes)
@@ -111,20 +111,22 @@ async def _fetch_reddit_signals(niche: str, timeout: float = 10.0) -> list[dict]
                     if score < 0.05:  # filter noise
                         continue
 
-                    signals.append({
-                        "id": _make_signal_id(title, f"reddit/{sub}"),
-                        "keyword": title,
-                        "source": f"reddit/r/{sub}",
-                        "provenance": "observed",
-                        "momentum_score": score,
-                        "velocity": round(score * 1.2, 3),  # velocity = score amplified (proxy)
-                        "volume_current": upvotes,
-                        "volume_prior": max(0, upvotes - comments * 3),  # rough prior estimate
-                        "confidence": 0.75,
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                        "evidence": [f"reddit/r/{sub}"],
-                        "action_hint": f"Create content around: {title}",
-                    })
+                    signals.append(
+                        {
+                            "id": _make_signal_id(title, f"reddit/{sub}"),
+                            "keyword": title,
+                            "source": f"reddit/r/{sub}",
+                            "provenance": "observed",
+                            "momentum_score": score,
+                            "velocity": round(score * 1.2, 3),  # velocity = score amplified (proxy)
+                            "volume_current": upvotes,
+                            "volume_prior": max(0, upvotes - comments * 3),  # rough prior estimate
+                            "confidence": 0.75,
+                            "fetched_at": datetime.now(UTC).isoformat(),
+                            "evidence": [f"reddit/r/{sub}"],
+                            "action_hint": f"Create content around: {title}",
+                        }
+                    )
 
             except (httpx.RequestError, httpx.TimeoutException, KeyError, ValueError) as e:
                 logger.debug("[trends] reddit/%s fetch failed: %s", sub, e)
@@ -137,6 +139,7 @@ async def _fetch_google_trends_signals(timeout: float = 8.0) -> list[dict]:
     """Fetch daily trending searches from Google Trends RSS."""
     try:
         import feedparser  # already in requirements
+
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             resp = await client.get(GOOGLE_TRENDS_RSS_URL)
             if resp.status_code != 200:
@@ -155,26 +158,30 @@ async def _fetch_google_trends_signals(timeout: float = 8.0) -> list[dict]:
             # Google Trends embeds traffic estimate in the ht:approx_traffic tag
             traffic = 1000
             try:
-                traffic = int(entry.get("ht_approx_traffic", "1+").replace("+", "").replace(",", ""))
+                traffic = int(
+                    entry.get("ht_approx_traffic", "1+").replace("+", "").replace(",", "")
+                )
             except (ValueError, AttributeError):
                 pass
 
             score = _momentum_score(traffic, traffic // 10)
 
-            signals.append({
-                "id": _make_signal_id(title, "google_trends"),
-                "keyword": title,
-                "source": "google_trends",
-                "provenance": "observed",
-                "momentum_score": min(score, 0.95),
-                "velocity": min(score * 1.3, 1.0),
-                "volume_current": traffic,
-                "volume_prior": traffic // 2,
-                "confidence": 0.80,
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "evidence": ["google_trends/daily"],
-                "action_hint": f"Trending topic to tap: {title}",
-            })
+            signals.append(
+                {
+                    "id": _make_signal_id(title, "google_trends"),
+                    "keyword": title,
+                    "source": "google_trends",
+                    "provenance": "observed",
+                    "momentum_score": min(score, 0.95),
+                    "velocity": min(score * 1.3, 1.0),
+                    "volume_current": traffic,
+                    "volume_prior": traffic // 2,
+                    "confidence": 0.80,
+                    "fetched_at": datetime.now(UTC).isoformat(),
+                    "evidence": ["google_trends/daily"],
+                    "action_hint": f"Trending topic to tap: {title}",
+                }
+            )
 
         return signals
 
@@ -191,20 +198,22 @@ def _seeded_signals(niche: str) -> list[dict]:
         raw = raw.get(niche, [])
     result = []
     for t in raw[:8]:
-        result.append({
-            "id": _make_signal_id(t.get("keyword", ""), "seeded"),
-            "keyword": t.get("keyword", ""),
-            "source": "seeded_niche_data",
-            "provenance": "estimated",
-            "momentum_score": t.get("momentum_score", 0.5),
-            "velocity": t.get("momentum_score", 0.5) * 0.8,
-            "volume_current": t.get("volume_current", 5000),
-            "volume_prior": t.get("volume_prior", 3000),
-            "confidence": 0.55,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "evidence": t.get("evidence", []),
-            "action_hint": t.get("action_hint", ""),
-        })
+        result.append(
+            {
+                "id": _make_signal_id(t.get("keyword", ""), "seeded"),
+                "keyword": t.get("keyword", ""),
+                "source": "seeded_niche_data",
+                "provenance": "estimated",
+                "momentum_score": t.get("momentum_score", 0.5),
+                "velocity": t.get("momentum_score", 0.5) * 0.8,
+                "volume_current": t.get("volume_current", 5000),
+                "volume_prior": t.get("volume_prior", 3000),
+                "confidence": 0.55,
+                "fetched_at": datetime.now(UTC).isoformat(),
+                "evidence": t.get("evidence", []),
+                "action_hint": t.get("action_hint", ""),
+            }
+        )
     return result
 
 
@@ -254,10 +263,9 @@ async def refresh_niche_trends(niche: str, force: bool = False) -> list[dict]:
 
     if isinstance(google_signals, list):
         # Google Trends is general; only include signals if they partially match niche keywords
-        niche_keywords = NICHE_SUBREDDITS.get(niche, [])
+        NICHE_SUBREDDITS.get(niche, [])
         filtered_google = [
-            s for s in google_signals
-            if _is_niche_relevant(s.get("keyword", ""), niche)
+            s for s in google_signals if _is_niche_relevant(s.get("keyword", ""), niche)
         ]
         all_signals.extend(filtered_google[:5])
 
@@ -268,10 +276,13 @@ async def refresh_niche_trends(niche: str, force: bool = False) -> list[dict]:
     final = _dedupe_and_rank(all_signals)
     store_signals(niche, final)
 
-    logger.info("[trends] stored %d signals for niche=%s (reddit=%d, seeded=%d)",
-                len(final), niche,
-                len(reddit_signals) if isinstance(reddit_signals, list) else 0,
-                len(seeded))
+    logger.info(
+        "[trends] stored %d signals for niche=%s (reddit=%d, seeded=%d)",
+        len(final),
+        niche,
+        len(reddit_signals) if isinstance(reddit_signals, list) else 0,
+        len(seeded),
+    )
     return final
 
 
@@ -279,16 +290,16 @@ def _is_niche_relevant(keyword: str, niche: str) -> bool:
     """Rough relevance check: does keyword contain niche-related terms?"""
     kw = keyword.lower()
     niche_terms: dict[str, list[str]] = {
-        "tech":      ["tech", "ai", "software", "app", "digital", "data", "cloud"],
-        "fashion":   ["fashion", "style", "clothing", "outfit", "wear", "dress"],
-        "food":      ["food", "recipe", "eat", "cook", "meal", "restaurant", "diet"],
-        "fitness":   ["fitness", "workout", "gym", "health", "exercise", "weight"],
-        "travel":    ["travel", "trip", "vacation", "flight", "hotel", "destination"],
+        "tech": ["tech", "ai", "software", "app", "digital", "data", "cloud"],
+        "fashion": ["fashion", "style", "clothing", "outfit", "wear", "dress"],
+        "food": ["food", "recipe", "eat", "cook", "meal", "restaurant", "diet"],
+        "fitness": ["fitness", "workout", "gym", "health", "exercise", "weight"],
+        "travel": ["travel", "trip", "vacation", "flight", "hotel", "destination"],
         "ecommerce": ["shop", "price", "deal", "buy", "store", "product"],
-        "creator":   ["creator", "content", "video", "channel", "streaming", "social"],
-        "beauty":    ["beauty", "skincare", "makeup", "hair", "skin", "cosmetic"],
-        "b2b":       ["business", "marketing", "sales", "startup", "revenue", "growth"],
-        "wellness":  ["mental", "wellness", "stress", "mindful", "meditation", "anxiety"],
+        "creator": ["creator", "content", "video", "channel", "streaming", "social"],
+        "beauty": ["beauty", "skincare", "makeup", "hair", "skin", "cosmetic"],
+        "b2b": ["business", "marketing", "sales", "startup", "revenue", "growth"],
+        "wellness": ["mental", "wellness", "stress", "mindful", "meditation", "anxiety"],
     }
     terms = niche_terms.get(niche, [])
     return any(t in kw for t in terms)

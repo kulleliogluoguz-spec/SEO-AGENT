@@ -2,6 +2,7 @@
 Marketing Prompt Registry — Versioned, Channel-Specific Prompts
 Used by marketing agents when calling LLMs.
 """
+
 from __future__ import annotations
 
 PROMPT_VERSION = "1.0.0"

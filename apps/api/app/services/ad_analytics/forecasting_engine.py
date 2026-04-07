@@ -4,6 +4,7 @@ Forecasting Engine
 - IsolationForest for anomaly detection
 - Rule-based CTR prediction (XGBoost optional)
 """
+
 from __future__ import annotations
 
 import logging
@@ -76,9 +77,7 @@ class ForecastingEngine:
                     }
                     for _, row in future_only.iterrows()
                 ],
-                "avg_predicted_roas": round(
-                    float(future_only["yhat"].clip(lower=0).mean()), 3
-                ),
+                "avg_predicted_roas": round(float(future_only["yhat"].clip(lower=0).mean()), 3),
                 "trend": (
                     "improving"
                     if future_only["trend"].iloc[-1] > future_only["trend"].iloc[0]
@@ -90,9 +89,7 @@ class ForecastingEngine:
             logger.error("[forecast] prophet failed: %s", e)
             return self._linear_forecast(historical_data, forecast_days)
 
-    def _linear_forecast(
-        self, historical_data: list[dict], forecast_days: int
-    ) -> dict:
+    def _linear_forecast(self, historical_data: list[dict], forecast_days: int) -> dict:
         """Simple linear/mean extrapolation as fallback."""
         if not historical_data:
             return {
@@ -105,11 +102,7 @@ class ForecastingEngine:
         values = [float(d.get("roas", 0) or 0) for d in historical_data]
         recent = values[-7:] if len(values) >= 7 else values
         avg = float(np.mean(recent))
-        std = (
-            float(np.std(recent))
-            if len(recent) > 1
-            else max(avg * 0.2, 0.1)
-        )
+        std = float(np.std(recent)) if len(recent) > 1 else max(avg * 0.2, 0.1)
 
         forecasts = []
         base = date.today()
@@ -158,9 +151,7 @@ class ForecastingEngine:
 
     # ── Anomaly detection ────────────────────────────────────────────────────
 
-    def detect_anomalies(
-        self, time_series: list[dict], metric: str = "roas"
-    ) -> list[dict]:
+    def detect_anomalies(self, time_series: list[dict], metric: str = "roas") -> list[dict]:
         """
         Detect anomalous days using IsolationForest.
         Returns dates whose metric value is statistically anomalous.
@@ -188,9 +179,7 @@ class ForecastingEngine:
             for i, (label, row) in enumerate(zip(labels, df.itertuples(), strict=False)):
                 if label == -1:
                     val = float(values[i][0])
-                    severity = (
-                        "high" if abs(val - mean_val) > 2 * std_val else "medium"
-                    )
+                    severity = "high" if abs(val - mean_val) > 2 * std_val else "medium"
                     anomalies.append(
                         {
                             "date": str(getattr(row, "date", i)),
@@ -230,16 +219,14 @@ class ForecastingEngine:
         values = df[metric].fillna(0).astype(float).values
         mean = float(np.mean(values)) if len(values) else 0.0
         std = float(np.std(values)) if len(values) else 0.0
-        z_scores = (
-            np.abs((values - mean) / std) if std > 0 else np.zeros(len(values))
-        )
+        z_scores = np.abs((values - mean) / std) if std > 0 else np.zeros(len(values))
 
         try:
             from sklearn.ensemble import IsolationForest
 
-            labels = IsolationForest(
-                contamination=0.1, random_state=42
-            ).fit_predict(values.reshape(-1, 1))
+            labels = IsolationForest(contamination=0.1, random_state=42).fit_predict(
+                values.reshape(-1, 1)
+            )
         except Exception:
             labels = np.where(z_scores > sensitivity * 2, -1, 1)
 
@@ -261,9 +248,7 @@ class ForecastingEngine:
                         "metric": metric,
                         "value": v,
                         "expected": round(mean, 3),
-                        "deviation_pct": (
-                            round((v - mean) / mean * 100, 1) if mean else 0
-                        ),
+                        "deviation_pct": (round((v - mean) / mean * 100, 1) if mean else 0),
                         "direction": direction,
                         "severity": severity,
                         "description": f"{metric.upper()} {direction}: {v:.2f} vs expected {mean:.2f}",

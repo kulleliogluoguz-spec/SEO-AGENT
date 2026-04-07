@@ -9,13 +9,13 @@ approval-gated workflow. No live campaign is created without human approval.
 
 Production migration path: PostgreSQL + Redis for status polling.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "campaign_store.json"
 
@@ -29,7 +29,7 @@ _DEFAULT: dict = {
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _load() -> dict:
@@ -55,6 +55,7 @@ def _save(data: dict) -> None:
 
 # ── Campaign Draft CRUD ───────────────────────────────────────────────────────
 
+
 def create_campaign_draft(
     user_id: str,
     platform: str,
@@ -62,10 +63,10 @@ def create_campaign_draft(
     name: str,
     objective: str,
     daily_budget_usd: float,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    target_audiences: Optional[list] = None,
-    creatives: Optional[list] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    target_audiences: list | None = None,
+    creatives: list | None = None,
     notes: str = "",
     strategy_version: str = "v1",
 ) -> dict:
@@ -85,7 +86,7 @@ def create_campaign_draft(
         "notes": notes,
         "strategy_version": strategy_version,
         # Lifecycle
-        "status": "draft",        # draft | pending_approval | approved | published | paused | archived
+        "status": "draft",  # draft | pending_approval | approved | published | paused | archived
         "platform_campaign_id": None,  # Set after publishing to platform
         "approval_id": None,
         "published_at": None,
@@ -100,15 +101,17 @@ def create_campaign_draft(
     }
     data = _load()
     data["campaign_drafts"].append(record)
-    _audit(data, user_id, "campaign_draft_created", record["id"], {"name": name, "platform": platform})
+    _audit(
+        data, user_id, "campaign_draft_created", record["id"], {"name": name, "platform": platform}
+    )
     _save(data)
     return record
 
 
 def get_campaign_drafts(
     user_id: str,
-    platform: Optional[str] = None,
-    status: Optional[str] = None,
+    platform: str | None = None,
+    status: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     data = _load()
@@ -120,18 +123,29 @@ def get_campaign_drafts(
     return sorted(items, key=lambda x: x["created_at"], reverse=True)[:limit]
 
 
-def get_campaign_draft(draft_id: str) -> Optional[dict]:
+def get_campaign_draft(draft_id: str) -> dict | None:
     data = _load()
     return next((d for d in data["campaign_drafts"] if d["id"] == draft_id), None)
 
 
-def update_campaign_draft(draft_id: str, updates: dict) -> Optional[dict]:
+def update_campaign_draft(draft_id: str, updates: dict) -> dict | None:
     data = _load()
     for d in data["campaign_drafts"]:
         if d["id"] == draft_id:
-            allowed = {"name", "objective", "daily_budget_usd", "start_date", "end_date",
-                       "target_audiences", "creatives", "notes", "status", "approval_id",
-                       "platform_campaign_id", "published_at"}
+            allowed = {
+                "name",
+                "objective",
+                "daily_budget_usd",
+                "start_date",
+                "end_date",
+                "target_audiences",
+                "creatives",
+                "notes",
+                "status",
+                "approval_id",
+                "platform_campaign_id",
+                "published_at",
+            }
             for k, v in updates.items():
                 if k in allowed:
                     d[k] = v
@@ -141,7 +155,7 @@ def update_campaign_draft(draft_id: str, updates: dict) -> Optional[dict]:
     return None
 
 
-def submit_for_approval(draft_id: str, user_id: str) -> Optional[dict]:
+def submit_for_approval(draft_id: str, user_id: str) -> dict | None:
     """Transition draft to pending_approval state."""
     data = _load()
     for d in data["campaign_drafts"]:
@@ -154,7 +168,7 @@ def submit_for_approval(draft_id: str, user_id: str) -> Optional[dict]:
     return None
 
 
-def mark_published(draft_id: str, user_id: str, platform_campaign_id: str) -> Optional[dict]:
+def mark_published(draft_id: str, user_id: str, platform_campaign_id: str) -> dict | None:
     """Mark draft as published after successful API call."""
     data = _load()
     for d in data["campaign_drafts"]:
@@ -163,13 +177,20 @@ def mark_published(draft_id: str, user_id: str, platform_campaign_id: str) -> Op
             d["platform_campaign_id"] = platform_campaign_id
             d["published_at"] = _now()
             d["updated_at"] = _now()
-            _audit(data, user_id, "campaign_published", draft_id, {"platform_campaign_id": platform_campaign_id})
+            _audit(
+                data,
+                user_id,
+                "campaign_published",
+                draft_id,
+                {"platform_campaign_id": platform_campaign_id},
+            )
             _save(data)
             return d
     return None
 
 
 # ── Reallocation Decisions ────────────────────────────────────────────────────
+
 
 def create_reallocation_decision(
     user_id: str,
@@ -194,7 +215,9 @@ def create_reallocation_decision(
         "old_budget_usd": old_budget_usd,
         "new_budget_usd": new_budget_usd,
         "delta_usd": round(new_budget_usd - old_budget_usd, 2),
-        "delta_pct": round(((new_budget_usd - old_budget_usd) / old_budget_usd) * 100, 1) if old_budget_usd > 0 else 0,
+        "delta_pct": round(((new_budget_usd - old_budget_usd) / old_budget_usd) * 100, 1)
+        if old_budget_usd > 0
+        else 0,
         "reason": reason,
         "supporting_metrics": supporting_metrics,
         "confidence": confidence,
@@ -206,13 +229,18 @@ def create_reallocation_decision(
     }
     data = _load()
     data["reallocation_decisions"].append(record)
-    _audit(data, user_id, "reallocation_decision_created", record["id"],
-           {"old_budget": old_budget_usd, "new_budget": new_budget_usd, "reason": reason})
+    _audit(
+        data,
+        user_id,
+        "reallocation_decision_created",
+        record["id"],
+        {"old_budget": old_budget_usd, "new_budget": new_budget_usd, "reason": reason},
+    )
     _save(data)
     return record
 
 
-def get_reallocation_decisions(user_id: str, platform: Optional[str] = None) -> list[dict]:
+def get_reallocation_decisions(user_id: str, platform: str | None = None) -> list[dict]:
     data = _load()
     items = [r for r in data["reallocation_decisions"] if r["user_id"] == user_id]
     if platform:
@@ -222,15 +250,18 @@ def get_reallocation_decisions(user_id: str, platform: Optional[str] = None) -> 
 
 # ── Audit log ─────────────────────────────────────────────────────────────────
 
+
 def _audit(data: dict, user_id: str, action: str, entity_id: str, details: dict) -> None:
-    data["audit_log"].append({
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "action": action,
-        "entity_id": entity_id,
-        "details": details,
-        "timestamp": _now(),
-    })
+    data["audit_log"].append(
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "action": action,
+            "entity_id": entity_id,
+            "details": details,
+            "timestamp": _now(),
+        }
+    )
 
 
 def get_audit_log(user_id: str, limit: int = 100) -> list[dict]:

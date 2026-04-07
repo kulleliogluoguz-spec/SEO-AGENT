@@ -5,6 +5,7 @@ NOTE: prefix is `/api/v1/email-bridge` to avoid colliding with the existing
 `/api/v1/email` Mautic email-automation endpoint that already ships in the
 platform.
 """
+
 from __future__ import annotations
 
 import logging

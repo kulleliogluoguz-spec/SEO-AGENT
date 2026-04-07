@@ -1,13 +1,17 @@
 """Unit tests for recommendation scoring logic."""
-import pytest
-from app.services.scoring import compute_priority, score_recommendation, CATEGORY_MULTIPLIERS
+
+from app.services.scoring import CATEGORY_MULTIPLIERS, compute_priority, score_recommendation
 
 
 class TestComputePriority:
     def test_perfect_recommendation_scores_near_1(self):
         result = compute_priority(
-            impact=1.0, effort=0.0, confidence=1.0,
-            urgency=1.0, evidence_count=5, category="technical_seo"
+            impact=1.0,
+            effort=0.0,
+            confidence=1.0,
+            urgency=1.0,
+            evidence_count=5,
+            category="technical_seo",
         )
         assert result.priority_score >= 0.95
 

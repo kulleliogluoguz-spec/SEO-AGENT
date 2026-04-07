@@ -13,15 +13,18 @@ Endpoints:
   GET  /api/v1/optimization/log         — selection audit log
   GET  /api/v1/optimization/status      — optimizer status and readiness
 """
+
 from __future__ import annotations
 
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies.auth import get_current_user
 from app.core.bandit.action_selector import (
-    select_action, record_reward, get_arm_summary, get_selection_log,
+    get_arm_summary,
+    get_selection_log,
+    record_reward,
+    select_action,
 )
 
 router = APIRouter()
@@ -46,16 +49,24 @@ REWARD_PRESETS = {
 
 class ActionSelectRequest(BaseModel):
     action_type: str = Field(..., description=f"One of: {sorted(VALID_ACTION_TYPES)}")
-    candidates: list[str] = Field(..., min_length=2, description="List of candidate actions (e.g. ['meta', 'tiktok', 'google'])")
-    context_niche: str = Field(..., description="Niche context for the decision (e.g. 'fitness', 'ecommerce')")
-    context_extra: dict = Field(default_factory=dict, description="Additional context (brand_stage, budget_tier, etc.)")
+    candidates: list[str] = Field(
+        ...,
+        min_length=2,
+        description="List of candidate actions (e.g. ['meta', 'tiktok', 'google'])",
+    )
+    context_niche: str = Field(
+        ..., description="Niche context for the decision (e.g. 'fitness', 'ecommerce')"
+    )
+    context_extra: dict = Field(
+        default_factory=dict, description="Additional context (brand_stage, budget_tier, etc.)"
+    )
     model_version: str = "epsilon_greedy_v1"
 
 
 class RewardRequest(BaseModel):
     selection_id: str = Field(..., description="ID returned from /select")
-    reward: Optional[float] = Field(None, ge=-1.0, le=1.0, description="Reward value (-1.0 to 1.0)")
-    reward_preset: Optional[str] = Field(None, description="success | partial | neutral | failure")
+    reward: float | None = Field(None, ge=-1.0, le=1.0, description="Reward value (-1.0 to 1.0)")
+    reward_preset: str | None = Field(None, description="success | partial | neutral | failure")
     reward_type: str = Field("binary", description="binary | continuous | roas | cac_proxy")
 
 
@@ -106,7 +117,9 @@ async def record_action_reward(
     This updates arm statistics and improves future action selection.
     """
     if payload.reward is None and payload.reward_preset is None:
-        raise HTTPException(400, "Provide either reward (float) or reward_preset (success|partial|neutral|failure).")
+        raise HTTPException(
+            400, "Provide either reward (float) or reward_preset (success|partial|neutral|failure)."
+        )
 
     reward_value = payload.reward
     if payload.reward_preset:
@@ -151,8 +164,8 @@ async def get_arms(
 
 @router.get("/log")
 async def selection_log(
-    action_type: Optional[str] = Query(None),
-    context_niche: Optional[str] = Query(None),
+    action_type: str | None = Query(None),
+    context_niche: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     current_user=Depends(get_current_user),
 ) -> dict:
@@ -182,10 +195,29 @@ async def optimizer_status(current_user=Depends(get_current_user)) -> dict:
         "reward_presets": REWARD_PRESETS,
         "stage": "bandit",
         "upgrade_path": [
-            {"stage": "bandit", "description": "Epsilon-greedy + UCB (current)", "status": "active"},
-            {"stage": "vowpal_wabbit", "description": "Vowpal Wabbit contextual bandit", "status": "planned", "requires": ">100 observations per arm"},
-            {"stage": "offline_rl", "description": "Offline RL policy via RLlib/SB3", "status": "planned", "requires": ">1000 labeled outcomes"},
-            {"stage": "live_rl", "description": "Constrained live RL with safety rails", "status": "future", "requires": "Proven offline policy + compliance sign-off"},
+            {
+                "stage": "bandit",
+                "description": "Epsilon-greedy + UCB (current)",
+                "status": "active",
+            },
+            {
+                "stage": "vowpal_wabbit",
+                "description": "Vowpal Wabbit contextual bandit",
+                "status": "planned",
+                "requires": ">100 observations per arm",
+            },
+            {
+                "stage": "offline_rl",
+                "description": "Offline RL policy via RLlib/SB3",
+                "status": "planned",
+                "requires": ">1000 labeled outcomes",
+            },
+            {
+                "stage": "live_rl",
+                "description": "Constrained live RL with safety rails",
+                "status": "future",
+                "requires": "Proven offline policy + compliance sign-off",
+            },
         ],
         "safety_rules": [
             "Minimum 3 observations before exploitation",
@@ -195,5 +227,5 @@ async def optimizer_status(current_user=Depends(get_current_user)) -> dict:
             "No live budget changes without approval gate",
         ],
         "note": "This optimizer selects growth actions (channel, audience, creative, budget). "
-                "It does NOT directly modify live campaigns — all reallocations require approval.",
+        "It does NOT directly modify live campaigns — all reallocations require approval.",
     }

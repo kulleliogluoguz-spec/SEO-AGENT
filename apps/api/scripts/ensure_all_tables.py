@@ -5,6 +5,7 @@ Drops the legacy phase2_calls table (and its dependent transcripts/analysis
 tables) so they can be recreated with the canonical name `calls`. All other
 tables use IF NOT EXISTS, so this script is safe to run multiple times.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -222,8 +223,15 @@ async def ensure() -> None:
         )
         names = {r["tablename"] for r in rows}
         required = [
-            "contacts", "leads", "lead_timeline", "calls", "call_transcripts",
-            "call_analysis", "invoices", "ai_feedback", "ai_memory",
+            "contacts",
+            "leads",
+            "lead_timeline",
+            "calls",
+            "call_transcripts",
+            "call_analysis",
+            "invoices",
+            "ai_feedback",
+            "ai_memory",
         ]
         print("\n=== TABLE STATUS ===")
         all_ok = True

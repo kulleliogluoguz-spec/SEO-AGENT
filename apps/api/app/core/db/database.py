@@ -2,6 +2,7 @@
 Database engine, session factory, and base model.
 Uses SQLAlchemy 2.x async patterns throughout.
 """
+
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -31,6 +32,7 @@ metadata = MetaData(naming_convention=convention)
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
+
     metadata = metadata
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,8 +50,8 @@ engine = create_async_engine(
     future=True,
     connect_args=_connect_args,
     pool_pre_ping=True,
-    pool_timeout=5,       # Don't wait >5s for a pool slot
-    pool_recycle=300,     # Recycle connections every 5 min to prevent stale-socket hangs
+    pool_timeout=5,  # Don't wait >5s for a pool slot
+    pool_recycle=300,  # Recycle connections every 5 min to prevent stale-socket hangs
 )
 
 AsyncSessionLocal = async_sessionmaker(

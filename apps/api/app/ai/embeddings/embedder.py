@@ -14,7 +14,6 @@ import asyncio
 import hashlib
 import logging
 import os
-from typing import Optional
 
 import httpx
 
@@ -49,7 +48,7 @@ class LocalEmbedder:
         ).rstrip("/")
         self.dimensions = dimensions or int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
         self._st_model = None  # sentence-transformers lazy init
-        self._ollama_available: Optional[bool] = None  # cached probe result
+        self._ollama_available: bool | None = None  # cached probe result
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of texts. Returns list of float vectors."""
@@ -61,13 +60,13 @@ class LocalEmbedder:
             try:
                 return await self._embed_ollama_batch(texts)
             except Exception as e:
-                logger.warning(f"Ollama embedding failed, falling back to sentence-transformers: {e}")
+                logger.warning(
+                    f"Ollama embedding failed, falling back to sentence-transformers: {e}"
+                )
                 self._ollama_available = False
 
         # Fallback: sentence-transformers (synchronous — run in thread pool)
-        return await asyncio.get_event_loop().run_in_executor(
-            None, self._embed_st_sync, texts
-        )
+        return await asyncio.get_event_loop().run_in_executor(None, self._embed_st_sync, texts)
 
     async def embed_one(self, text: str) -> list[float]:
         """Embed a single text string."""
@@ -110,6 +109,7 @@ class LocalEmbedder:
         if self._st_model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 st_model_name = os.getenv("EMBEDDING_ST_MODEL", "nomic-ai/nomic-embed-text-v1.5")
                 logger.info(f"Loading sentence-transformers model: {st_model_name}")
                 self._st_model = SentenceTransformer(st_model_name, trust_remote_code=True)

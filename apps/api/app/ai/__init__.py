@@ -17,12 +17,12 @@ Architecture:
     Observability → Tracing, metrics, cost tracking
 """
 
-from app.ai.registry.model_registry import ModelRegistry, ModelCard
-from app.ai.router.ai_router import AIRouter
-from app.ai.providers.provider_manager import ProviderManager
 from app.ai.engines.engine_manager import EngineManager
-from app.ai.prompts.prompt_registry import PromptRegistry
 from app.ai.observability.tracer import AITracer
+from app.ai.prompts.prompt_registry import PromptRegistry
+from app.ai.providers.provider_manager import ProviderManager
+from app.ai.registry.model_registry import ModelCard, ModelRegistry
+from app.ai.router.ai_router import AIRouter
 
 __all__ = [
     "ModelRegistry",

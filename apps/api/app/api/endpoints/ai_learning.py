@@ -1,4 +1,5 @@
 """AI Learning endpoints — feedback capture + learned preference summary."""
+
 from __future__ import annotations
 
 import logging

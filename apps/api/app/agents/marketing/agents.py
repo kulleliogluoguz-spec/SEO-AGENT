@@ -3,21 +3,21 @@ Marketing Agent System — 13 Specialized Agents
 Each agent: clear input/output schema, tool permissions, observable, safe.
 Designed for LangGraph orchestration.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 # ─── Agent Base ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class AgentInput:
@@ -61,6 +61,7 @@ class BaseMarketingAgent(ABC):
         Use this instead of calling execute() directly.
         """
         import time
+
         start = time.monotonic()
         try:
             output = await self.execute(input)
@@ -75,27 +76,42 @@ class BaseMarketingAgent(ABC):
             return output
         except Exception as e:
             elapsed = round((time.monotonic() - start) * 1000, 2)
-            logger.error(f"[Agent:{self.name}] trace={input.trace_id[:8]} CRASHED ms={elapsed}: {e}")
+            logger.error(
+                f"[Agent:{self.name}] trace={input.trace_id[:8]} CRASHED ms={elapsed}: {e}"
+            )
             return AgentOutput(
-                success=False, errors=[str(e)], trace_id=input.trace_id,
-                agent_name=self.name, execution_ms=elapsed,
+                success=False,
+                errors=[str(e)],
+                trace_id=input.trace_id,
+                agent_name=self.name,
+                execution_ms=elapsed,
             )
 
     @abstractmethod
-    async def execute(self, input: AgentInput) -> AgentOutput:
-        ...
+    async def execute(self, input: AgentInput) -> AgentOutput: ...
 
-    def _output(self, success: bool, data: dict = None,
-                errors: list = None, warnings: list = None, trace_id: str = "") -> AgentOutput:
+    def _output(
+        self,
+        success: bool,
+        data: dict = None,
+        errors: list = None,
+        warnings: list = None,
+        trace_id: str = "",
+    ) -> AgentOutput:
         return AgentOutput(
-            success=success, data=data or {}, errors=errors or [],
-            warnings=warnings or [], trace_id=trace_id, agent_name=self.name,
+            success=success,
+            data=data or {},
+            errors=errors or [],
+            warnings=warnings or [],
+            trace_id=trace_id,
+            agent_name=self.name,
         )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  1. CAMPAIGN PLANNER AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class CampaignPlannerAgent(BaseMarketingAgent):
     name = "campaign_planner"
@@ -122,12 +138,25 @@ class CampaignPlannerAgent(BaseMarketingAgent):
             "budget": budget,
             "phases": [
                 {"name": "Launch", "days": "1-7", "focus": "awareness", "content_volume": "high"},
-                {"name": "Engage", "days": "8-21", "focus": "engagement", "content_volume": "medium"},
-                {"name": "Convert", "days": "22-30", "focus": "conversion", "content_volume": "targeted"},
+                {
+                    "name": "Engage",
+                    "days": "8-21",
+                    "focus": "engagement",
+                    "content_volume": "medium",
+                },
+                {
+                    "name": "Convert",
+                    "days": "22-30",
+                    "focus": "conversion",
+                    "content_volume": "targeted",
+                },
             ],
             "content_themes": [
-                "problem_agitation", "social_proof", "educational_value",
-                "behind_the_scenes", "direct_offer",
+                "problem_agitation",
+                "social_proof",
+                "educational_value",
+                "behind_the_scenes",
+                "direct_offer",
             ],
             "kpis": {
                 "impressions_target": 50000,
@@ -135,7 +164,9 @@ class CampaignPlannerAgent(BaseMarketingAgent):
                 "click_target": 2000,
                 "conversion_target": 100,
             },
-            "posting_cadence": {ch: "daily" if ch in ["twitter", "instagram"] else "3x/week" for ch in channels},
+            "posting_cadence": {
+                ch: "daily" if ch in ["twitter", "instagram"] else "3x/week" for ch in channels
+            },
         }
 
         return self._output(True, {"campaign_plan": plan}, trace_id=input.trace_id)
@@ -144,6 +175,7 @@ class CampaignPlannerAgent(BaseMarketingAgent):
 # ═════════════════════════════════════════════════════════════════════════════
 #  2. CONTENT CALENDAR AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class ContentCalendarAgent(BaseMarketingAgent):
     name = "content_calendar"
@@ -185,23 +217,27 @@ class ContentCalendarAgent(BaseMarketingAgent):
                 else:
                     continue  # skip this day for this channel
 
-                calendar.append({
-                    "date": date.strftime("%Y-%m-%d"),
-                    "day_of_week": date.strftime("%A"),
-                    "channel": ch,
-                    "time_slot": time_slot,
-                    "theme": themes[day_offset % len(themes)],
-                    "content_type": "post",
-                    "status": "planned",
-                })
+                calendar.append(
+                    {
+                        "date": date.strftime("%Y-%m-%d"),
+                        "day_of_week": date.strftime("%A"),
+                        "channel": ch,
+                        "time_slot": time_slot,
+                        "theme": themes[day_offset % len(themes)],
+                        "content_type": "post",
+                        "status": "planned",
+                    }
+                )
 
-        return self._output(True, {"calendar": calendar, "total_slots": len(calendar)},
-                            trace_id=input.trace_id)
+        return self._output(
+            True, {"calendar": calendar, "total_slots": len(calendar)}, trace_id=input.trace_id
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  3. CHANNEL STRATEGY AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class ChannelStrategyAgent(BaseMarketingAgent):
     name = "channel_strategy"
@@ -213,24 +249,44 @@ class ChannelStrategyAgent(BaseMarketingAgent):
         Input: { industry, target_audience, goals, current_performance }
         Output: { strategy: { recommended_channels, rationale, budget_split } }
         """
-        goals = input.payload.get("goals", ["awareness"])
-        audience = input.payload.get("target_audience", "general")
+        input.payload.get("goals", ["awareness"])
+        input.payload.get("target_audience", "general")
 
         # In production: LLM analyzes audience data + industry benchmarks
         strategy = {
             "recommended_channels": [
-                {"channel": "linkedin", "priority": "high", "rationale": "B2B audience, thought leadership"},
-                {"channel": "instagram", "priority": "high", "rationale": "Visual storytelling, brand building"},
-                {"channel": "twitter", "priority": "medium", "rationale": "Real-time engagement, industry discourse"},
-                {"channel": "tiktok", "priority": "medium", "rationale": "Younger demographic reach, viral potential"},
+                {
+                    "channel": "linkedin",
+                    "priority": "high",
+                    "rationale": "B2B audience, thought leadership",
+                },
+                {
+                    "channel": "instagram",
+                    "priority": "high",
+                    "rationale": "Visual storytelling, brand building",
+                },
+                {
+                    "channel": "twitter",
+                    "priority": "medium",
+                    "rationale": "Real-time engagement, industry discourse",
+                },
+                {
+                    "channel": "tiktok",
+                    "priority": "medium",
+                    "rationale": "Younger demographic reach, viral potential",
+                },
             ],
             "budget_allocation": {
-                "organic_content": 0.40, "paid_social": 0.35,
-                "influencer": 0.15, "community": 0.10,
+                "organic_content": 0.40,
+                "paid_social": 0.35,
+                "influencer": 0.15,
+                "community": 0.10,
             },
             "posting_frequency": {
-                "linkedin": "3-5x/week", "instagram": "daily",
-                "twitter": "3-5x/day", "tiktok": "3-5x/week",
+                "linkedin": "3-5x/week",
+                "instagram": "daily",
+                "twitter": "3-5x/day",
+                "tiktok": "3-5x/week",
             },
         }
         return self._output(True, {"strategy": strategy}, trace_id=input.trace_id)
@@ -239,6 +295,7 @@ class ChannelStrategyAgent(BaseMarketingAgent):
 # ═════════════════════════════════════════════════════════════════════════════
 #  4. SOCIAL POST GENERATOR AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class SocialPostGeneratorAgent(BaseMarketingAgent):
     name = "social_post_generator"
@@ -297,13 +354,18 @@ class SocialPostGeneratorAgent(BaseMarketingAgent):
     def _generate_placeholder(self, channel, topic, tone, key_points, template):
         """Structured placeholder — replace with LLM call in production."""
         hook = f"Here's what nobody tells you about {topic}..."
-        points_text = " ".join(f"→ {p}" for p in key_points[:3]) if key_points else f"Key insight about {topic}."
+        points_text = (
+            " ".join(f"→ {p}" for p in key_points[:3])
+            if key_points
+            else f"Key insight about {topic}."
+        )
         cta = "Save this for later ↓" if channel == "instagram" else "What's your take?"
 
         if channel == "instagram":
             return {
                 "body": f"{hook}\n\n{points_text}\n\n{cta}",
-                "hook": hook, "cta": cta,
+                "hook": hook,
+                "cta": cta,
                 "hashtags": [f"#{topic.replace(' ', '')}", "#growth", "#marketing", "#strategy"],
                 "channel_metadata": {"carousel_slides": None, "aspect_ratio": "1:1"},
                 "media_instructions": f"Create a clean infographic about {topic} with bold typography.",
@@ -311,21 +373,26 @@ class SocialPostGeneratorAgent(BaseMarketingAgent):
         elif channel == "tiktok":
             return {
                 "body": f"HOOK: {hook}\n\nBODY: {points_text}\n\nCTA: {cta}",
-                "hook": hook, "cta": cta, "hashtags": [f"#{topic.replace(' ', '')}", "#fyp"],
+                "hook": hook,
+                "cta": cta,
+                "hashtags": [f"#{topic.replace(' ', '')}", "#fyp"],
                 "channel_metadata": {
                     "script_sections": [
                         {"time": "0-3s", "text": hook, "visual": "face to camera"},
                         {"time": "3-15s", "text": points_text, "visual": "b-roll or text overlay"},
                         {"time": "15-20s", "text": cta, "visual": "face to camera"},
                     ],
-                    "duration_target": 20, "music_suggestion": "trending audio",
+                    "duration_target": 20,
+                    "music_suggestion": "trending audio",
                 },
                 "media_instructions": f"Short-form video about {topic}. Hook-first, fast cuts.",
             }
         elif channel == "twitter":
             return {
                 "body": hook,
-                "hook": hook, "cta": cta, "hashtags": [],
+                "hook": hook,
+                "cta": cta,
+                "hashtags": [],
                 "channel_metadata": {
                     "thread": [
                         hook,
@@ -338,14 +405,17 @@ class SocialPostGeneratorAgent(BaseMarketingAgent):
         elif channel == "linkedin":
             return {
                 "body": f"{hook}\n\n{points_text}\n\nThe takeaway? {cta}\n\n#marketing #{topic.replace(' ', '')}",
-                "hook": hook, "cta": cta, "hashtags": [f"#{topic.replace(' ', '')}", "#leadership"],
+                "hook": hook,
+                "cta": cta,
+                "hashtags": [f"#{topic.replace(' ', '')}", "#leadership"],
                 "channel_metadata": {"article_mode": False},
                 "media_instructions": f"Professional graphic or photo related to {topic}.",
             }
         elif channel == "meta_ads":
             return {
                 "body": f"{hook} {points_text}",
-                "hook": hook, "cta": "Learn More",
+                "hook": hook,
+                "cta": "Learn More",
                 "hashtags": [],
                 "channel_metadata": {
                     "headline": f"Unlock the Power of {topic.title()}",
@@ -362,6 +432,7 @@ class SocialPostGeneratorAgent(BaseMarketingAgent):
 #  5. AD CAMPAIGN GENERATOR AGENT
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class AdCampaignGeneratorAgent(BaseMarketingAgent):
     name = "ad_campaign_generator"
     description = "Generates Meta Ads campaign structures with ad copy and targeting."
@@ -375,12 +446,20 @@ class AdCampaignGeneratorAgent(BaseMarketingAgent):
             "ad_sets": [
                 {
                     "name": "Broad Interest",
-                    "targeting": {"interests": p.get("interests", []), "age_min": 25, "age_max": 55},
+                    "targeting": {
+                        "interests": p.get("interests", []),
+                        "age_min": 25,
+                        "age_max": 55,
+                    },
                     "budget_share": 0.5,
                 },
                 {
                     "name": "Lookalike",
-                    "targeting": {"lookalike_source": "website_visitors", "age_min": 25, "age_max": 55},
+                    "targeting": {
+                        "lookalike_source": "website_visitors",
+                        "age_min": 25,
+                        "age_max": 55,
+                    },
                     "budget_share": 0.3,
                 },
                 {
@@ -415,19 +494,20 @@ class AdCampaignGeneratorAgent(BaseMarketingAgent):
 #  6. HOOK OPTIMIZATION AGENT
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class HookOptimizationAgent(BaseMarketingAgent):
     name = "hook_optimization"
     description = "Generates and scores attention hooks for content across channels."
     permissions = [ToolPermission.LLM_GENERATE]
 
     HOOK_PATTERNS = [
-        "contrarian",       # "Everyone says X, but here's why Y"
-        "curiosity_gap",    # "I discovered something about X that changed everything"
-        "number_driven",    # "3 things about X that will surprise you"
-        "question",         # "What if I told you X?"
-        "story_open",       # "Last week, I made a mistake that taught me X"
-        "bold_claim",       # "X is dead. Here's what's replacing it"
-        "social_proof",     # "After helping 100+ companies with X..."
+        "contrarian",  # "Everyone says X, but here's why Y"
+        "curiosity_gap",  # "I discovered something about X that changed everything"
+        "number_driven",  # "3 things about X that will surprise you"
+        "question",  # "What if I told you X?"
+        "story_open",  # "Last week, I made a mistake that taught me X"
+        "bold_claim",  # "X is dead. Here's what's replacing it"
+        "social_proof",  # "After helping 100+ companies with X..."
     ]
 
     async def execute(self, input: AgentInput) -> AgentOutput:
@@ -437,12 +517,14 @@ class HookOptimizationAgent(BaseMarketingAgent):
 
         hooks = []
         for i, pattern in enumerate(self.HOOK_PATTERNS[:num_hooks]):
-            hooks.append({
-                "text": self._generate_hook(pattern, topic),
-                "pattern": pattern,
-                "predicted_score": round(0.5 + (0.5 * (num_hooks - i) / num_hooks), 2),
-                "channel_fit": channel,
-            })
+            hooks.append(
+                {
+                    "text": self._generate_hook(pattern, topic),
+                    "pattern": pattern,
+                    "predicted_score": round(0.5 + (0.5 * (num_hooks - i) / num_hooks), 2),
+                    "channel_fit": channel,
+                }
+            )
 
         return self._output(True, {"hooks": hooks}, trace_id=input.trace_id)
 
@@ -462,6 +544,7 @@ class HookOptimizationAgent(BaseMarketingAgent):
 # ═════════════════════════════════════════════════════════════════════════════
 #  7. HASHTAG STRATEGY AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class HashtagStrategyAgent(BaseMarketingAgent):
     name = "hashtag_strategy"
@@ -496,14 +579,15 @@ class HashtagStrategyAgent(BaseMarketingAgent):
 #  8. AUDIENCE TARGETING AGENT
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class AudienceTargetingAgent(BaseMarketingAgent):
     name = "audience_targeting"
     description = "Builds audience personas and targeting recommendations."
     permissions = [ToolPermission.READ_ANALYTICS, ToolPermission.LLM_GENERATE]
 
     async def execute(self, input: AgentInput) -> AgentOutput:
-        product = input.payload.get("product", "SaaS tool")
-        current_audience = input.payload.get("current_audience", {})
+        input.payload.get("product", "SaaS tool")
+        input.payload.get("current_audience", {})
 
         personas = [
             {
@@ -516,7 +600,11 @@ class AudienceTargetingAgent(BaseMarketingAgent):
             },
             {
                 "name": "Marketing Manager",
-                "demographics": {"age": "25-40", "role": "Marketing Manager", "company_size": "50-500"},
+                "demographics": {
+                    "age": "25-40",
+                    "role": "Marketing Manager",
+                    "company_size": "50-500",
+                },
                 "interests": ["SEO", "content marketing", "social media strategy"],
                 "pain_points": ["proving ROI", "content volume", "multi-channel management"],
                 "channels": ["instagram", "linkedin", "tiktok"],
@@ -532,12 +620,15 @@ class AudienceTargetingAgent(BaseMarketingAgent):
             },
         ]
 
-        return self._output(True, {"personas": personas, "total": len(personas)}, trace_id=input.trace_id)
+        return self._output(
+            True, {"personas": personas, "total": len(personas)}, trace_id=input.trace_id
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  9. POST TIMING AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class PostTimingAgent(BaseMarketingAgent):
     name = "post_timing"
@@ -546,7 +637,10 @@ class PostTimingAgent(BaseMarketingAgent):
 
     OPTIMAL_TIMES = {
         "instagram": {"weekday": ["09:00", "12:00", "18:00"], "weekend": ["10:00", "14:00"]},
-        "tiktok": {"weekday": ["07:00", "12:00", "19:00", "22:00"], "weekend": ["09:00", "14:00", "19:00"]},
+        "tiktok": {
+            "weekday": ["07:00", "12:00", "19:00", "22:00"],
+            "weekend": ["09:00", "14:00", "19:00"],
+        },
         "twitter": {"weekday": ["08:00", "12:00", "17:00"], "weekend": ["09:00", "12:00"]},
         "linkedin": {"weekday": ["07:30", "10:00", "12:00", "17:00"], "weekend": []},
         "meta_ads": {"weekday": ["06:00", "12:00", "18:00"], "weekend": ["08:00", "14:00"]},
@@ -557,19 +651,25 @@ class PostTimingAgent(BaseMarketingAgent):
         timezone = input.payload.get("timezone", "UTC")
 
         times = self.OPTIMAL_TIMES.get(channel, self.OPTIMAL_TIMES["instagram"])
-        return self._output(True, {
-            "channel": channel,
-            "timezone": timezone,
-            "optimal_times": times,
-            "best_days": ["Tuesday", "Wednesday", "Thursday"] if channel == "linkedin" else
-                         ["Monday", "Wednesday", "Friday"],
-            "avoid": ["Sunday late night", "Monday early morning"],
-        }, trace_id=input.trace_id)
+        return self._output(
+            True,
+            {
+                "channel": channel,
+                "timezone": timezone,
+                "optimal_times": times,
+                "best_days": ["Tuesday", "Wednesday", "Thursday"]
+                if channel == "linkedin"
+                else ["Monday", "Wednesday", "Friday"],
+                "avoid": ["Sunday late night", "Monday early morning"],
+            },
+            trace_id=input.trace_id,
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 10. ENGAGEMENT OPTIMIZATION AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class EngagementOptimizationAgent(BaseMarketingAgent):
     name = "engagement_optimization"
@@ -583,21 +683,32 @@ class EngagementOptimizationAgent(BaseMarketingAgent):
         recommendations = [
             {"type": "hook", "suggestion": "Use question-based hooks — they get 2x more comments."},
             {"type": "timing", "suggestion": "Shift posting 1 hour earlier for better reach."},
-            {"type": "format", "suggestion": "Carousels outperform single images by 3x on Instagram."},
-            {"type": "cta", "suggestion": "End posts with a discussion question instead of a link."},
+            {
+                "type": "format",
+                "suggestion": "Carousels outperform single images by 3x on Instagram.",
+            },
+            {
+                "type": "cta",
+                "suggestion": "End posts with a discussion question instead of a link.",
+            },
             {"type": "hashtags", "suggestion": "Reduce hashtag count to 8-12 for optimal reach."},
         ]
 
-        return self._output(True, {
-            "recommendations": recommendations,
-            "channel": channel,
-            "analysis_based_on": len(performance_data),
-        }, trace_id=input.trace_id)
+        return self._output(
+            True,
+            {
+                "recommendations": recommendations,
+                "channel": channel,
+                "analysis_based_on": len(performance_data),
+            },
+            trace_id=input.trace_id,
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 11. A/B VARIANT GENERATOR AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class ABVariantGeneratorAgent(BaseMarketingAgent):
     name = "ab_variant_generator"
@@ -618,23 +729,33 @@ class ABVariantGeneratorAgent(BaseMarketingAgent):
             if test_dimension == "hook":
                 variant["hook"] = f"[Variant {label} hook] " + original.get("hook", "")
             elif test_dimension == "cta":
-                ctas = ["Save this ↓", "Share with a friend", "Drop a 🔥 if you agree", "Link in bio"]
+                ctas = [
+                    "Save this ↓",
+                    "Share with a friend",
+                    "Drop a 🔥 if you agree",
+                    "Link in bio",
+                ]
                 variant["cta"] = ctas[i % len(ctas)]
             elif test_dimension == "tone":
                 variant["body"] = f"[{label} tone variant] " + original.get("body", "")
 
             variants.append({"variant_label": label, "content": variant, "is_control": False})
 
-        return self._output(True, {
-            "variant_group": variant_group,
-            "variants": variants,
-            "test_dimension": test_dimension,
-        }, trace_id=input.trace_id)
+        return self._output(
+            True,
+            {
+                "variant_group": variant_group,
+                "variants": variants,
+                "test_dimension": test_dimension,
+            },
+            trace_id=input.trace_id,
+        )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 12. CONTENT REPURPOSING AGENT
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 class ContentRepurposingAgent(BaseMarketingAgent):
     name = "content_repurposing"
@@ -647,10 +768,12 @@ class ContentRepurposingAgent(BaseMarketingAgent):
         Output: { repurposed: [ { channel, content } ] }
         """
         source = input.payload.get("source_text", "")
-        channels = input.payload.get("target_channels", ["instagram", "twitter", "linkedin", "tiktok"])
+        channels = input.payload.get(
+            "target_channels", ["instagram", "twitter", "linkedin", "tiktok"]
+        )
 
         # Lazily cache the post generator — avoid creating per-call
-        if not hasattr(self, '_post_gen'):
+        if not hasattr(self, "_post_gen"):
             self._post_gen = SocialPostGeneratorAgent()
         repurposed = []
 
@@ -668,11 +791,15 @@ class ContentRepurposingAgent(BaseMarketingAgent):
             if result.success:
                 repurposed.append({"channel": ch, "content": result.data.get("post", {})})
 
-        return self._output(True, {
-            "repurposed": repurposed,
-            "source_length": len(source),
-            "channels_generated": len(repurposed),
-        }, trace_id=input.trace_id)
+        return self._output(
+            True,
+            {
+                "repurposed": repurposed,
+                "source_length": len(source),
+                "channels_generated": len(repurposed),
+            },
+            trace_id=input.trace_id,
+        )
 
     def _extract_key_points(self, text: str, max_points: int = 5) -> list[str]:
         """Simple extraction — in production, use LLM."""
@@ -684,6 +811,7 @@ class ContentRepurposingAgent(BaseMarketingAgent):
 # 13. PERFORMANCE FEEDBACK AGENT
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 class PerformanceFeedbackAgent(BaseMarketingAgent):
     name = "performance_feedback"
     description = "Analyzes campaign/content performance and generates actionable feedback."
@@ -691,17 +819,23 @@ class PerformanceFeedbackAgent(BaseMarketingAgent):
 
     async def execute(self, input: AgentInput) -> AgentOutput:
         metrics = input.payload.get("metrics", [])
-        channel = input.payload.get("channel")
+        input.payload.get("channel")
 
         if not metrics:
-            return self._output(True, {
-                "feedback": "No performance data available yet. Publish content to start tracking.",
-                "recommendations": [],
-            }, trace_id=input.trace_id)
+            return self._output(
+                True,
+                {
+                    "feedback": "No performance data available yet. Publish content to start tracking.",
+                    "recommendations": [],
+                },
+                trace_id=input.trace_id,
+            )
 
         # Analyze aggregate metrics
         total_impressions = sum(m.get("impressions", 0) for m in metrics)
-        total_engagement = sum(m.get("likes", 0) + m.get("comments", 0) + m.get("shares", 0) for m in metrics)
+        total_engagement = sum(
+            m.get("likes", 0) + m.get("comments", 0) + m.get("shares", 0) for m in metrics
+        )
         avg_er = (total_engagement / max(total_impressions, 1)) * 100
 
         feedback = {

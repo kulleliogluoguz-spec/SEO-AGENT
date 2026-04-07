@@ -8,16 +8,17 @@ All AI calls use local Ollama qwen3:8b — zero external API cost.
 """
 
 import json
+
 import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, List
 
 # No prefix here — main.py registers with prefix="/api/v1/organic"
 router = APIRouter(tags=["organic-growth"])
 
 
 # ─── Request Models (match frontend field names exactly) ─────────────────────
+
 
 class GrowthScoreRequest(BaseModel):
     business_name: str = ""
@@ -26,7 +27,7 @@ class GrowthScoreRequest(BaseModel):
     current_monthly_revenue: str = ""
     main_product_service: str = ""
     geographic_focus: str = ""
-    current_channels: List[str] = []
+    current_channels: list[str] = []
     monthly_budget: str = "0"
     team_size: str = "1"
     biggest_challenge: str = ""
@@ -55,7 +56,7 @@ class HookRequest(BaseModel):
     topic: str
     target_audience: str
     platform: str = "twitter"
-    frameworks: Optional[List[str]] = None
+    frameworks: list[str] | None = None
 
 
 class AudienceIntelRequest(BaseModel):
@@ -74,10 +75,11 @@ class OutreachStrategyRequest(BaseModel):
 class GrowthLoopRequest(BaseModel):
     business_model: str
     target_audience: str
-    current_channels: List[str] = []
+    current_channels: list[str] = []
 
 
 # ─── Ollama helper ───────────────────────────────────────────────────────────
+
 
 async def ask_ollama(prompt: str) -> str:
     """Call local Ollama qwen3:8b. No external API calls."""
@@ -85,7 +87,7 @@ async def ask_ollama(prompt: str) -> str:
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 "http://localhost:11434/api/generate",
-                json={"model": "qwen3:8b", "prompt": prompt, "stream": False}
+                json={"model": "qwen3:8b", "prompt": prompt, "stream": False},
             )
             if resp.status_code == 200:
                 return resp.json().get("response", "").strip()
@@ -106,6 +108,7 @@ def extract_json(text: str) -> dict:
 
 
 # ─── Growth Score ─────────────────────────────────────────────────────────────
+
 
 @router.post("/growth-score")
 async def calculate_growth_score(req: GrowthScoreRequest):
@@ -153,6 +156,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 
 # ─── SEO Intelligence ─────────────────────────────────────────────────────────
+
 
 @router.post("/seo/analyze")
 async def analyze_seo(req: SEOAnalyzeRequest):
@@ -252,6 +256,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 # ─── Social Media Organic Growth ─────────────────────────────────────────────
 
+
 @router.post("/social/strategy")
 async def get_social_strategy(req: SocialStrategyRequest):
     """Platform-specific organic growth strategy with follower projections."""
@@ -341,6 +346,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 # ─── Viral Hook Generator ─────────────────────────────────────────────────────
 
+
 @router.post("/hooks/generate")
 async def generate_hooks(req: HookRequest):
     """Viral hooks using proven copywriting frameworks."""
@@ -351,7 +357,11 @@ async def generate_hooks(req: HookRequest):
         "tiktok": "first 2 seconds of spoken word or on-screen text",
         "email": "subject line, 50 chars ideal",
     }
-    fw_text = ", ".join(req.frameworks) if req.frameworks else "curiosity gap, contrarian, social proof, pain point, story, data-driven"
+    fw_text = (
+        ", ".join(req.frameworks)
+        if req.frameworks
+        else "curiosity gap, contrarian, social proof, pain point, story, data-driven"
+    )
     prompt = f"""You are a viral copywriting expert. Generate hooks that stop the scroll.
 
 Platform: {req.platform} — {platform_specs.get(req.platform, 'general')}
@@ -434,6 +444,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 
 # ─── Audience Intelligence ─────────────────────────────────────────────────────
+
 
 @router.post("/audience/intelligence")
 async def get_audience_intelligence(req: AudienceIntelRequest):
@@ -565,6 +576,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 # ─── Free Outreach / User Acquisition ────────────────────────────────────────
 
+
 @router.post("/outreach/strategy")
 async def get_outreach_strategy(req: OutreachStrategyRequest):
     """Zero-budget acquisition channels + cold email sequences + growth loop."""
@@ -668,6 +680,7 @@ Respond ONLY with valid JSON, no markdown, no thinking tags:
 
 
 # ─── Growth Loop Builder ──────────────────────────────────────────────────────
+
 
 @router.post("/growth-loop")
 async def build_growth_loop(req: GrowthLoopRequest):

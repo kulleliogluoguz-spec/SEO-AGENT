@@ -10,13 +10,13 @@ Formula:
 
 All inputs and weights are logged for auditability.
 """
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 
 # Default weights (sum to 1.0)
 DEFAULT_WEIGHTS = {
     "impact": 0.35,
-    "effort_inverse": 0.20,   # inverted: low effort → high score
+    "effort_inverse": 0.20,  # inverted: low effort → high score
     "confidence": 0.20,
     "urgency": 0.15,
     "evidence": 0.10,
@@ -27,7 +27,7 @@ CATEGORY_MULTIPLIERS = {
     "on_page_seo": 0.95,
     "content_gap": 0.90,
     "internal_linking": 0.85,
-    "geo_aeo": 0.75,         # Discounted: experimental module
+    "geo_aeo": 0.75,  # Discounted: experimental module
     "experimentation": 0.80,
 }
 

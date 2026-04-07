@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
-from app.ai.providers.base import AIMessage, AIRequest, FinishReason
+from app.ai.prompts.prompt_registry import get_prompt_registry
+from app.ai.providers.base import AIRequest, FinishReason
 from app.ai.registry.model_registry import AIRole
 from app.ai.router.ai_router import get_ai_router
-from app.ai.prompts.prompt_registry import get_prompt_registry
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EngineResult:
     """Standardized result from any engine."""
+
     success: bool
-    data: Any = None              # Parsed structured output or raw text
+    data: Any = None  # Parsed structured output or raw text
     raw_content: str = ""
-    error: Optional[str] = None
+    error: str | None = None
     model_used: str = ""
     provider_used: str = ""
     latency_ms: float = 0.0
@@ -255,7 +256,9 @@ class GuardrailEngine(BaseEngine):
     ai_role = AIRole.GUARDRAIL
     default_prompt_id = "guardrail.content_check"
 
-    async def check_content(self, content: str, content_type: str = "general", platform: str = "web") -> EngineResult:
+    async def check_content(
+        self, content: str, content_type: str = "general", platform: str = "web"
+    ) -> EngineResult:
         context = {
             "content_to_check": content,
             "content_type": content_type,
@@ -333,7 +336,7 @@ class EngineManager:
             "eval": self.eval,
         }
 
-    def get_engine(self, name: str) -> Optional[BaseEngine]:
+    def get_engine(self, name: str) -> BaseEngine | None:
         return self._engines.get(name)
 
     def list_engines(self) -> list[dict[str, Any]]:
@@ -348,7 +351,7 @@ class EngineManager:
 
 
 # Singleton
-_manager: Optional[EngineManager] = None
+_manager: EngineManager | None = None
 
 
 def get_engine_manager() -> EngineManager:

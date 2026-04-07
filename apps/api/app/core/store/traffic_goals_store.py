@@ -6,24 +6,24 @@ Closes the gap between social activity and actual business results.
 
 Structure: storage/traffic_goals.json
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "traffic_goals.json"
 
 VALID_GOAL_TYPES = [
-    "traffic",          # Maximize page visits
-    "signups",          # Email/account signups
-    "leads",            # Lead form completions
-    "purchases",        # E-commerce conversions
-    "engaged_sessions", # Quality sessions (>2 min)
-    "followers",        # Social follower growth
-    "profile_visits",   # Social profile visits
+    "traffic",  # Maximize page visits
+    "signups",  # Email/account signups
+    "leads",  # Lead form completions
+    "purchases",  # E-commerce conversions
+    "engaged_sessions",  # Quality sessions (>2 min)
+    "followers",  # Social follower growth
+    "profile_visits",  # Social profile visits
 ]
 
 VALID_CHANNELS = ["x", "instagram", "tiktok", "meta_ads", "google_ads", "organic_search", "all"]
@@ -51,23 +51,29 @@ def upsert_traffic_goal(
     destination_url: str,
     target_monthly: int,
     channel: str = "all",
-    destination_description: Optional[str] = None,
-    utm_source: Optional[str] = None,
+    destination_description: str | None = None,
+    utm_source: str | None = None,
 ) -> dict:
     """Create or update a traffic/acquisition goal."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Check for existing goal of same type+channel
     for i, goal in enumerate(data["goals"]):
-        if goal["user_id"] == user_id and goal["goal_type"] == goal_type and goal["channel"] == channel:
-            data["goals"][i].update({
-                "destination_url": destination_url,
-                "target_monthly": target_monthly,
-                "destination_description": destination_description,
-                "utm_source": utm_source,
-                "updated_at": now,
-            })
+        if (
+            goal["user_id"] == user_id
+            and goal["goal_type"] == goal_type
+            and goal["channel"] == channel
+        ):
+            data["goals"][i].update(
+                {
+                    "destination_url": destination_url,
+                    "target_monthly": target_monthly,
+                    "destination_description": destination_description,
+                    "utm_source": utm_source,
+                    "updated_at": now,
+                }
+            )
             _save(data)
             return data["goals"][i]
 
@@ -105,13 +111,13 @@ def record_acquisition_outcome(
     goal_id: str,
     channel: str,
     count: int,
-    source_post_id: Optional[str] = None,
-    source_campaign_id: Optional[str] = None,
-    session_quality: Optional[float] = None,
+    source_post_id: str | None = None,
+    source_campaign_id: str | None = None,
+    session_quality: float | None = None,
 ) -> dict:
     """Record an acquisition outcome (visit, signup, conversion, etc.)."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     outcome = {
         "id": str(uuid.uuid4()),
@@ -150,20 +156,24 @@ def get_acquisition_summary(user_id: str) -> dict:
         by_channel[o["channel"]] = by_channel.get(o["channel"], 0) + o["count"]
 
     for goal in goals:
-        by_goal_type[goal["goal_type"]] = by_goal_type.get(goal["goal_type"], 0) + goal.get("current_monthly", 0)
+        by_goal_type[goal["goal_type"]] = by_goal_type.get(goal["goal_type"], 0) + goal.get(
+            "current_monthly", 0
+        )
 
     progress = []
     for goal in goals:
         pct = round(goal.get("current_monthly", 0) / max(goal["target_monthly"], 1) * 100, 1)
-        progress.append({
-            "goal_type": goal["goal_type"],
-            "destination_url": goal["destination_url"],
-            "channel": goal["channel"],
-            "current": goal.get("current_monthly", 0),
-            "target": goal["target_monthly"],
-            "progress_pct": pct,
-            "on_track": pct >= 66,  # rough 2/3 of target
-        })
+        progress.append(
+            {
+                "goal_type": goal["goal_type"],
+                "destination_url": goal["destination_url"],
+                "channel": goal["channel"],
+                "current": goal.get("current_monthly", 0),
+                "target": goal["target_monthly"],
+                "progress_pct": pct,
+                "on_track": pct >= 66,  # rough 2/3 of target
+            }
+        )
 
     return {
         "total_all_time": total_all_time,

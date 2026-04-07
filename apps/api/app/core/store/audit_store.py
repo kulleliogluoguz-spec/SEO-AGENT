@@ -11,13 +11,13 @@ Structure: storage/audit_log.jsonl (newline-delimited JSON for append efficiency
 
 Migration path: PostgreSQL audit_events table with partitioning by month.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 LOG_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "audit_log.jsonl"
 
@@ -25,13 +25,13 @@ LOG_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "audi
 def write_audit_event(
     user_id: str,
     action: str,
-    channel: Optional[str] = None,
+    channel: str | None = None,
     success: bool = True,
-    post_id: Optional[str] = None,
-    content_id: Optional[str] = None,
-    campaign_id: Optional[str] = None,
-    error: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    post_id: str | None = None,
+    content_id: str | None = None,
+    campaign_id: str | None = None,
+    error: str | None = None,
+    metadata: dict | None = None,
 ) -> dict:
     """
     Write an audit event for an autonomous system action.
@@ -56,7 +56,7 @@ def write_audit_event(
         "campaign_id": campaign_id,
         "error": error,
         "metadata": metadata or {},
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     with open(LOG_PATH, "a") as f:
@@ -68,8 +68,8 @@ def write_audit_event(
 def get_recent_events(
     user_id: str,
     limit: int = 50,
-    action_prefix: Optional[str] = None,
-    channel: Optional[str] = None,
+    action_prefix: str | None = None,
+    channel: str | None = None,
 ) -> list[dict]:
     """Return most recent audit events for a user, newest first."""
     if not LOG_PATH.exists():

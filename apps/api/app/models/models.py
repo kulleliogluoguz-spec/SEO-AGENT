@@ -1,8 +1,9 @@
 """
 Core SQLAlchemy models: users, organizations, workspaces, memberships.
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
@@ -24,7 +25,7 @@ from app.core.db.database import Base
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class MemberRole(str, PyEnum):
@@ -45,12 +46,11 @@ class AutonomyLevel(int, PyEnum):
 
 # ─── Users ────────────────────────────────────────────────────────────────────
 
+
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255))
@@ -65,14 +65,15 @@ class User(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
     )
 
-    memberships: Mapped[list["Membership"]] = relationship(back_populates="user", foreign_keys="Membership.user_id")
-
-    __table_args__ = (
-        Index("ix_users_email_lower", func.lower(email)),
+    memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="user", foreign_keys="Membership.user_id"
     )
+
+    __table_args__ = (Index("ix_users_email_lower", func.lower(email)),)
 
 
 # ─── Organizations ────────────────────────────────────────────────────────────
+
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -85,7 +86,9 @@ class Organization(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     workspaces: Mapped[list["Workspace"]] = relationship(back_populates="organization")
     memberships: Mapped[list["Membership"]] = relationship(back_populates="organization")
@@ -93,16 +96,23 @@ class Organization(Base):
 
 # ─── Memberships ─────────────────────────────────────────────────────────────
 
+
 class Membership(Base):
     __tablename__ = "memberships"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
     role: Mapped[str] = mapped_column(
         SAEnum(MemberRole, name="member_role"), default=MemberRole.VIEWER, nullable=False
     )
-    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -116,11 +126,14 @@ class Membership(Base):
 
 # ─── Workspaces ───────────────────────────────────────────────────────────────
 
+
 class Workspace(Base):
     __tablename__ = "workspaces"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -128,17 +141,18 @@ class Workspace(Base):
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     organization: Mapped["Organization"] = relationship(back_populates="workspaces")
     sites: Mapped[list["Site"]] = relationship(back_populates="workspace")
 
-    __table_args__ = (
-        UniqueConstraint("organization_id", "slug", name="uq_workspace_org_slug"),
-    )
+    __table_args__ = (UniqueConstraint("organization_id", "slug", name="uq_workspace_org_slug"),)
 
 
 # ─── Sites ────────────────────────────────────────────────────────────────────
+
 
 class SiteStatus(str, PyEnum):
     PENDING = "pending"
@@ -152,7 +166,9 @@ class Site(Base):
     __tablename__ = "sites"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"))
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")
+    )
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     name: Mapped[str | None] = mapped_column(String(255))
@@ -165,7 +181,9 @@ class Site(Base):
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     workspace: Mapped["Workspace"] = relationship(back_populates="sites")
     crawls: Mapped[list["Crawl"]] = relationship(back_populates="site")
@@ -173,6 +191,7 @@ class Site(Base):
 
 
 # ─── Crawls ───────────────────────────────────────────────────────────────────
+
 
 class CrawlStatus(str, PyEnum):
     QUEUED = "queued"
@@ -186,7 +205,9 @@ class Crawl(Base):
     __tablename__ = "crawls"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"))
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE")
+    )
     status: Mapped[str] = mapped_column(
         SAEnum(CrawlStatus, name="crawl_status"), default=CrawlStatus.QUEUED
     )
@@ -202,16 +223,16 @@ class Crawl(Base):
     site: Mapped["Site"] = relationship(back_populates="crawls")
     pages: Mapped[list["CrawlPage"]] = relationship(back_populates="crawl")
 
-    __table_args__ = (
-        Index("ix_crawls_site_id_status", "site_id", "status"),
-    )
+    __table_args__ = (Index("ix_crawls_site_id_status", "site_id", "status"),)
 
 
 class CrawlPage(Base):
     __tablename__ = "crawl_pages"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    crawl_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("crawls.id", ondelete="CASCADE"))
+    crawl_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("crawls.id", ondelete="CASCADE")
+    )
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     canonical_url: Mapped[str | None] = mapped_column(String(2048))
     status_code: Mapped[int | None] = mapped_column(Integer)
@@ -239,6 +260,7 @@ class CrawlPage(Base):
 
 # ─── Recommendations ──────────────────────────────────────────────────────────
 
+
 class RecommendationStatus(str, PyEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -252,7 +274,9 @@ class Recommendation(Base):
     __tablename__ = "recommendations"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"))
+    site_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE")
+    )
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"))
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -278,7 +302,9 @@ class Recommendation(Base):
     generated_by_agent: Mapped[str | None] = mapped_column(String(100))
     generated_by_workflow: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     site: Mapped["Site"] = relationship(back_populates="recommendations")
 
@@ -289,6 +315,7 @@ class Recommendation(Base):
 
 
 # ─── Content Assets ───────────────────────────────────────────────────────────
+
 
 class ContentStatus(str, PyEnum):
     DRAFT = "draft"
@@ -315,13 +342,18 @@ class ContentAsset(Base):
     compliance_flags: Mapped[list] = mapped_column(JSONB, default=list)
     risk_score: Mapped[float] = mapped_column(default=0.0)
     generated_by_agent: Mapped[str | None] = mapped_column(String(100))
-    approved_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 # ─── Approvals ────────────────────────────────────────────────────────────────
+
 
 class ApprovalStatus(str, PyEnum):
     PENDING = "pending"
@@ -344,8 +376,12 @@ class Approval(Base):
     status: Mapped[str] = mapped_column(
         SAEnum(ApprovalStatus, name="approval_status"), default=ApprovalStatus.PENDING
     )
-    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
     review_note: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -359,11 +395,14 @@ class Approval(Base):
 
 # ─── Activity Logs ────────────────────────────────────────────────────────────
 
+
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id")
+    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     agent_id: Mapped[str | None] = mapped_column(String(100))
     action: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -371,14 +410,15 @@ class ActivityLog(Base):
     entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
     ip_address: Mapped[str | None] = mapped_column(String(45))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-
-    __table_args__ = (
-        Index("ix_activity_workspace_created", "workspace_id", "created_at"),
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
     )
+
+    __table_args__ = (Index("ix_activity_workspace_created", "workspace_id", "created_at"),)
 
 
 # ─── Reports ─────────────────────────────────────────────────────────────────
+
 
 class Report(Base):
     __tablename__ = "reports"
@@ -401,6 +441,7 @@ class Report(Base):
 
 # ─── Agent/Workflow Runs ──────────────────────────────────────────────────────
 
+
 class AgentRunStatus(str, PyEnum):
     RUNNING = "running"
     COMPLETED = "completed"
@@ -412,7 +453,9 @@ class AgentRun(Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"))
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id")
+    )
     agent_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     status: Mapped[str] = mapped_column(

@@ -1,10 +1,10 @@
 """Unit tests for the GEO Auditor agent."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, patch
 
-from app.agents.geo.geo_auditor import GEOAuditor, GEOCheckResult
-
+from app.agents.geo.geo_auditor import GEOAuditor
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +86,7 @@ support@acme.example.com
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_check_llms_txt_present():

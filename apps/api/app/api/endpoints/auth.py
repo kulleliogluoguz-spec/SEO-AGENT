@@ -4,8 +4,9 @@ Authentication endpoints: login, register, refresh, me.
 IMPORTANT: get_current_user dependency is imported from app.api.dependencies.auth
 and NOT redefined here. The original code defined it after use (NameError at import).
 """
+
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -69,7 +70,7 @@ async def login(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
 
     return TokenResponse(
@@ -103,11 +104,19 @@ async def register(
     db.add(org)
     await db.flush()
 
-    db.add(Membership(
-        user_id=user.id, organization_id=org.id,
-        role=MemberRole.OWNER, accepted_at=datetime.now(timezone.utc),
-    ))
-    db.add(Workspace(organization_id=org.id, name="My Workspace", slug="my-workspace", autonomy_level=1))
+    db.add(
+        Membership(
+            user_id=user.id,
+            organization_id=org.id,
+            role=MemberRole.OWNER,
+            accepted_at=datetime.now(UTC),
+        )
+    )
+    db.add(
+        Workspace(
+            organization_id=org.id, name="My Workspace", slug="my-workspace", autonomy_level=1
+        )
+    )
     await db.commit()
     await db.refresh(user)
     return user
@@ -120,6 +129,7 @@ async def refresh_token_endpoint(
 ) -> TokenResponse:
     """Exchange refresh token for new access token."""
     from jose import JWTError
+
     try:
         payload = decode_token(refresh_token)
         if payload.get("type") != "refresh":
@@ -170,7 +180,7 @@ async def get_me(
         "full_name": current_user.full_name,
         "avatar_url": current_user.avatar_url,
         "is_active": current_user.is_active,
-        "created_at": getattr(current_user, "created_at", None) or datetime.now(timezone.utc),
+        "created_at": getattr(current_user, "created_at", None) or datetime.now(UTC),
         "workspace_id": workspace_id,
     }
 
@@ -179,11 +189,11 @@ async def get_me(
 async def get_connections(current_user=Depends(get_current_user)):
     """Return list of connected OAuth platforms for the current user."""
     from app.core.store.credential_store import list_credentials
+
     try:
         creds = list_credentials(str(current_user.id))
         connections = [
-            {"platform": c["platform"], "connected_at": c.get("created_at")}
-            for c in creds
+            {"platform": c["platform"], "connected_at": c.get("created_at")} for c in creds
         ]
     except Exception:
         connections = []

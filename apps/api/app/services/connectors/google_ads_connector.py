@@ -2,6 +2,7 @@
 Google Ads API Connector
 Fetches campaigns, ad groups, and performance metrics via the Google Ads API v17+.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,9 +35,7 @@ class GoogleAdsConnector:
         try:
             from google.ads.googleads.client import GoogleAdsClient
         except ImportError as e:
-            raise RuntimeError(
-                "google-ads SDK not installed. Run: pip install google-ads"
-            ) from e
+            raise RuntimeError("google-ads SDK not installed. Run: pip install google-ads") from e
 
         config = {
             "developer_token": self.credentials["developer_token"],
@@ -63,9 +62,7 @@ class GoogleAdsConnector:
         accounts = []
         for resource_name in accessible.resource_names:
             customer_id = resource_name.split("/")[-1]
-            accounts.append(
-                {"account_id": customer_id, "resource_name": resource_name}
-            )
+            accounts.append({"account_id": customer_id, "resource_name": resource_name})
         return accounts
 
     # ── Campaign sync ─────────────────────────────────────────────────────────
@@ -200,9 +197,7 @@ class GoogleAdsConnector:
             logger.error("[google_ads] summary failed: %s", e)
 
         total["roas"] = total["revenue"] / total["spend"] if total["spend"] > 0 else 0
-        total["cpa"] = (
-            total["spend"] / total["conversions"] if total["conversions"] > 0 else None
-        )
+        total["cpa"] = total["spend"] / total["conversions"] if total["conversions"] > 0 else None
         return total
 
     # ── Mutations ─────────────────────────────────────────────────────────────
@@ -219,18 +214,14 @@ class GoogleAdsConnector:
         budget_service = self.client.get_service("CampaignBudgetService")
         op = self.client.get_type("CampaignBudgetOperation")
         budget = op.update
-        budget.resource_name = (
-            f"customers/{customer_id}/campaignBudgets/{campaign_budget_id}"
-        )
+        budget.resource_name = f"customers/{customer_id}/campaignBudgets/{campaign_budget_id}"
         budget.amount_micros = int(new_budget_usd * 1_000_000)
         field_mask = self.client.get_type("FieldMask")
         field_mask.paths.append("amount_micros")
         op.update_mask.CopyFrom(field_mask)
 
         try:
-            budget_service.mutate_campaign_budgets(
-                customer_id=customer_id, operations=[op]
-            )
+            budget_service.mutate_campaign_budgets(customer_id=customer_id, operations=[op])
             return True
         except GoogleAdsException as e:
             logger.error("[google_ads] update_campaign_budget failed: %s", e)

@@ -115,7 +115,7 @@ export default function LearningPage() {
           </div>
           <div>
             <h1 className="text-xl font-semibold">Learning Loop</h1>
-            <p className="text-sm text-gray-500">What the system knows, what it's learning, and why it's changing strategy</p>
+            <p className="text-sm text-gray-500">What the system knows, what it&rsquo;s learning, and why it&rsquo;s changing strategy</p>
           </div>
         </div>
         <button

@@ -2,11 +2,11 @@
 Mautic Integration Bridge — lead sync and AI-assisted outreach.
 All email sends require human approval. Never auto-send.
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 import requests
 
@@ -41,7 +41,7 @@ class MauticBridge:
             logger.error("Mautic POST %s: %s", ep, e)
             return {}
 
-    def sync_contact(self, contact: dict, score: int = 0) -> Optional[str]:
+    def sync_contact(self, contact: dict, score: int = 0) -> str | None:
         name_parts = (contact.get("full_name") or "").split()
         payload = {
             "email": contact.get("email"),
@@ -98,9 +98,7 @@ Do NOT use "I hope this email finds you well"."""
             timeout=90,
         )
         lines = draft.strip().split("\n")
-        subject = (
-            lines[0].replace("Subject:", "").strip() if lines else "Following up"
-        )
+        subject = lines[0].replace("Subject:", "").strip() if lines else "Following up"
         body = "\n".join(lines[2:]).strip() if len(lines) > 2 else draft
 
         return {

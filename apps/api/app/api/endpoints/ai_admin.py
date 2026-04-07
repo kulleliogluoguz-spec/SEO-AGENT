@@ -18,37 +18,39 @@ Provides admin/control surfaces for:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-# ─── Import all AI subsystem components ───────────────────────────
-from app.ai.registry.model_registry import get_model_registry, AIRole, DeploymentProfile
-from app.ai.providers.provider_manager import get_provider_manager
-from app.ai.router.ai_router import get_ai_router, RoutingPolicy
-from app.ai.prompts.prompt_registry import get_prompt_registry, PromptCategory
 from app.ai.engines.engine_manager import get_engine_manager
-from app.ai.tools.tool_registry import get_tool_registry
-from app.ai.memory.context_manager import get_context_manager
+from app.ai.evaluation.eval_harness import get_eval_harness
 from app.ai.guardrails.guardrail_manager import get_guardrail_manager
 from app.ai.observability.tracer import get_ai_tracer
-from app.ai.evaluation.eval_harness import get_eval_harness
-from app.ai.training.training_manager import get_dataset_manager, get_adapter_manager
+from app.ai.prompts.prompt_registry import PromptCategory, get_prompt_registry
+from app.ai.providers.provider_manager import get_provider_manager
+
+# ─── Import all AI subsystem components ───────────────────────────
+from app.ai.registry.model_registry import AIRole, DeploymentProfile, get_model_registry
+from app.ai.router.ai_router import get_ai_router
+from app.ai.tools.tool_registry import get_tool_registry
+from app.ai.training.training_manager import get_adapter_manager, get_dataset_manager
 
 router = APIRouter(prefix="/ai", tags=["AI Subsystem"])
 
 
 # ─── Request/Response Schemas ─────────────────────────────────────
 
+
 class AICompletionRequest(BaseModel):
     """Request body for AI completion."""
+
     message: str
     engine: str = "reasoning"
     context: dict[str, Any] = Field(default_factory=dict)
     temperature: float = 0.3
     max_tokens: int = 4096
-    response_format: Optional[dict] = None
+    response_format: dict | None = None
     workspace_id: str = ""
     site_id: str = ""
 
@@ -64,12 +66,12 @@ class ShadowModeRequest(BaseModel):
 
 
 class RoutingPolicyUpdate(BaseModel):
-    profile: Optional[str] = None
-    prefer_free: Optional[bool] = None
-    enable_fallback: Optional[bool] = None
-    fallback_to_anthropic: Optional[bool] = None
-    enable_shadow: Optional[bool] = None
-    role_overrides: Optional[dict[str, str]] = None
+    profile: str | None = None
+    prefer_free: bool | None = None
+    enable_fallback: bool | None = None
+    fallback_to_anthropic: bool | None = None
+    enable_shadow: bool | None = None
+    role_overrides: dict[str, str] | None = None
 
 
 class PromptVersionRequest(BaseModel):
@@ -82,6 +84,7 @@ class EvalRunRequest(BaseModel):
 
 
 # ─── AI Completion ────────────────────────────────────────────────
+
 
 @router.post("/complete")
 async def ai_complete(req: AICompletionRequest) -> dict[str, Any]:
@@ -118,6 +121,7 @@ async def ai_complete(req: AICompletionRequest) -> dict[str, Any]:
 
 
 # ─── Model Registry ──────────────────────────────────────────────
+
 
 @router.get("/models")
 async def list_models() -> dict[str, Any]:
@@ -179,6 +183,7 @@ async def list_role_assignments() -> dict[str, Any]:
 
 # ─── Providers ────────────────────────────────────────────────────
 
+
 @router.get("/providers/health")
 async def provider_health() -> dict[str, Any]:
     """Check health of all AI providers."""
@@ -194,6 +199,7 @@ async def provider_models() -> dict[str, Any]:
 
 
 # ─── Router ───────────────────────────────────────────────────────
+
 
 @router.get("/router/policy")
 async def get_routing_policy() -> dict[str, Any]:
@@ -238,6 +244,7 @@ async def update_routing_policy(req: RoutingPolicyUpdate) -> dict[str, Any]:
 
 # ─── Engines ──────────────────────────────────────────────────────
 
+
 @router.get("/engines")
 async def list_engines() -> dict[str, Any]:
     """List all AI engines and their stats."""
@@ -247,9 +254,10 @@ async def list_engines() -> dict[str, Any]:
 
 # ─── Prompts ──────────────────────────────────────────────────────
 
+
 @router.get("/prompts")
 async def list_prompts(
-    category: Optional[str] = Query(None),
+    category: str | None = Query(None),
 ) -> dict[str, Any]:
     """List all prompt templates."""
     registry = get_prompt_registry()
@@ -257,26 +265,28 @@ async def list_prompts(
         try:
             cat = PromptCategory(category)
             prompts = registry.list_by_category(cat)
-            return {"prompts": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "category": p.category.value,
-                    "version": p.version,
-                    "fingerprint": p.fingerprint,
-                    "variables": p.variables,
-                    "output_format": p.output_format,
-                    "example_count": len(p.examples),
-                }
-                for p in prompts
-            ]}
+            return {
+                "prompts": [
+                    {
+                        "id": p.id,
+                        "name": p.name,
+                        "category": p.category.value,
+                        "version": p.version,
+                        "fingerprint": p.fingerprint,
+                        "variables": p.variables,
+                        "output_format": p.output_format,
+                        "example_count": len(p.examples),
+                    }
+                    for p in prompts
+                ]
+            }
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
     return {"prompts": registry.list_all()}
 
 
 @router.get("/prompts/{prompt_id}")
-async def get_prompt(prompt_id: str, version: Optional[str] = None) -> dict[str, Any]:
+async def get_prompt(prompt_id: str, version: str | None = None) -> dict[str, Any]:
     """Get a specific prompt template."""
     registry = get_prompt_registry()
     prompt = registry.get(prompt_id, version=version)
@@ -292,7 +302,9 @@ async def get_prompt(prompt_id: str, version: Optional[str] = None) -> dict[str,
         "variables": prompt.variables,
         "output_format": prompt.output_format,
         "output_schema": prompt.output_schema,
-        "examples": [{"input": e.input, "output": e.output, "label": e.label} for e in prompt.examples],
+        "examples": [
+            {"input": e.input, "output": e.output, "label": e.label} for e in prompt.examples
+        ],
         "fingerprint": prompt.fingerprint,
     }
 
@@ -303,11 +315,12 @@ async def activate_prompt_version(req: PromptVersionRequest) -> dict[str, Any]:
     registry = get_prompt_registry()
     success = registry.set_active_version(req.prompt_id, req.version)
     if not success:
-        raise HTTPException(status_code=404, detail=f"Prompt/version not found")
+        raise HTTPException(status_code=404, detail="Prompt/version not found")
     return {"status": "activated", "prompt_id": req.prompt_id, "version": req.version}
 
 
 # ─── Tools ────────────────────────────────────────────────────────
+
 
 @router.get("/tools")
 async def list_tools() -> dict[str, Any]:
@@ -324,6 +337,7 @@ async def get_tool_executions(limit: int = 50) -> dict[str, Any]:
 
 
 # ─── Traces / Observability ──────────────────────────────────────
+
 
 @router.get("/traces")
 async def get_traces(
@@ -351,6 +365,7 @@ async def get_cost_report() -> dict[str, Any]:
 
 
 # ─── Evaluation ───────────────────────────────────────────────────
+
 
 @router.get("/evals/suites")
 async def list_eval_suites() -> dict[str, Any]:
@@ -390,6 +405,7 @@ async def run_eval_suite(req: EvalRunRequest) -> dict[str, Any]:
 
 # ─── Training / Datasets ─────────────────────────────────────────
 
+
 @router.get("/training/stats")
 async def get_training_stats() -> dict[str, Any]:
     """Get training dataset statistics."""
@@ -405,6 +421,7 @@ async def list_adapters() -> dict[str, Any]:
 
 
 # ─── Guardrails ──────────────────────────────────────────────────
+
 
 @router.get("/guardrails/stats")
 async def get_guardrail_stats() -> dict[str, Any]:
@@ -438,6 +455,7 @@ async def check_output(content: str = "", content_type: str = "general") -> dict
 
 
 # ─── System Overview ─────────────────────────────────────────────
+
 
 @router.get("/status")
 async def ai_system_status() -> dict[str, Any]:

@@ -2,6 +2,7 @@
 Recommendations endpoints: list, get, update status.
 Falls back to demo store when PostgreSQL is unavailable.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,7 +23,10 @@ router = APIRouter()
 
 def _is_db_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return any(k in msg for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table"))
+    return any(
+        k in msg
+        for k in ("connection refused", "asyncpg", "psycopg", "could not connect", "no such table")
+    )
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -38,6 +42,7 @@ async def list_recommendations(
 ):
     try:
         from sqlalchemy import func as sqlfunc
+
         query = select(Recommendation).where(
             Recommendation.site_id == site_id,
             Recommendation.priority_score >= min_priority,
@@ -48,23 +53,32 @@ async def list_recommendations(
             query = query.where(Recommendation.status == status)
         count_q = select(sqlfunc.count()).select_from(query.subquery())
         total = (await db.execute(count_q)).scalar()
-        query = query.order_by(Recommendation.priority_score.desc()).offset((page - 1) * page_size).limit(page_size)
+        query = (
+            query.order_by(Recommendation.priority_score.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         recs = (await db.execute(query)).scalars().all()
         return PaginatedResponse(
             items=[RecommendationResponse.model_validate(r) for r in recs],
-            total=total, page=page, page_size=page_size,
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
     except Exception as exc:
         if not _is_db_error(exc):
             raise
         from app.core.store.demo_store import get_recommendations
+
         items = get_recommendations(str(site_id), category)
         total = len(items)
         start = (page - 1) * page_size
         return PaginatedResponse(
-            items=items[start: start + page_size],
-            total=total, page=page, page_size=page_size,
+            items=items[start : start + page_size],
+            total=total,
+            page=page,
+            page_size=page_size,
             pages=max(1, -(-total // page_size)),
         )
 

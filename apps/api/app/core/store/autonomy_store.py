@@ -17,22 +17,28 @@ Enforcement contract:
 These policies are enforced at the API layer (campaigns, content publish endpoints).
 The frontend reads them to render the correct UI state.
 """
+
 from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "autonomy_store.json"
 
 _DEFAULT: dict = {"policies": []}
 
 CHANNELS = [
-    "instagram", "tiktok", "x", "youtube",
-    "meta_ads", "google_ads", "tiktok_ads",
-    "linkedin_ads", "pinterest_ads",
+    "instagram",
+    "tiktok",
+    "x",
+    "youtube",
+    "meta_ads",
+    "google_ads",
+    "tiktok_ads",
+    "linkedin_ads",
+    "pinterest_ads",
 ]
 
 
@@ -66,11 +72,11 @@ def _default_policy(user_id: str, channel: str) -> dict:
         "max_daily_spend_usd": 0.0,
         "reallocation_cap_pct": 0,
         "approval_threshold_usd": 50.0,
-        "quiet_hours_start": None,   # "22:00" local time
-        "quiet_hours_end": None,     # "07:00" local time
+        "quiet_hours_start": None,  # "22:00" local time
+        "quiet_hours_end": None,  # "07:00" local time
         "kill_switch": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -96,7 +102,7 @@ def get_all_policies(user_id: str) -> list[dict]:
 def upsert_policy(user_id: str, channel: str, updates: dict) -> dict:
     """Create or update an automation policy for a channel."""
     data = _load()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Find existing
     existing_idx = None
@@ -108,9 +114,16 @@ def upsert_policy(user_id: str, channel: str, updates: dict) -> dict:
     if existing_idx is not None:
         policy = data["policies"][existing_idx]
         allowed_keys = {
-            "autonomy_mode", "content_auto_publish", "ads_auto_launch",
-            "max_daily_posts", "max_daily_spend_usd", "reallocation_cap_pct",
-            "approval_threshold_usd", "quiet_hours_start", "quiet_hours_end", "kill_switch",
+            "autonomy_mode",
+            "content_auto_publish",
+            "ads_auto_launch",
+            "max_daily_posts",
+            "max_daily_spend_usd",
+            "reallocation_cap_pct",
+            "approval_threshold_usd",
+            "quiet_hours_start",
+            "quiet_hours_end",
+            "kill_switch",
         }
         for k, v in updates.items():
             if k in allowed_keys:
@@ -120,9 +133,16 @@ def upsert_policy(user_id: str, channel: str, updates: dict) -> dict:
     else:
         policy = _default_policy(user_id, channel)
         allowed_keys = {
-            "autonomy_mode", "content_auto_publish", "ads_auto_launch",
-            "max_daily_posts", "max_daily_spend_usd", "reallocation_cap_pct",
-            "approval_threshold_usd", "quiet_hours_start", "quiet_hours_end", "kill_switch",
+            "autonomy_mode",
+            "content_auto_publish",
+            "ads_auto_launch",
+            "max_daily_posts",
+            "max_daily_spend_usd",
+            "reallocation_cap_pct",
+            "approval_threshold_usd",
+            "quiet_hours_start",
+            "quiet_hours_end",
+            "kill_switch",
         }
         for k, v in updates.items():
             if k in allowed_keys:
@@ -146,7 +166,7 @@ def is_quiet_hours(policy: dict) -> bool:
     if not start or not end:
         return False
     try:
-        now_t = datetime.now(timezone.utc).strftime("%H:%M")
+        now_t = datetime.now(UTC).strftime("%H:%M")
         # Handles overnight windows (e.g. 22:00 → 07:00)
         if start <= end:
             return start <= now_t < end
@@ -160,12 +180,13 @@ def get_daily_post_count(user_id: str, channel: str) -> int:
     """Count auto-published posts for this user/channel in the current UTC day."""
     try:
         from app.core.store.audit_store import get_recent_events
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         events = get_recent_events(user_id, limit=200, action_prefix="publish.", channel=channel)
         return sum(
-            1 for e in events
-            if e.get("success") is True
-            and e.get("timestamp", "").startswith(today)
+            1
+            for e in events
+            if e.get("success") is True and e.get("timestamp", "").startswith(today)
         )
     except Exception:
         return 0
@@ -190,12 +211,18 @@ def check_publish_allowed(user_id: str, channel: str) -> tuple[bool, str]:
     if not policy.get("content_auto_publish", False):
         return False, f"Auto-publish is off for '{channel}'. Enable it in Autonomy Settings."
     if is_quiet_hours(policy):
-        return False, f"Quiet hours active ({policy.get('quiet_hours_start')}–{policy.get('quiet_hours_end')}). Post will retry after quiet window."
+        return (
+            False,
+            f"Quiet hours active ({policy.get('quiet_hours_start')}–{policy.get('quiet_hours_end')}). Post will retry after quiet window.",
+        )
     max_daily = int(policy.get("max_daily_posts") or 0)
     if max_daily > 0:
         published_today = get_daily_post_count(user_id, channel)
         if published_today >= max_daily:
-            return False, f"Daily post limit reached ({published_today}/{max_daily} for '{channel}'). Resets at midnight UTC."
+            return (
+                False,
+                f"Daily post limit reached ({published_today}/{max_daily} for '{channel}'). Resets at midnight UTC.",
+            )
     return True, ""
 
 

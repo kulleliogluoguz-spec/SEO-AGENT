@@ -4,6 +4,7 @@ Base adapter interface for all official ads platform integrations.
 Every platform adapter must implement this interface.
 Capability stages control what operations are allowed without extra risk/permissions.
 """
+
 from __future__ import annotations
 
 import abc
@@ -11,15 +12,15 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class AdapterCapabilityStage(str, Enum):
     """Operational capability stage for an adapter instance."""
-    PLANNING = "planning"          # No API calls — intelligence and planning only
-    READ_REPORT = "read_report"    # Pull metrics, account structure, audiences
+
+    PLANNING = "planning"  # No API calls — intelligence and planning only
+    READ_REPORT = "read_report"  # Pull metrics, account structure, audiences
     DRAFT_CREATE = "draft_create"  # Create campaigns/ads in paused/draft state
     APPROVAL_GATE = "approval_gate"  # Requires human approval before publishing
     LIVE_OPTIMIZE = "live_optimize"  # Automated optimization loops on live campaigns
@@ -37,14 +38,15 @@ class AdapterStatus(str, Enum):
 @dataclass
 class AdapterCredentials:
     """Credentials container. Never log or serialize sensitive fields."""
+
     platform: str
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
-    account_id: Optional[str] = None
-    developer_token: Optional[str] = None
-    expires_at: Optional[datetime] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    account_id: str | None = None
+    developer_token: str | None = None
+    expires_at: datetime | None = None
     extra: dict[str, str] = field(default_factory=dict)
 
     def is_token_expired(self) -> bool:
@@ -66,12 +68,13 @@ class AdapterCredentials:
 @dataclass
 class CampaignDraft:
     """Minimal campaign specification for draft creation."""
+
     name: str
-    objective: str           # e.g. AWARENESS, TRAFFIC, CONVERSIONS, LEAD_GENERATION
+    objective: str  # e.g. AWARENESS, TRAFFIC, CONVERSIONS, LEAD_GENERATION
     budget_daily_usd: float
-    budget_lifetime_usd: Optional[float] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    budget_lifetime_usd: float | None = None
+    start_date: str | None = None
+    end_date: str | None = None
     status: str = "PAUSED"  # Always start paused — requires approval to publish
     targeting: dict = field(default_factory=dict)
     placements: list[str] = field(default_factory=list)
@@ -82,35 +85,38 @@ class CampaignDraft:
 @dataclass
 class AudienceDraft:
     """Audience targeting specification."""
+
     name: str
-    audience_type: str       # CUSTOM, LOOKALIKE, SAVED, INTEREST
-    age_min: Optional[int] = None
-    age_max: Optional[int] = None
+    audience_type: str  # CUSTOM, LOOKALIKE, SAVED, INTEREST
+    age_min: int | None = None
+    age_max: int | None = None
     genders: list[str] = field(default_factory=list)
     geo_locations: list[str] = field(default_factory=list)
     interests: list[str] = field(default_factory=list)
     behaviors: list[str] = field(default_factory=list)
-    custom_audience_source: Optional[str] = None  # pixel, list, engagement
-    lookalike_source_id: Optional[str] = None
+    custom_audience_source: str | None = None  # pixel, list, engagement
+    lookalike_source_id: str | None = None
     lookalike_ratio: float = 0.01  # 1%
 
 
 @dataclass
 class CreativeDraft:
     """Ad creative specification."""
+
     name: str
-    format: str              # IMAGE, VIDEO, CAROUSEL, STORY, COLLECTION
+    format: str  # IMAGE, VIDEO, CAROUSEL, STORY, COLLECTION
     headline: str
     body: str
-    cta: str                 # LEARN_MORE, SHOP_NOW, SIGN_UP, DOWNLOAD
+    cta: str  # LEARN_MORE, SHOP_NOW, SIGN_UP, DOWNLOAD
     destination_url: str
     media_urls: list[str] = field(default_factory=list)
-    overlay_text: Optional[str] = None
+    overlay_text: str | None = None
 
 
 @dataclass
 class CampaignMetrics:
     """Normalized metric snapshot from any platform."""
+
     campaign_id: str
     platform: str
     date: str
@@ -134,18 +140,19 @@ class CampaignMetrics:
 @dataclass
 class AdapterAuditLog:
     """Immutable audit record for every adapter operation."""
+
     platform: str
     operation: str
-    account_id: Optional[str]
-    entity_type: Optional[str]
-    entity_id: Optional[str]
-    status: str              # success | error | blocked_pending_approval
+    account_id: str | None
+    entity_type: str | None
+    entity_id: str | None
+    status: str  # success | error | blocked_pending_approval
     request_summary: dict
     response_summary: dict
-    error: Optional[str]
+    error: str | None
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    user_id: Optional[str] = None
-    workspace_id: Optional[str] = None
+    user_id: str | None = None
+    workspace_id: str | None = None
 
 
 class BaseAdsAdapter(abc.ABC):
@@ -161,7 +168,11 @@ class BaseAdsAdapter(abc.ABC):
     DOCS_URL: str = ""
     REQUIRED_SCOPES: list[str] = []
 
-    def __init__(self, credentials: AdapterCredentials, stage: AdapterCapabilityStage = AdapterCapabilityStage.PLANNING):
+    def __init__(
+        self,
+        credentials: AdapterCredentials,
+        stage: AdapterCapabilityStage = AdapterCapabilityStage.PLANNING,
+    ):
         self.credentials = credentials
         self.stage = stage
         self._audit_log: list[AdapterAuditLog] = []
@@ -197,7 +208,7 @@ class BaseAdsAdapter(abc.ABC):
     # ── Campaigns ─────────────────────────────────────────────────────────────
 
     @abc.abstractmethod
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """List campaigns in the linked ad account."""
 
     @abc.abstractmethod
@@ -231,7 +242,7 @@ class BaseAdsAdapter(abc.ABC):
     # ── Creatives ─────────────────────────────────────────────────────────────
 
     @abc.abstractmethod
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """List ad creatives."""
 
     @abc.abstractmethod
@@ -246,7 +257,7 @@ class BaseAdsAdapter(abc.ABC):
         campaign_ids: list[str],
         date_start: str,
         date_end: str,
-        breakdown: Optional[str] = None,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """Pull normalized campaign performance metrics."""
 
@@ -280,12 +291,12 @@ class BaseAdsAdapter(abc.ABC):
     def _log(
         self,
         operation: str,
-        entity_type: Optional[str] = None,
-        entity_id: Optional[str] = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
         status: str = "success",
-        request_summary: Optional[dict] = None,
-        response_summary: Optional[dict] = None,
-        error: Optional[str] = None,
+        request_summary: dict | None = None,
+        response_summary: dict | None = None,
+        error: str | None = None,
     ) -> AdapterAuditLog:
         record = AdapterAuditLog(
             platform=self.PLATFORM,
@@ -302,7 +313,12 @@ class BaseAdsAdapter(abc.ABC):
         log_method = logger.error if status == "error" else logger.info
         log_method(
             "[%s] %s entity=%s/%s status=%s error=%s",
-            self.PLATFORM, operation, entity_type, entity_id, status, error
+            self.PLATFORM,
+            operation,
+            entity_type,
+            entity_id,
+            status,
+            error,
         )
         return record
 
@@ -315,12 +331,14 @@ class BaseAdsAdapter(abc.ABC):
             "platform": self.PLATFORM,
             "stage": self.stage.value,
             "can_read": self.stage != AdapterCapabilityStage.PLANNING,
-            "can_create_drafts": self.stage in [
+            "can_create_drafts": self.stage
+            in [
                 AdapterCapabilityStage.DRAFT_CREATE,
                 AdapterCapabilityStage.APPROVAL_GATE,
                 AdapterCapabilityStage.LIVE_OPTIMIZE,
             ],
-            "can_publish": self.stage in [
+            "can_publish": self.stage
+            in [
                 AdapterCapabilityStage.APPROVAL_GATE,
                 AdapterCapabilityStage.LIVE_OPTIMIZE,
             ],
@@ -335,7 +353,9 @@ class BaseAdsAdapter(abc.ABC):
         return {
             "platform": self.PLATFORM,
             "stage": self.stage.value,
-            "status": "planning_only" if self.stage == AdapterCapabilityStage.PLANNING else "connected",
+            "status": "planning_only"
+            if self.stage == AdapterCapabilityStage.PLANNING
+            else "connected",
             "next_step": self._next_step(),
         }
 

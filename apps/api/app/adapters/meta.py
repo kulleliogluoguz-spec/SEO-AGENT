@@ -23,6 +23,7 @@ Rate limits:
 Campaign object hierarchy:
   AdAccount → Campaign → AdSet → Ad → Creative
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,6 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -58,6 +58,7 @@ _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 class MetaAPIError(Exception):
     """Raised when the Meta Graph API returns an error response."""
+
     def __init__(self, message: str, code: int = 0, subcode: int = 0):
         self.api_code = code
         self.api_subcode = subcode
@@ -102,7 +103,7 @@ class MetaAdsAdapter(BaseAdsAdapter):
         """Return base params dict with access_token for Graph API calls."""
         return {"access_token": self.credentials.access_token}
 
-    def _get(self, path: str, params: Optional[dict] = None, retries: int = 2) -> dict:
+    def _get(self, path: str, params: dict | None = None, retries: int = 2) -> dict:
         """
         Perform a GET request to the Graph API.
         Handles rate-limit (429) with exponential backoff.
@@ -137,7 +138,7 @@ class MetaAdsAdapter(BaseAdsAdapter):
 
         raise MetaAPIError(f"Failed after {retries} retries: {path}")
 
-    def _post(self, path: str, data: Optional[dict] = None, retries: int = 1) -> dict:
+    def _post(self, path: str, data: dict | None = None, retries: int = 1) -> dict:
         """
         Perform a POST request to the Graph API.
         """
@@ -202,12 +203,16 @@ class MetaAdsAdapter(BaseAdsAdapter):
 
         # Step 1: Short-lived token
         try:
-            r1 = httpx.post(META_TOKEN_URL, params={
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-                "code": code,
-            }, timeout=_TIMEOUT)
+            r1 = httpx.post(
+                META_TOKEN_URL,
+                params={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "code": code,
+                },
+                timeout=_TIMEOUT,
+            )
             r1_data = r1.json()
         except httpx.RequestError as e:
             raise MetaAPIError(f"Network error during token exchange: {e}")
@@ -224,12 +229,16 @@ class MetaAdsAdapter(BaseAdsAdapter):
 
         # Step 2: Long-lived token (60-day expiry)
         try:
-            r2 = httpx.get(META_TOKEN_URL, params={
-                "grant_type": "fb_exchange_token",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "fb_exchange_token": short_lived_token,
-            }, timeout=_TIMEOUT)
+            r2 = httpx.get(
+                META_TOKEN_URL,
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "fb_exchange_token": short_lived_token,
+                },
+                timeout=_TIMEOUT,
+            )
             r2_data = r2.json()
         except httpx.RequestError as e:
             # Fall back to short-lived token if extension fails
@@ -245,8 +254,11 @@ class MetaAdsAdapter(BaseAdsAdapter):
         expires_in = r2_data.get("expires_in", 5184000)  # Default 60 days
         expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
 
-        self._log("exchange_code", status="success",
-                  response_summary={"token_type": r2_data.get("token_type"), "expires_in": expires_in})
+        self._log(
+            "exchange_code",
+            status="success",
+            response_summary={"token_type": r2_data.get("token_type"), "expires_in": expires_in},
+        )
 
         return AdapterCredentials(
             platform="meta",
@@ -269,12 +281,16 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError("No access token to refresh")
 
         try:
-            r = httpx.get(META_TOKEN_URL, params={
-                "grant_type": "fb_exchange_token",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "fb_exchange_token": self.credentials.access_token,
-            }, timeout=_TIMEOUT)
+            r = httpx.get(
+                META_TOKEN_URL,
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "fb_exchange_token": self.credentials.access_token,
+                },
+                timeout=_TIMEOUT,
+            )
             data = r.json()
         except httpx.RequestError as e:
             raise MetaAPIError(f"Token refresh network error: {e}")
@@ -289,8 +305,9 @@ class MetaAdsAdapter(BaseAdsAdapter):
         expires_in = data.get("expires_in", 5184000)
         expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
 
-        self._log("refresh_access_token", status="success",
-                  response_summary={"expires_in": expires_in})
+        self._log(
+            "refresh_access_token", status="success", response_summary={"expires_in": expires_in}
+        )
 
         return AdapterCredentials(
             platform="meta",
@@ -313,8 +330,11 @@ class MetaAdsAdapter(BaseAdsAdapter):
 
         try:
             data = self._get("me", {"fields": "id,name"})
-            self._log("verify_credentials", status="success",
-                      response_summary={"user_id": data.get("id"), "name": data.get("name")})
+            self._log(
+                "verify_credentials",
+                status="success",
+                response_summary={"user_id": data.get("id"), "name": data.get("name")},
+            )
             return AdapterStatus.AUTH_VERIFIED
         except MetaAPIError as e:
             if e.api_code in (190, 102, 2500):  # Token invalid/expired codes
@@ -331,32 +351,51 @@ class MetaAdsAdapter(BaseAdsAdapter):
         account_status: 1=ACTIVE, 2=DISABLED, 3=UNSETTLED, 7=PENDING_RISK_REVIEW
         """
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
-        data = self._get("me/adaccounts", {
-            "fields": "id,name,account_status,currency,timezone_name,spend_cap,balance",
-            "limit": 50,
-        })
+        data = self._get(
+            "me/adaccounts",
+            {
+                "fields": "id,name,account_status,currency,timezone_name,spend_cap,balance",
+                "limit": 50,
+            },
+        )
 
         accounts = []
         for raw in data.get("data", []):
-            accounts.append({
-                "id": raw.get("id", "").replace("act_", ""),
-                "raw_id": raw.get("id"),
-                "name": raw.get("name", "Unnamed Account"),
-                "currency": raw.get("currency", "USD"),
-                "timezone": raw.get("timezone_name", "UTC"),
-                "status": self._account_status_label(raw.get("account_status", 0)),
-                "spend_cap": raw.get("spend_cap"),
-                "balance": raw.get("balance"),
-            })
+            accounts.append(
+                {
+                    "id": raw.get("id", "").replace("act_", ""),
+                    "raw_id": raw.get("id"),
+                    "name": raw.get("name", "Unnamed Account"),
+                    "currency": raw.get("currency", "USD"),
+                    "timezone": raw.get("timezone_name", "UTC"),
+                    "status": self._account_status_label(raw.get("account_status", 0)),
+                    "spend_cap": raw.get("spend_cap"),
+                    "balance": raw.get("balance"),
+                }
+            )
 
-        self._log("list_ad_accounts", "account", None, "success",
-                  response_summary={"count": len(accounts)})
+        self._log(
+            "list_ad_accounts",
+            "account",
+            None,
+            "success",
+            response_summary={"count": len(accounts)},
+        )
         return accounts
 
     def _account_status_label(self, status_code: int) -> str:
-        return {1: "ACTIVE", 2: "DISABLED", 3: "UNSETTLED", 7: "PENDING_RISK_REVIEW",
-                8: "PENDING_SETTLEMENT", 9: "IN_GRACE_PERIOD", 100: "PENDING_CLOSURE",
-                101: "CLOSED", 201: "ANY_ACTIVE", 202: "ANY_CLOSED"}.get(status_code, f"STATUS_{status_code}")
+        return {
+            1: "ACTIVE",
+            2: "DISABLED",
+            3: "UNSETTLED",
+            7: "PENDING_RISK_REVIEW",
+            8: "PENDING_SETTLEMENT",
+            9: "IN_GRACE_PERIOD",
+            100: "PENDING_CLOSURE",
+            101: "CLOSED",
+            201: "ANY_ACTIVE",
+            202: "ANY_CLOSED",
+        }.get(status_code, f"STATUS_{status_code}")
 
     def get_account_info(self) -> dict:
         """GET /act_{account_id}?fields=id,name,account_status,currency,spend_cap,balance"""
@@ -366,9 +405,12 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError("No account_id linked — call link_account first")
 
         act_id = f"act_{account_id}" if not account_id.startswith("act_") else account_id
-        data = self._get(act_id, {
-            "fields": "id,name,account_status,currency,timezone_name,spend_cap,balance,funding_source_details"
-        })
+        data = self._get(
+            act_id,
+            {
+                "fields": "id,name,account_status,currency,timezone_name,spend_cap,balance,funding_source_details"
+            },
+        )
 
         self._log("get_account_info", "account", account_id, "success")
         return {
@@ -384,7 +426,7 @@ class MetaAdsAdapter(BaseAdsAdapter):
 
     # ── Campaigns ─────────────────────────────────────────────────────────────
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """
         GET /act_{account_id}/campaigns
         Fields: id, name, status, objective, daily_budget, lifetime_budget, start_time, stop_time
@@ -405,21 +447,30 @@ class MetaAdsAdapter(BaseAdsAdapter):
         data = self._get(f"{act_id}/campaigns", params)
         campaigns = []
         for raw in data.get("data", []):
-            campaigns.append({
-                "id": raw.get("id"),
-                "name": raw.get("name"),
-                "status": raw.get("status"),
-                "objective": raw.get("objective"),
-                "daily_budget_usd": round(int(raw.get("daily_budget", 0)) / 100, 2),
-                "lifetime_budget_usd": round(int(raw.get("lifetime_budget", 0)) / 100, 2) if raw.get("lifetime_budget") else None,
-                "start_time": raw.get("start_time"),
-                "stop_time": raw.get("stop_time"),
-                "created_time": raw.get("created_time"),
-                "platform": "meta",
-            })
+            campaigns.append(
+                {
+                    "id": raw.get("id"),
+                    "name": raw.get("name"),
+                    "status": raw.get("status"),
+                    "objective": raw.get("objective"),
+                    "daily_budget_usd": round(int(raw.get("daily_budget", 0)) / 100, 2),
+                    "lifetime_budget_usd": round(int(raw.get("lifetime_budget", 0)) / 100, 2)
+                    if raw.get("lifetime_budget")
+                    else None,
+                    "start_time": raw.get("start_time"),
+                    "stop_time": raw.get("stop_time"),
+                    "created_time": raw.get("created_time"),
+                    "platform": "meta",
+                }
+            )
 
-        self._log("list_campaigns", "campaign", None, "success",
-                  response_summary={"count": len(campaigns)})
+        self._log(
+            "list_campaigns",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(campaigns)},
+        )
         return campaigns
 
     def create_campaign(self, draft: CampaignDraft) -> dict:
@@ -459,9 +510,14 @@ class MetaAdsAdapter(BaseAdsAdapter):
         data = self._post(f"{act_id}/campaigns", payload)
         campaign_id = data.get("id")
 
-        self._log("create_campaign", "campaign", campaign_id, "success",
-                  request_summary={"name": draft.name, "objective": objective, "status": "PAUSED"},
-                  response_summary={"campaign_id": campaign_id})
+        self._log(
+            "create_campaign",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"name": draft.name, "objective": objective, "status": "PAUSED"},
+            response_summary={"campaign_id": campaign_id},
+        )
 
         return {
             "id": campaign_id,
@@ -487,8 +543,13 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError(f"Invalid status '{status}'. Must be one of: {valid_statuses}")
 
         data = self._post(campaign_id, {"status": status})
-        self._log("update_campaign_status", "campaign", campaign_id, "success",
-                  request_summary={"status": status})
+        self._log(
+            "update_campaign_status",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"status": status},
+        )
         return {"id": campaign_id, "status": status, "success": data.get("success", True)}
 
     def update_campaign_budget(self, campaign_id: str, daily_budget_usd: float) -> dict:
@@ -496,9 +557,18 @@ class MetaAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.DRAFT_CREATE)
         daily_budget_cents = str(int(daily_budget_usd * 100))
         data = self._post(campaign_id, {"daily_budget": daily_budget_cents})
-        self._log("update_campaign_budget", "campaign", campaign_id, "success",
-                  request_summary={"daily_budget_usd": daily_budget_usd})
-        return {"id": campaign_id, "daily_budget_usd": daily_budget_usd, "success": data.get("success", True)}
+        self._log(
+            "update_campaign_budget",
+            "campaign",
+            campaign_id,
+            "success",
+            request_summary={"daily_budget_usd": daily_budget_usd},
+        )
+        return {
+            "id": campaign_id,
+            "daily_budget_usd": daily_budget_usd,
+            "success": data.get("success", True),
+        }
 
     # ── Ad Sets ───────────────────────────────────────────────────────────────
 
@@ -510,7 +580,7 @@ class MetaAdsAdapter(BaseAdsAdapter):
         targeting: dict,
         optimization_goal: str = "REACH",
         billing_event: str = "IMPRESSIONS",
-        bid_amount_cents: Optional[int] = None,
+        bid_amount_cents: int | None = None,
     ) -> dict:
         """
         POST /act_{account_id}/adsets
@@ -545,8 +615,13 @@ class MetaAdsAdapter(BaseAdsAdapter):
         data = self._post(f"{act_id}/adsets", payload)
         ad_set_id = data.get("id")
 
-        self._log("create_ad_set", "ad_set", ad_set_id, "success",
-                  request_summary={"name": name, "campaign_id": campaign_id})
+        self._log(
+            "create_ad_set",
+            "ad_set",
+            ad_set_id,
+            "success",
+            request_summary={"name": name, "campaign_id": campaign_id},
+        )
         return {"id": ad_set_id, "status": "PAUSED", "name": name}
 
     # ── Audiences ─────────────────────────────────────────────────────────────
@@ -559,24 +634,34 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError("No account linked")
 
         act_id = f"act_{account_id}" if not account_id.startswith("act_") else account_id
-        data = self._get(f"{act_id}/customaudiences", {
-            "fields": "id,name,subtype,approximate_count_lower_bound,approximate_count_upper_bound,description",
-            "limit": 100,
-        })
+        data = self._get(
+            f"{act_id}/customaudiences",
+            {
+                "fields": "id,name,subtype,approximate_count_lower_bound,approximate_count_upper_bound,description",
+                "limit": 100,
+            },
+        )
 
         audiences = []
         for raw in data.get("data", []):
-            audiences.append({
-                "id": raw.get("id"),
-                "name": raw.get("name"),
-                "type": raw.get("subtype"),
-                "size_min": raw.get("approximate_count_lower_bound"),
-                "size_max": raw.get("approximate_count_upper_bound"),
-                "description": raw.get("description"),
-            })
+            audiences.append(
+                {
+                    "id": raw.get("id"),
+                    "name": raw.get("name"),
+                    "type": raw.get("subtype"),
+                    "size_min": raw.get("approximate_count_lower_bound"),
+                    "size_max": raw.get("approximate_count_upper_bound"),
+                    "description": raw.get("description"),
+                }
+            )
 
-        self._log("list_audiences", "audience", None, "success",
-                  response_summary={"count": len(audiences)})
+        self._log(
+            "list_audiences",
+            "audience",
+            None,
+            "success",
+            response_summary={"count": len(audiences)},
+        )
         return audiences
 
     def create_audience(self, draft: AudienceDraft) -> dict:
@@ -593,12 +678,14 @@ class MetaAdsAdapter(BaseAdsAdapter):
                 "name": draft.name,
                 "subtype": "LOOKALIKE",
                 "origin_audience_id": draft.lookalike_source_id,
-                "lookalike_spec": json.dumps({
-                    "type": "similarity",
-                    "starting_ratio": 0,
-                    "ratio": draft.lookalike_ratio,
-                    "country": draft.geo_locations[0] if draft.geo_locations else "US",
-                }),
+                "lookalike_spec": json.dumps(
+                    {
+                        "type": "similarity",
+                        "starting_ratio": 0,
+                        "ratio": draft.lookalike_ratio,
+                        "country": draft.geo_locations[0] if draft.geo_locations else "US",
+                    }
+                ),
             }
         else:
             # Saved audience / interest-based
@@ -625,13 +712,18 @@ class MetaAdsAdapter(BaseAdsAdapter):
         data = self._post(f"{act_id}/customaudiences", payload)
         audience_id = data.get("id")
 
-        self._log("create_audience", "audience", audience_id, "success",
-                  request_summary={"name": draft.name, "type": draft.audience_type})
+        self._log(
+            "create_audience",
+            "audience",
+            audience_id,
+            "success",
+            request_summary={"name": draft.name, "type": draft.audience_type},
+        )
         return {"id": audience_id, "name": draft.name, "type": draft.audience_type}
 
     # ── Creatives ─────────────────────────────────────────────────────────────
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GET /act_{account_id}/adcreatives"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         account_id = self.credentials.account_id
@@ -639,24 +731,34 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError("No account linked")
 
         act_id = f"act_{account_id}" if not account_id.startswith("act_") else account_id
-        data = self._get(f"{act_id}/adcreatives", {
-            "fields": "id,name,title,body,image_url,thumbnail_url,effective_object_story_id",
-            "limit": 50,
-        })
+        data = self._get(
+            f"{act_id}/adcreatives",
+            {
+                "fields": "id,name,title,body,image_url,thumbnail_url,effective_object_story_id",
+                "limit": 50,
+            },
+        )
 
         creatives = []
         for raw in data.get("data", []):
-            creatives.append({
-                "id": raw.get("id"),
-                "name": raw.get("name"),
-                "title": raw.get("title"),
-                "body": raw.get("body"),
-                "image_url": raw.get("image_url"),
-                "thumbnail_url": raw.get("thumbnail_url"),
-            })
+            creatives.append(
+                {
+                    "id": raw.get("id"),
+                    "name": raw.get("name"),
+                    "title": raw.get("title"),
+                    "body": raw.get("body"),
+                    "image_url": raw.get("image_url"),
+                    "thumbnail_url": raw.get("thumbnail_url"),
+                }
+            )
 
-        self._log("list_creatives", "creative", None, "success",
-                  response_summary={"count": len(creatives)})
+        self._log(
+            "list_creatives",
+            "creative",
+            None,
+            "success",
+            response_summary={"count": len(creatives)},
+        )
         return creatives
 
     def create_creative(self, draft: CreativeDraft) -> dict:
@@ -710,8 +812,13 @@ class MetaAdsAdapter(BaseAdsAdapter):
         data = self._post(f"{act_id}/adcreatives", payload)
         creative_id = data.get("id")
 
-        self._log("create_creative", "creative", creative_id, "success",
-                  request_summary={"name": draft.name, "cta": draft.cta})
+        self._log(
+            "create_creative",
+            "creative",
+            creative_id,
+            "success",
+            request_summary={"name": draft.name, "cta": draft.cta},
+        )
         return {
             "id": creative_id,
             "name": draft.name,
@@ -727,7 +834,7 @@ class MetaAdsAdapter(BaseAdsAdapter):
         campaign_ids: list[str],
         date_start: str,
         date_end: str,
-        breakdown: Optional[str] = None,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GET /act_{account_id}/insights with campaign_id filter.
@@ -744,19 +851,35 @@ class MetaAdsAdapter(BaseAdsAdapter):
         act_id = f"act_{account_id}" if not account_id.startswith("act_") else account_id
 
         params = {
-            "fields": ",".join([
-                "campaign_id", "campaign_name", "impressions", "clicks", "spend",
-                "reach", "frequency", "cpm", "cpc", "ctr",
-                "actions", "action_values",
-                "video_play_actions", "video_p100_watched_actions",
-            ]),
+            "fields": ",".join(
+                [
+                    "campaign_id",
+                    "campaign_name",
+                    "impressions",
+                    "clicks",
+                    "spend",
+                    "reach",
+                    "frequency",
+                    "cpm",
+                    "cpc",
+                    "ctr",
+                    "actions",
+                    "action_values",
+                    "video_play_actions",
+                    "video_p100_watched_actions",
+                ]
+            ),
             "time_range": json.dumps({"since": date_start, "until": date_end}),
             "level": "campaign",
-            "filtering": json.dumps([{
-                "field": "campaign.id",
-                "operator": "IN",
-                "value": campaign_ids,
-            }]),
+            "filtering": json.dumps(
+                [
+                    {
+                        "field": "campaign.id",
+                        "operator": "IN",
+                        "value": campaign_ids,
+                    }
+                ]
+            ),
             "limit": 500,
         }
         if breakdown:
@@ -766,14 +889,16 @@ class MetaAdsAdapter(BaseAdsAdapter):
         metrics = []
         for raw in data.get("data", []):
             # Extract conversion actions
-            actions = {a["action_type"]: int(a.get("value", 0))
-                       for a in raw.get("actions", [])}
-            action_values = {a["action_type"]: float(a.get("value", 0))
-                             for a in raw.get("action_values", [])}
+            actions = {a["action_type"]: int(a.get("value", 0)) for a in raw.get("actions", [])}
+            action_values = {
+                a["action_type"]: float(a.get("value", 0)) for a in raw.get("action_values", [])
+            }
 
-            conversions = actions.get("offsite_conversion.fb_pixel_purchase", 0) or \
-                          actions.get("lead", 0) or \
-                          actions.get("complete_registration", 0)
+            conversions = (
+                actions.get("offsite_conversion.fb_pixel_purchase", 0)
+                or actions.get("lead", 0)
+                or actions.get("complete_registration", 0)
+            )
             revenue = action_values.get("offsite_conversion.fb_pixel_purchase", 0.0)
             spend = float(raw.get("spend", 0))
             roas = round(revenue / spend, 3) if spend > 0 else 0.0
@@ -788,31 +913,40 @@ class MetaAdsAdapter(BaseAdsAdapter):
                 if va.get("action_type") == "video_view":
                     video_complete = int(va.get("value", 0))
             impressions = int(raw.get("impressions", 0))
-            video_completion_rate = round(video_complete / impressions, 4) if impressions > 0 else 0.0
+            video_completion_rate = (
+                round(video_complete / impressions, 4) if impressions > 0 else 0.0
+            )
 
-            metrics.append(CampaignMetrics(
-                campaign_id=raw.get("campaign_id", ""),
-                platform="meta",
-                date=date_start,
-                impressions=impressions,
-                clicks=int(raw.get("clicks", 0)),
-                spend_usd=spend,
-                conversions=conversions,
-                revenue_usd=revenue,
-                cpm_usd=float(raw.get("cpm", 0)),
-                cpc_usd=float(raw.get("cpc", 0)),
-                ctr_pct=float(raw.get("ctr", 0)),
-                roas=roas,
-                cpa_usd=cpa,
-                reach=int(raw.get("reach", 0)),
-                frequency=float(raw.get("frequency", 0)),
-                video_views=video_views,
-                video_completion_rate=video_completion_rate,
-                raw=raw,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=raw.get("campaign_id", ""),
+                    platform="meta",
+                    date=date_start,
+                    impressions=impressions,
+                    clicks=int(raw.get("clicks", 0)),
+                    spend_usd=spend,
+                    conversions=conversions,
+                    revenue_usd=revenue,
+                    cpm_usd=float(raw.get("cpm", 0)),
+                    cpc_usd=float(raw.get("cpc", 0)),
+                    ctr_pct=float(raw.get("ctr", 0)),
+                    roas=roas,
+                    cpa_usd=cpa,
+                    reach=int(raw.get("reach", 0)),
+                    frequency=float(raw.get("frequency", 0)),
+                    video_views=video_views,
+                    video_completion_rate=video_completion_rate,
+                    raw=raw,
+                )
+            )
 
-        self._log("pull_campaign_metrics", "campaign", None, "success",
-                  response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"})
+        self._log(
+            "pull_campaign_metrics",
+            "campaign",
+            None,
+            "success",
+            response_summary={"count": len(metrics), "date_range": f"{date_start}:{date_end}"},
+        )
         return metrics
 
     def pull_ad_metrics(
@@ -832,9 +966,15 @@ class MetaAdsAdapter(BaseAdsAdapter):
             "fields": "ad_id,ad_name,impressions,clicks,spend,reach,cpm,cpc,ctr,actions,action_values",
             "time_range": json.dumps({"since": date_start, "until": date_end}),
             "level": "ad",
-            "filtering": json.dumps([{
-                "field": "ad.id", "operator": "IN", "value": ad_ids,
-            }]),
+            "filtering": json.dumps(
+                [
+                    {
+                        "field": "ad.id",
+                        "operator": "IN",
+                        "value": ad_ids,
+                    }
+                ]
+            ),
             "limit": 500,
         }
         data = self._get(f"{act_id}/insights", params)
@@ -842,31 +982,38 @@ class MetaAdsAdapter(BaseAdsAdapter):
         metrics = []
         for raw in data.get("data", []):
             actions = {a["action_type"]: int(a.get("value", 0)) for a in raw.get("actions", [])}
-            action_values = {a["action_type"]: float(a.get("value", 0)) for a in raw.get("action_values", [])}
-            conversions = actions.get("offsite_conversion.fb_pixel_purchase", 0) or actions.get("lead", 0)
+            action_values = {
+                a["action_type"]: float(a.get("value", 0)) for a in raw.get("action_values", [])
+            }
+            conversions = actions.get("offsite_conversion.fb_pixel_purchase", 0) or actions.get(
+                "lead", 0
+            )
             revenue = action_values.get("offsite_conversion.fb_pixel_purchase", 0.0)
             spend = float(raw.get("spend", 0))
 
-            metrics.append(CampaignMetrics(
-                campaign_id=raw.get("ad_id", ""),
-                platform="meta",
-                date=date_start,
-                impressions=int(raw.get("impressions", 0)),
-                clicks=int(raw.get("clicks", 0)),
-                spend_usd=spend,
-                conversions=conversions,
-                revenue_usd=revenue,
-                cpm_usd=float(raw.get("cpm", 0)),
-                cpc_usd=float(raw.get("cpc", 0)),
-                ctr_pct=float(raw.get("ctr", 0)),
-                roas=round(revenue / spend, 3) if spend > 0 else 0.0,
-                cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
-                reach=int(raw.get("reach", 0)),
-                raw=raw,
-            ))
+            metrics.append(
+                CampaignMetrics(
+                    campaign_id=raw.get("ad_id", ""),
+                    platform="meta",
+                    date=date_start,
+                    impressions=int(raw.get("impressions", 0)),
+                    clicks=int(raw.get("clicks", 0)),
+                    spend_usd=spend,
+                    conversions=conversions,
+                    revenue_usd=revenue,
+                    cpm_usd=float(raw.get("cpm", 0)),
+                    cpc_usd=float(raw.get("cpc", 0)),
+                    ctr_pct=float(raw.get("ctr", 0)),
+                    roas=round(revenue / spend, 3) if spend > 0 else 0.0,
+                    cpa_usd=round(spend / conversions, 2) if conversions > 0 else 0.0,
+                    reach=int(raw.get("reach", 0)),
+                    raw=raw,
+                )
+            )
 
-        self._log("pull_ad_metrics", "ad", None, "success",
-                  response_summary={"count": len(metrics)})
+        self._log(
+            "pull_ad_metrics", "ad", None, "success", response_summary={"count": len(metrics)}
+        )
         return metrics
 
     # ── Meta-specific helpers ─────────────────────────────────────────────────
@@ -882,7 +1029,9 @@ class MetaAdsAdapter(BaseAdsAdapter):
         for page in pages.get("data", []):
             ig = page.get("instagram_business_account")
             if ig:
-                ig_detail = self._get(ig["id"], {"fields": "id,name,username,followers_count,media_count"})
+                ig_detail = self._get(
+                    ig["id"], {"fields": "id,name,username,followers_count,media_count"}
+                )
                 self._log("get_instagram_account", "instagram_account", ig["id"], "success")
                 return {
                     "id": ig_detail.get("id"),
@@ -894,8 +1043,13 @@ class MetaAdsAdapter(BaseAdsAdapter):
                     "page_name": page.get("name"),
                 }
 
-        self._log("get_instagram_account", "instagram_account", None, "error",
-                  error="No Instagram Business account found on any linked Page")
+        self._log(
+            "get_instagram_account",
+            "instagram_account",
+            None,
+            "error",
+            error="No Instagram Business account found on any linked Page",
+        )
         return {}
 
     def get_pixel_list(self) -> list[dict]:
@@ -906,20 +1060,26 @@ class MetaAdsAdapter(BaseAdsAdapter):
             raise MetaAPIError("No account linked")
 
         act_id = f"act_{account_id}" if not account_id.startswith("act_") else account_id
-        data = self._get(f"{act_id}/adspixels", {
-            "fields": "id,name,last_fired_time,is_unavailable",
-            "limit": 20,
-        })
+        data = self._get(
+            f"{act_id}/adspixels",
+            {
+                "fields": "id,name,last_fired_time,is_unavailable",
+                "limit": 20,
+            },
+        )
 
         pixels = []
         for raw in data.get("data", []):
-            pixels.append({
-                "id": raw.get("id"),
-                "name": raw.get("name"),
-                "last_fired": raw.get("last_fired_time"),
-                "active": not raw.get("is_unavailable", False),
-            })
+            pixels.append(
+                {
+                    "id": raw.get("id"),
+                    "name": raw.get("name"),
+                    "last_fired": raw.get("last_fired_time"),
+                    "active": not raw.get("is_unavailable", False),
+                }
+            )
 
-        self._log("get_pixel_list", "pixel", None, "success",
-                  response_summary={"count": len(pixels)})
+        self._log(
+            "get_pixel_list", "pixel", None, "success", response_summary={"count": len(pixels)}
+        )
         return pixels

@@ -13,31 +13,31 @@ GET  /api/v1/traffic-goals                  — list traffic goals
 POST /api/v1/traffic-goals/{id}/outcome     — record acquisition outcome
 GET  /api/v1/traffic-goals/summary          — acquisition performance summary
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.dependencies.auth import get_current_user
 from app.core.store.content_metrics_store import (
-    record_post_metrics,
-    get_post_metrics,
     get_channel_metrics,
-    get_top_performers,
     get_performance_summary,
-)
-from app.core.store.traffic_goals_store import (
-    upsert_traffic_goal,
-    get_traffic_goals,
-    record_acquisition_outcome,
-    get_acquisition_summary,
-    VALID_GOAL_TYPES,
-    VALID_CHANNELS,
+    get_post_metrics,
+    get_top_performers,
+    record_post_metrics,
 )
 from app.core.store.content_queue_store import list_scheduled_posts
+from app.core.store.traffic_goals_store import (
+    VALID_CHANNELS,
+    VALID_GOAL_TYPES,
+    get_acquisition_summary,
+    get_traffic_goals,
+    record_acquisition_outcome,
+    upsert_traffic_goal,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -45,13 +45,14 @@ router = APIRouter()
 
 # ─── Schema ──────────────────────────────────────────────────────────────────
 
+
 class PostMetricsInput(BaseModel):
     draft_id: str
     channel: str
     platform_post_id: str
-    post_text: Optional[str] = None
-    topic: Optional[str] = None
-    content_type: Optional[str] = None
+    post_text: str | None = None
+    topic: str | None = None
+    content_type: str | None = None
     impressions: int = 0
     reach: int = 0
     likes: int = 0
@@ -69,19 +70,20 @@ class TrafficGoalInput(BaseModel):
     destination_url: str
     target_monthly: int
     channel: str = "all"
-    destination_description: Optional[str] = None
-    utm_source: Optional[str] = None
+    destination_description: str | None = None
+    utm_source: str | None = None
 
 
 class AcquisitionOutcomeInput(BaseModel):
     channel: str
     count: int
-    source_post_id: Optional[str] = None
-    source_campaign_id: Optional[str] = None
-    session_quality: Optional[float] = None
+    source_post_id: str | None = None
+    source_campaign_id: str | None = None
+    session_quality: float | None = None
 
 
 # ─── Metrics Endpoints ────────────────────────────────────────────────────────
+
 
 @router.post("/metrics/posts/{post_id}")
 async def record_metrics(
@@ -133,7 +135,6 @@ async def refresh_metrics_from_publisher(
     Pull live metrics from the publisher API for a post.
     Looks up the post in the content queue to find channel + platform_post_id.
     """
-    from app.core.store.content_queue_store import list_scheduled_posts
     from app.services.publishers import get_publisher
 
     # Find the scheduled post record
@@ -146,7 +147,9 @@ async def refresh_metrics_from_publisher(
     channel = post.get("channel", "")
 
     if not platform_id:
-        raise HTTPException(status_code=400, detail="Post has no platform ID — metrics not yet available")
+        raise HTTPException(
+            status_code=400, detail="Post has no platform ID — metrics not yet available"
+        )
 
     try:
         publisher = get_publisher(channel, str(user.id))
@@ -155,9 +158,13 @@ async def refresh_metrics_from_publisher(
         raise HTTPException(status_code=400, detail=f"No publisher for channel '{channel}'")
 
     if not raw_metrics:
-        return {"snapshot": None, "message": "Publisher returned no metrics (may need time to accumulate)"}
+        return {
+            "snapshot": None,
+            "message": "Publisher returned no metrics (may need time to accumulate)",
+        }
 
     from app.core.store.content_queue_store import get_draft
+
     draft = get_draft(post.get("draft_id", ""))
     snapshot = record_post_metrics(
         user_id=str(user.id),
@@ -166,7 +173,8 @@ async def refresh_metrics_from_publisher(
         channel=channel,
         platform_post_id=platform_id,
         metrics=raw_metrics,
-        post_text=post.get("caption_override") or (draft.get("generated_text", "")[:200] if draft else ""),
+        post_text=post.get("caption_override")
+        or (draft.get("generated_text", "")[:200] if draft else ""),
         topic=draft.get("topic") if draft else None,
         content_type=draft.get("content_type") if draft else None,
     )
@@ -187,7 +195,7 @@ async def get_channel_perf(
 
 @router.get("/metrics/top-performers")
 async def get_top_performing_posts(
-    channel: Optional[str] = None,
+    channel: str | None = None,
     limit: int = 5,
     user=Depends(get_current_user),
 ):
@@ -205,13 +213,18 @@ async def get_metrics_summary(user=Depends(get_current_user)):
 
 # ─── Traffic Goals Endpoints ──────────────────────────────────────────────────
 
+
 @router.post("/traffic-goals")
 async def set_traffic_goal(body: TrafficGoalInput, user=Depends(get_current_user)):
     """Create or update a traffic/acquisition goal."""
     if body.goal_type not in VALID_GOAL_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid goal_type. Must be one of: {VALID_GOAL_TYPES}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid goal_type. Must be one of: {VALID_GOAL_TYPES}"
+        )
     if body.channel not in VALID_CHANNELS:
-        raise HTTPException(status_code=400, detail=f"Invalid channel. Must be one of: {VALID_CHANNELS}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid channel. Must be one of: {VALID_CHANNELS}"
+        )
     if body.target_monthly < 1:
         raise HTTPException(status_code=400, detail="target_monthly must be >= 1")
 

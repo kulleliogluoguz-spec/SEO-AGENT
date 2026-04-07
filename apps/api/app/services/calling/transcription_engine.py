@@ -2,11 +2,11 @@
 Transcription Engine — WhisperX (preferred) + Pyannote diarization,
 faster-whisper as the always-installed fallback.
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class TranscriptionEngine:
-    def __init__(self, model_size: str = "base", device: str = "auto", language: Optional[str] = None):
+    def __init__(self, model_size: str = "base", device: str = "auto", language: str | None = None):
         self.model_size = model_size
         self.language = language
         self.device = self._detect_device() if device == "auto" else device
@@ -26,6 +26,7 @@ class TranscriptionEngine:
     def _detect_device(self) -> str:
         try:
             import torch  # type: ignore
+
             if torch.cuda.is_available():
                 return "cuda"
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -63,8 +64,8 @@ class TranscriptionEngine:
             logger.warning("HUGGINGFACE_TOKEN not set — speaker diarization disabled")
             return None
         try:
-            from pyannote.audio import Pipeline  # type: ignore
             import torch  # type: ignore
+            from pyannote.audio import Pipeline  # type: ignore
 
             self._diarizer = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-community-1", use_auth_token=hf_token
@@ -75,9 +76,7 @@ class TranscriptionEngine:
             logger.error("Diarization load failed: %s", e)
         return self._diarizer
 
-    async def transcribe_call(
-        self, call_id: str, audio_path: str, db: AsyncSession
-    ) -> list[dict]:
+    async def transcribe_call(self, call_id: str, audio_path: str, db: AsyncSession) -> list[dict]:
         await db.execute(
             text("UPDATE calls SET transcription_status='processing' WHERE id=:id"),
             {"id": call_id},
@@ -146,7 +145,9 @@ class TranscriptionEngine:
         diarizer = self._load_diarizer()
         if diarizer:
             try:
-                dr = diarizer({"waveform": None, "sample_rate": 16000}, min_speakers=2, max_speakers=4)
+                dr = diarizer(
+                    {"waveform": None, "sample_rate": 16000}, min_speakers=2, max_speakers=4
+                )
                 result = whisperx.assign_word_speakers(dr, result)
             except Exception as e:
                 logger.warning("Diarization failed: %s", e)
@@ -165,6 +166,5 @@ class TranscriptionEngine:
             audio_path, language=self.language, beam_size=5, word_timestamps=True
         )
         return [
-            {"speaker": "SPEAKER_0", "text": s.text, "start": s.start, "end": s.end}
-            for s in segs
+            {"speaker": "SPEAKER_0", "text": s.text, "start": s.start, "end": s.end} for s in segs
         ]

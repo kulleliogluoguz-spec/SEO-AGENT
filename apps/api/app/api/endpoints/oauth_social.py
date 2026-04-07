@@ -72,14 +72,18 @@ def _save_state(state: str, user_id: str, platform: str, **extra) -> None:
     data = json.dumps({"user_id": user_id, "platform": platform, **extra})
     conn = sqlite3.connect(_STATE_DB)
     # GC: remove expired entries
-    conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+    conn.execute(
+        "DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,)
+    )
     conn.execute(
         "INSERT OR REPLACE INTO oauth_state (oauth_token, data, created_at) VALUES (?, ?, ?)",
         (state, data, _time.time()),
     )
     conn.commit()
     # Verify
-    row = conn.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (state,)).fetchone()
+    row = conn.execute(
+        "SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (state,)
+    ).fetchone()
     total = conn.execute("SELECT COUNT(*) FROM oauth_state").fetchone()[0]
     conn.close()
     found = row is not None
@@ -90,9 +94,14 @@ def _consume_state(state: str) -> dict | None:
     """Read and delete OAuth state from SQLite. Returns None if not found or expired."""
     conn = sqlite3.connect(_STATE_DB)
     # GC stale entries
-    gc_count = conn.execute("SELECT COUNT(*) FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,)).fetchone()[0]
+    gc_count = conn.execute(
+        "SELECT COUNT(*) FROM oauth_state WHERE created_at < ?",
+        (_time.time() - _STATE_TTL_SECONDS,),
+    ).fetchone()[0]
     if gc_count:
-        conn.execute("DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,))
+        conn.execute(
+            "DELETE FROM oauth_state WHERE created_at < ?", (_time.time() - _STATE_TTL_SECONDS,)
+        )
         print(f"[OAUTH STATE] GC: removed {gc_count} expired entries")
     row = conn.execute("SELECT data FROM oauth_state WHERE oauth_token=?", (state,)).fetchone()
     if row:
@@ -107,7 +116,9 @@ def _consume_state(state: str) -> dict | None:
     all_rows = conn.execute("SELECT oauth_token, created_at FROM oauth_state").fetchall()
     conn.close()
     print(f"[OAUTH STATE] NOT FOUND key={state}")
-    print(f"[OAUTH STATE] DB has {len(all_rows)} entries: {[(r[0], f'{_time.time()-r[1]:.0f}s ago') for r in all_rows]}")
+    print(
+        f"[OAUTH STATE] DB has {len(all_rows)} entries: {[(r[0], f'{_time.time()-r[1]:.0f}s ago') for r in all_rows]}"
+    )
     return None
 
 
@@ -164,7 +175,9 @@ def _redirect_with_error(platform: str, error: str) -> RedirectResponse:
     )
 
 
-async def _x_exchange_tokens(oauth_token: str, oauth_verifier: str, oauth_token_secret: str) -> dict:
+async def _x_exchange_tokens(
+    oauth_token: str, oauth_verifier: str, oauth_token_secret: str
+) -> dict:
     """Exchange OAuth 1.0a request token + verifier for access tokens.
     Returns dict with tokens + user info on success, or error string."""
     auth_header = _oauth1_auth_header(
@@ -218,6 +231,7 @@ async def _x_verify_credentials(access_token: str, access_token_secret: str) -> 
     )
     # OAuth 1.0a requires query params in the signature — use the updated helper
     from app.core.security.oauth1 import build_auth_header as _build
+
     auth_header = _build(
         method="GET",
         url=X_VERIFY_URL,
@@ -285,6 +299,7 @@ async def x_authorize(
     class _User:
         def __init__(self, uid: str):
             self.id = uid
+
     user = _DemoUser() if user_id == DEMO_USER_ID else _User(user_id)
 
     if not settings.x_api_key:
@@ -364,7 +379,13 @@ async def x_callback_get(
     try:
         _dc = sqlite3.connect(_STATE_DB)
         _dk = [r[0][:20] for r in _dc.execute("SELECT oauth_token FROM oauth_state").fetchall()]
-        _df = _dc.execute("SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (oauth_token,)).fetchone() if oauth_token else None
+        _df = (
+            _dc.execute(
+                "SELECT oauth_token FROM oauth_state WHERE oauth_token=?", (oauth_token,)
+            ).fetchone()
+            if oauth_token
+            else None
+        )
         _dc.close()
         print(f"[X CALLBACK] DB keys: {_dk}")
         print(f"[X CALLBACK] Token in DB: {_df is not None}")
@@ -469,7 +490,9 @@ async def x_callback_get(
     except Exception as e:
         logger.debug("[x_callback] twitter_accounts sync skipped: %s", e)
 
-    redirect_url = f"{FRONTEND_URL}/dashboard/connectors?connected=x&username={urllib.parse.quote(username)}"
+    redirect_url = (
+        f"{FRONTEND_URL}/dashboard/connectors?connected=x&username={urllib.parse.quote(username)}"
+    )
     print(f"[X CALLBACK] ALL DONE! Tokens saved. Redirecting to: {redirect_url}")
     logger.info("[x_callback] stored tokens for user=%s @%s", user_id, username)
 
@@ -727,10 +750,13 @@ async def meta_callback(
 
     logger.info(
         "[meta_callback] stored tokens for user=%s pages=%d ig_accounts=%d",
-        user_id, len(pages), len(instagram_accounts),
+        user_id,
+        len(pages),
+        len(instagram_accounts),
     )
     return RedirectResponse(
-        url=f"{FRONTEND_URL}/dashboard/connectors?connected=meta", status_code=302,
+        url=f"{FRONTEND_URL}/dashboard/connectors?connected=meta",
+        status_code=302,
     )
 
 

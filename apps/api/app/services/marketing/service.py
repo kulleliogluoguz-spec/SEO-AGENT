@@ -2,22 +2,28 @@
 Marketing Execution Service
 Orchestrates: content generation → compliance check → approval queue → scheduling → publishing → tracking.
 """
+
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from app.agents.marketing.agents import (
-    AgentInput, SocialPostGeneratorAgent, ContentRepurposingAgent,
-    CampaignPlannerAgent, ContentCalendarAgent, HookOptimizationAgent,
-    HashtagStrategyAgent, ABVariantGeneratorAgent, PerformanceFeedbackAgent,
-    AdCampaignGeneratorAgent, PostTimingAgent, ChannelStrategyAgent,
-    AudienceTargetingAgent, EngagementOptimizationAgent,
+    ABVariantGeneratorAgent,
+    AdCampaignGeneratorAgent,
+    AgentInput,
+    CampaignPlannerAgent,
+    ChannelStrategyAgent,
+    ContentCalendarAgent,
+    ContentRepurposingAgent,
+    HashtagStrategyAgent,
+    HookOptimizationAgent,
+    PerformanceFeedbackAgent,
+    PostTimingAgent,
+    SocialPostGeneratorAgent,
 )
-from app.connectors.social import ConnectorRegistry, PublishResult
-from app.services.marketing.compliance import compliance_service, ComplianceResult
+from app.connectors.social import ConnectorRegistry
+from app.services.marketing.compliance import compliance_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ class MarketingService:
     """
     High-level service layer for the marketing execution engine.
     All content goes through: generate → check → approve → schedule → publish → track.
-    
+
     Agents are initialized once and reused (they are stateless).
     """
 
@@ -88,19 +94,21 @@ class MarketingService:
                         channel_metadata=post.get("channel_metadata", {}),
                     )
 
-                    generated.append({
-                        "channel": channel,
-                        "content": post,
-                        "compliance": {
-                            "passed": compliance.passed,
-                            "risk_score": compliance.risk_score,
-                            "risk_level": compliance.risk_level,
-                            "violations": compliance.violations,
-                            "warnings": compliance.warnings,
-                        },
-                        "variant_label": chr(65 + variant_idx) if generate_variants else None,
-                        "status": "draft",
-                    })
+                    generated.append(
+                        {
+                            "channel": channel,
+                            "content": post,
+                            "compliance": {
+                                "passed": compliance.passed,
+                                "risk_score": compliance.risk_score,
+                                "risk_level": compliance.risk_level,
+                                "violations": compliance.violations,
+                                "warnings": compliance.warnings,
+                            },
+                            "variant_label": chr(65 + variant_idx) if generate_variants else None,
+                            "status": "draft",
+                        }
+                    )
 
         return generated
 
@@ -117,14 +125,16 @@ class MarketingService:
         channels = target_channels or ["instagram", "twitter", "linkedin", "tiktok"]
         agent = self._repurpose
 
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={
-                "source_text": source_text,
-                "source_type": source_type,
-                "target_channels": channels,
-            },
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={
+                    "source_text": source_text,
+                    "source_type": source_type,
+                    "target_channels": channels,
+                },
+            )
+        )
 
         if not result.success:
             return []
@@ -141,17 +151,19 @@ class MarketingService:
                 channel_metadata=content.get("channel_metadata", {}),
             )
 
-            items.append({
-                "channel": channel,
-                "content": content,
-                "compliance": {
-                    "passed": compliance.passed,
-                    "risk_score": compliance.risk_score,
-                    "risk_level": compliance.risk_level,
-                    "warnings": compliance.warnings,
-                },
-                "status": "draft",
-            })
+            items.append(
+                {
+                    "channel": channel,
+                    "content": content,
+                    "compliance": {
+                        "passed": compliance.passed,
+                        "risk_score": compliance.risk_score,
+                        "risk_level": compliance.risk_level,
+                        "warnings": compliance.warnings,
+                    },
+                    "status": "draft",
+                }
+            )
 
         return items
 
@@ -166,15 +178,17 @@ class MarketingService:
         budget: float = 0.0,
     ) -> dict:
         planner = self._campaign_planner
-        result = await planner.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={
-                "objective": objective,
-                "channels": channels,
-                "duration_days": duration_days,
-                "budget": budget,
-            },
-        ))
+        result = await planner.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={
+                    "objective": objective,
+                    "channels": channels,
+                    "duration_days": duration_days,
+                    "budget": budget,
+                },
+            )
+        )
         return result.data.get("campaign_plan", {}) if result.success else {}
 
     # ── Calendar Generation ──────────────────────────────────────────────────
@@ -187,14 +201,16 @@ class MarketingService:
         timezone: str = "UTC",
     ) -> dict:
         cal_agent = self._calendar
-        result = await cal_agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={
-                "campaign_plan": campaign_plan,
-                "start_date": start_date or datetime.utcnow().isoformat(),
-                "timezone": timezone,
-            },
-        ))
+        result = await cal_agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={
+                    "campaign_plan": campaign_plan,
+                    "start_date": start_date or datetime.utcnow().isoformat(),
+                    "timezone": timezone,
+                },
+            )
+        )
         return result.data if result.success else {}
 
     # ── Publishing ───────────────────────────────────────────────────────────
@@ -253,8 +269,7 @@ class MarketingService:
 
     # ── Metrics Fetching ─────────────────────────────────────────────────────
 
-    async def fetch_metrics(self, channel: str, external_id: str,
-                            access_token: str = None) -> dict:
+    async def fetch_metrics(self, channel: str, external_id: str, access_token: str = None) -> dict:
         try:
             connector = ConnectorRegistry.get(channel, access_token=access_token)
             result = await connector.get_metrics(external_id)
@@ -265,68 +280,84 @@ class MarketingService:
 
     # ── Hook Generation ──────────────────────────────────────────────────────
 
-    async def generate_hooks(self, workspace_id: str, topic: str,
-                             channel: str = "instagram", count: int = 5) -> list[dict]:
+    async def generate_hooks(
+        self, workspace_id: str, topic: str, channel: str = "instagram", count: int = 5
+    ) -> list[dict]:
         agent = self._hooks
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={"topic": topic, "channel": channel, "num_hooks": count},
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={"topic": topic, "channel": channel, "num_hooks": count},
+            )
+        )
         return result.data.get("hooks", []) if result.success else []
 
     # ── Hashtag Strategy ─────────────────────────────────────────────────────
 
-    async def generate_hashtags(self, workspace_id: str, topic: str,
-                                channel: str = "instagram", niche: str = "") -> dict:
+    async def generate_hashtags(
+        self, workspace_id: str, topic: str, channel: str = "instagram", niche: str = ""
+    ) -> dict:
         agent = self._hashtags
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={"topic": topic, "channel": channel, "niche": niche},
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={"topic": topic, "channel": channel, "niche": niche},
+            )
+        )
         return result.data.get("hashtag_strategy", {}) if result.success else {}
 
     # ── Optimal Posting Times ────────────────────────────────────────────────
 
-    async def get_optimal_times(self, workspace_id: str, channel: str,
-                                timezone: str = "UTC") -> dict:
+    async def get_optimal_times(
+        self, workspace_id: str, channel: str, timezone: str = "UTC"
+    ) -> dict:
         agent = self._timing
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={"channel": channel, "timezone": timezone},
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={"channel": channel, "timezone": timezone},
+            )
+        )
         return result.data if result.success else {}
 
     # ── Channel Strategy ─────────────────────────────────────────────────────
 
-    async def get_channel_strategy(self, workspace_id: str,
-                                   goals: list[str] = None,
-                                   industry: str = "") -> dict:
+    async def get_channel_strategy(
+        self, workspace_id: str, goals: list[str] = None, industry: str = ""
+    ) -> dict:
         agent = self._channel_strategy
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={"goals": goals or ["awareness"], "industry": industry},
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={"goals": goals or ["awareness"], "industry": industry},
+            )
+        )
         return result.data.get("strategy", {}) if result.success else {}
 
     # ── Ad Campaign Generation ───────────────────────────────────────────────
 
     async def generate_ad_campaign(self, workspace_id: str, **kwargs) -> dict:
         agent = self._ad_gen
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id, payload=kwargs,
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload=kwargs,
+            )
+        )
         return result.data.get("ad_campaign", {}) if result.success else {}
 
     # ── Performance Feedback ─────────────────────────────────────────────────
 
-    async def get_performance_feedback(self, workspace_id: str,
-                                       metrics: list[dict],
-                                       channel: str = None) -> dict:
+    async def get_performance_feedback(
+        self, workspace_id: str, metrics: list[dict], channel: str = None
+    ) -> dict:
         agent = self._perf_feedback
-        result = await agent.execute(AgentInput(
-            workspace_id=workspace_id,
-            payload={"metrics": metrics, "channel": channel},
-        ))
+        result = await agent.execute(
+            AgentInput(
+                workspace_id=workspace_id,
+                payload={"metrics": metrics, "channel": channel},
+            )
+        )
         return result.data.get("feedback", {}) if result.success else {}
 
 

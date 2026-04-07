@@ -9,12 +9,20 @@ Required OAuth2 scopes:
 Pinterest campaign hierarchy:
   AdAccount → Campaign → AdGroup → Ad (Pin)
 """
+
 from __future__ import annotations
+
 import logging
-from typing import Optional
+
 from app.adapters.base import (
-    AdapterCapabilityStage, AdapterCredentials, AdapterStatus,
-    AudienceDraft, BaseAdsAdapter, CampaignDraft, CampaignMetrics, CreativeDraft,
+    AdapterCapabilityStage,
+    AdapterCredentials,
+    AdapterStatus,
+    AudienceDraft,
+    BaseAdsAdapter,
+    CampaignDraft,
+    CampaignMetrics,
+    CreativeDraft,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,13 +43,16 @@ class PinterestAdsAdapter(BaseAdsAdapter):
 
     def get_auth_url(self, redirect_uri: str, state: str) -> str:
         from urllib.parse import urlencode
-        return f"{PINTEREST_AUTH_URL}?" + urlencode({
-            "client_id": self.credentials.client_id,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "scope": ",".join(self.REQUIRED_SCOPES),
-            "state": state,
-        })
+
+        return f"{PINTEREST_AUTH_URL}?" + urlencode(
+            {
+                "client_id": self.credentials.client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": ",".join(self.REQUIRED_SCOPES),
+                "state": state,
+            }
+        )
 
     def exchange_code(self, code: str, redirect_uri: str) -> AdapterCredentials:
         raise NotImplementedError("Implement: POST /v5/oauth/token with code")
@@ -63,7 +74,7 @@ class PinterestAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ad_accounts/{ad_account_id}")
 
-    def list_campaigns(self, status_filter: Optional[str] = None) -> list[dict]:
+    def list_campaigns(self, status_filter: str | None = None) -> list[dict]:
         """GET /ad_accounts/{ad_account_id}/campaigns"""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ad_accounts/{id}/campaigns")
@@ -95,7 +106,7 @@ class PinterestAdsAdapter(BaseAdsAdapter):
     def create_audience(self, draft: AudienceDraft) -> dict:
         raise NotImplementedError("Implement: POST /ad_accounts/{id}/audiences")
 
-    def list_creatives(self, campaign_id: Optional[str] = None) -> list[dict]:
+    def list_creatives(self, campaign_id: str | None = None) -> list[dict]:
         """GET /ad_accounts/{ad_account_id}/ads — list promoted pins."""
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ad_accounts/{id}/ads")
@@ -110,7 +121,11 @@ class PinterestAdsAdapter(BaseAdsAdapter):
         raise NotImplementedError("Implement: POST /ad_accounts/{id}/ads")
 
     def pull_campaign_metrics(
-        self, campaign_ids: list[str], date_start: str, date_end: str, breakdown: Optional[str] = None,
+        self,
+        campaign_ids: list[str],
+        date_start: str,
+        date_end: str,
+        breakdown: str | None = None,
     ) -> list[CampaignMetrics]:
         """
         GET /ad_accounts/{ad_account_id}/campaigns/analytics
@@ -119,6 +134,8 @@ class PinterestAdsAdapter(BaseAdsAdapter):
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ad_accounts/{id}/campaigns/analytics")
 
-    def pull_ad_metrics(self, ad_ids: list[str], date_start: str, date_end: str) -> list[CampaignMetrics]:
+    def pull_ad_metrics(
+        self, ad_ids: list[str], date_start: str, date_end: str
+    ) -> list[CampaignMetrics]:
         self._require_stage(AdapterCapabilityStage.READ_REPORT)
         raise NotImplementedError("Implement: GET /ad_accounts/{id}/ads/analytics")

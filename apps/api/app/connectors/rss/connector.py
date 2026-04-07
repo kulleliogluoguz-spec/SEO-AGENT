@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import httpx
 
@@ -35,8 +34,8 @@ try:
     from connector_sdk.base import (
         BaseConnector,
         ComplianceMode,
-        ConnectorConfig,
         ConnectionTestResult,
+        ConnectorConfig,
         RateLimitPolicy,
         RawDocument,
         ValidationResult,
@@ -46,14 +45,17 @@ try:
     from connector_sdk.registry import ConnectorRegistry
 except ImportError:
     # Fallback for direct imports when SDK is in packages/
-    import sys
     import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../packages/connector-sdk"))
+    import sys
+
+    sys.path.insert(
+        0, os.path.join(os.path.dirname(__file__), "../../../../packages/connector-sdk")
+    )
     from connector_sdk.base import (
         BaseConnector,
         ComplianceMode,
-        ConnectorConfig,
         ConnectionTestResult,
+        ConnectorConfig,
         RateLimitPolicy,
         RawDocument,
         ValidationResult,
@@ -82,7 +84,9 @@ class RSSConnector(BaseConnector):
             return ValidationResult(valid=False, errors=["feed_url is required"])
         url = config.params["feed_url"]
         if not url.startswith(("http://", "https://")):
-            return ValidationResult(valid=False, errors=["feed_url must start with http:// or https://"])
+            return ValidationResult(
+                valid=False, errors=["feed_url must start with http:// or https://"]
+            )
         return ValidationResult(valid=True)
 
     async def test_connection(self, config: ConnectorConfig) -> ConnectionTestResult:
@@ -104,7 +108,7 @@ class RSSConnector(BaseConnector):
     async def fetch(
         self,
         config: ConnectorConfig,
-        since: Optional[datetime] = None,
+        since: datetime | None = None,
     ) -> AsyncIterator[RawDocument]:
         feed_url = config.params.get("feed_url", "")
         filter_keywords = config.params.get("keywords", [])
@@ -126,7 +130,7 @@ class RSSConnector(BaseConnector):
             published_at = self._parse_entry_date(entry)
 
             # Skip old entries if incremental fetch
-            if since and published_at and published_at <= since.replace(tzinfo=timezone.utc):
+            if since and published_at and published_at <= since.replace(tzinfo=UTC):
                 continue
 
             # Build text content
@@ -165,7 +169,7 @@ class RSSConnector(BaseConnector):
 
         logger.info(f"RSSConnector: yielded {count} documents from {feed_url}")
 
-    async def _parse_feed(self, feed_url: str) -> Optional[dict]:
+    async def _parse_feed(self, feed_url: str) -> dict | None:
         """Fetch and parse the feed. Returns feedparser dict or None."""
         try:
             import feedparser
@@ -192,22 +196,23 @@ class RSSConnector(BaseConnector):
                 # Return minimal structure
                 return {"entries": [], "feed": {"title": feed_url}, "_raw": response.text}
 
-    def _parse_entry_date(self, entry: dict) -> Optional[datetime]:
+    def _parse_entry_date(self, entry: dict) -> datetime | None:
         """Parse a feed entry's date into a timezone-aware datetime."""
         for field in ("published_parsed", "updated_parsed", "created_parsed"):
             value = entry.get(field)
             if value:
                 import time
+
                 try:
                     ts = time.mktime(value)
-                    return datetime.fromtimestamp(ts, tz=timezone.utc)
+                    return datetime.fromtimestamp(ts, tz=UTC)
                 except Exception:
                     continue
         return None
 
     def get_rate_limit_policy(self) -> RateLimitPolicy:
         return RateLimitPolicy(
-            requests_per_second=0.5,   # 1 req per 2 seconds
+            requests_per_second=0.5,  # 1 req per 2 seconds
             requests_per_minute=10,
             requests_per_day=500,
         )

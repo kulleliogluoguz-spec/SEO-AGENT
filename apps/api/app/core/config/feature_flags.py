@@ -10,7 +10,9 @@ Usage:
     if flags.geo_agent_enabled:
         # run GEO analysis
 """
+
 from functools import lru_cache
+
 from app.core.config.settings import get_settings
 
 

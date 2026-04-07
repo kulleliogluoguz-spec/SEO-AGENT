@@ -5,13 +5,13 @@ All inference local via Ollama. Zero external API calls.
 Selects the best available model for a task and falls back to whatever
 exists locally (typically qwen3:8b on this workstation).
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import re
 from enum import Enum
-from typing import Optional
 
 import requests
 
@@ -31,13 +31,13 @@ class ModelSelector:
     """Pick the best installed Ollama model for the requested task."""
 
     TASK_MODELS = {
-        TaskType.FAST:         ["qwen3:8b", "gemma4:2b", "gemma3n:e4b", "llama3.2"],
-        TaskType.STANDARD:     ["gemma4:27b", "qwen3:14b", "qwen3:8b", "gemma3n:e4b"],
-        TaskType.REASONING:    ["deepseek-r1:8b", "gemma4:27b", "qwen3:8b"],
+        TaskType.FAST: ["qwen3:8b", "gemma4:2b", "gemma3n:e4b", "llama3.2"],
+        TaskType.STANDARD: ["gemma4:27b", "qwen3:14b", "qwen3:8b", "gemma3n:e4b"],
+        TaskType.REASONING: ["deepseek-r1:8b", "gemma4:27b", "qwen3:8b"],
         TaskType.MULTILINGUAL: ["qwen3:14b", "qwen3:8b", "gemma4:27b", "gemma3n:e4b"],
-        TaskType.CREATIVE:     ["gemma4:27b", "qwen3:14b", "qwen3:8b"],
+        TaskType.CREATIVE: ["gemma4:27b", "qwen3:14b", "qwen3:8b"],
     }
-    _available: Optional[list[str]] = None
+    _available: list[str] | None = None
 
     @classmethod
     def get_available(cls) -> list[str]:
@@ -67,10 +67,10 @@ class ModelSelector:
 def call_ollama(
     prompt: str,
     task: TaskType = TaskType.STANDARD,
-    model: Optional[str] = None,
+    model: str | None = None,
     max_tokens: int = 500,
     temperature: float = 0.3,
-    system: Optional[str] = None,
+    system: str | None = None,
     timeout: int = 120,
 ) -> str:
     """Universal Ollama call with model selection and graceful error handling."""
@@ -104,7 +104,7 @@ def call_ollama_json(
     prompt: str,
     schema_example: dict,
     task: TaskType = TaskType.STANDARD,
-    model: Optional[str] = None,
+    model: str | None = None,
     timeout: int = 120,
 ) -> dict:
     """Call Ollama and parse a JSON object out of the response."""
@@ -125,7 +125,7 @@ Example format: {str(schema_example)}"""
     cleaned = response.strip()
     for fence in ("```json", "```"):
         if cleaned.startswith(fence):
-            cleaned = cleaned[len(fence):].lstrip()
+            cleaned = cleaned[len(fence) :].lstrip()
         if cleaned.endswith("```"):
             cleaned = cleaned[: -len("```")].rstrip()
     try:

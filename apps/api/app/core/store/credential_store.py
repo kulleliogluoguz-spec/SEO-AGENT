@@ -13,15 +13,15 @@ Production notes:
   - Never commit .env or storage/credentials.json to version control
   - Add storage/ to .gitignore
 """
+
 from __future__ import annotations
 
 import base64
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 STORE_PATH = Path(__file__).parent.parent.parent.parent.parent / "storage" / "credentials.json"
 
@@ -29,7 +29,7 @@ _ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _encode(value: str) -> str:
@@ -68,20 +68,22 @@ def _save(data: dict) -> None:
 
 # ── Credential operations ─────────────────────────────────────────────────────
 
+
 def store_credential(
     user_id: str,
     platform: str,
     access_token: str,
-    refresh_token: Optional[str] = None,
-    expires_at: Optional[str] = None,
-    scope: Optional[str] = None,
-    extra: Optional[dict] = None,
+    refresh_token: str | None = None,
+    expires_at: str | None = None,
+    scope: str | None = None,
+    extra: dict | None = None,
 ) -> dict:
     """Store or update OAuth credentials for a platform. Tokens are base64-encoded."""
     data = _load()
     # Remove existing entry for this user+platform
     data["credentials"] = [
-        c for c in data["credentials"]
+        c
+        for c in data["credentials"]
         if not (c["user_id"] == user_id and c["platform"] == platform)
     ]
     record = {
@@ -102,7 +104,7 @@ def store_credential(
     return _safe_repr(record)
 
 
-def get_credential(user_id: str, platform: str) -> Optional[dict]:
+def get_credential(user_id: str, platform: str) -> dict | None:
     """Retrieve decoded credentials for a user+platform. Returns None if not found."""
     data = _load()
     for c in data["credentials"]:
@@ -119,7 +121,8 @@ def delete_credential(user_id: str, platform: str) -> bool:
     data = _load()
     before = len(data["credentials"])
     data["credentials"] = [
-        c for c in data["credentials"]
+        c
+        for c in data["credentials"]
         if not (c["user_id"] == user_id and c["platform"] == platform)
     ]
     if len(data["credentials"]) < before:
@@ -152,6 +155,7 @@ def list_credentials(user_id: str) -> list[dict]:
 
 # ── Linked account operations ─────────────────────────────────────────────────
 
+
 def link_account(
     user_id: str,
     platform: str,
@@ -159,15 +163,20 @@ def link_account(
     account_name: str,
     currency: str = "USD",
     timezone_name: str = "UTC",
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
 ) -> dict:
     """Link a specific ad account to the user's workspace."""
     data = _load()
     # Update existing link or create new
     existing = next(
-        (a for a in data["linked_accounts"]
-         if a["user_id"] == user_id and a["platform"] == platform and a["account_id"] == account_id),
-        None
+        (
+            a
+            for a in data["linked_accounts"]
+            if a["user_id"] == user_id
+            and a["platform"] == platform
+            and a["account_id"] == account_id
+        ),
+        None,
     )
     if existing:
         existing["account_name"] = account_name
@@ -195,9 +204,11 @@ def link_account(
     return record
 
 
-def get_linked_accounts(user_id: str, platform: Optional[str] = None) -> list[dict]:
+def get_linked_accounts(user_id: str, platform: str | None = None) -> list[dict]:
     data = _load()
-    accounts = [a for a in data["linked_accounts"] if a["user_id"] == user_id and a.get("is_active", True)]
+    accounts = [
+        a for a in data["linked_accounts"] if a["user_id"] == user_id and a.get("is_active", True)
+    ]
     if platform:
         accounts = [a for a in accounts if a["platform"] == platform]
     return accounts

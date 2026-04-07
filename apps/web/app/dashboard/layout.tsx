@@ -12,7 +12,7 @@ import {
   LineChart, Zap, Shield, Receipt, PieChart,
   Phone, PhoneCall, Upload, BarChart3,
   Sprout, Search, Share2, Users, Flame, Mail,
-  Layers, Map, CheckCircle2, Send,
+  Layers, Map, CheckCircle2, Send, DollarSign, Lightbulb, Target,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -37,6 +37,18 @@ const NAV_SECTIONS = [
       { href: '/dashboard/twitter-engine',    label: 'Grow X Account',   icon: Twitter },
       { href: '/dashboard/growth/instagram', label: 'Grow Instagram',    icon: Instagram },
       { href: '/dashboard/promote',          label: 'Promote My Site',   icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Ad Analytics',
+    items: [
+      { href: '/dashboard/ads',                 label: 'Command Center',   icon: LayoutDashboard, exact: true },
+      { href: '/dashboard/ads/campaigns',       label: 'Campaigns',         icon: Target },
+      { href: '/dashboard/ads/budget',          label: 'Budget Optimizer',  icon: DollarSign },
+      { href: '/dashboard/ads/recommendations', label: 'AI Recommendations', icon: Lightbulb },
+      { href: '/dashboard/ads/mmm',             label: 'Attribution (MMM)', icon: PieChart },
+      { href: '/dashboard/ads/forecasting',     label: 'Forecasting',       icon: TrendingUp },
+      { href: '/dashboard/ads/reports',         label: 'Weekly Report',     icon: FileText },
     ],
   },
   {

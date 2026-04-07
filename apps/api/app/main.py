@@ -25,6 +25,7 @@ from app.api.endpoints import (
     sites,
     workspaces,
 )
+from app.api.endpoints.ad_analytics import router as ad_analytics_router
 from app.api.endpoints.ads_connectors import router as ads_connectors_router
 from app.api.endpoints.ads_launch import router as ads_launch_router
 from app.api.endpoints.ai_admin import router as ai_router
@@ -235,6 +236,42 @@ async def _twitter_auto_post_loop() -> None:
         await asyncio.sleep(3 * 3600)  # every 3 hours
 
 
+async def _ad_analytics_sync_loop() -> None:
+    """
+    Background job: pull ad data + run decision engine + refresh forecasts.
+
+    - Sync ad accounts every 6 hours
+    - Run decision engine every 6 hours (immediately after sync)
+    - Refresh Prophet forecasts every 24 hours
+    """
+    from app.core.db.database import AsyncSessionLocal
+    from app.services.ad_analytics.sync_scheduler import (
+        refresh_forecasts,
+        run_decision_engine,
+        sync_all_accounts,
+    )
+
+    await asyncio.sleep(4 * 3600)  # 4 hours after startup
+    loop_count = 0
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                sync_result = await sync_all_accounts(session)
+                logger.info("ad_analytics_sync.complete", results=sync_result)
+
+                dec_result = await run_decision_engine(session)
+                logger.info("ad_analytics_decisions.complete", results=dec_result)
+
+                # Refresh forecasts every 4th run (≈ every 24h)
+                if loop_count % 4 == 0:
+                    fc_result = await refresh_forecasts(session)
+                    logger.info("ad_analytics_forecasts.complete", results=fc_result)
+        except Exception as e:
+            logger.error("ad_analytics_sync.error", error=str(e))
+        loop_count += 1
+        await asyncio.sleep(6 * 3600)  # every 6 hours
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle hooks."""
@@ -247,6 +284,7 @@ async def lifespan(app: FastAPI):
     ads_opt_task = asyncio.create_task(_ads_optimization_loop())
     asyncio.create_task(_daily_twitter_generation_loop())
     asyncio.create_task(_twitter_auto_post_loop())
+    asyncio.create_task(_ad_analytics_sync_loop())
 
     yield
 
@@ -405,6 +443,7 @@ app.include_router(growth_intelligence_router)
 app.include_router(workflow_router)
 app.include_router(crm_router)
 app.include_router(twitter_engine_router)
+app.include_router(ad_analytics_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

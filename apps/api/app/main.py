@@ -27,6 +27,12 @@ from app.api.endpoints import (
 )
 from app.api.endpoints.ad_analytics import router as ad_analytics_router
 from app.api.endpoints.ads_connectors import router as ads_connectors_router
+from app.api.endpoints.ai_learning import router as ai_learning_router
+from app.api.endpoints.calling import router as calling_router
+from app.api.endpoints.calling_compat import router as calling_compat_router
+from app.api.endpoints.email_bridge import router as email_bridge_router
+from app.api.endpoints.email_bridge_compat import router as email_bridge_compat_router
+from app.api.endpoints.finance import router as finance_router
 from app.api.endpoints.ads_launch import router as ads_launch_router
 from app.api.endpoints.ai_admin import router as ai_router
 from app.api.endpoints.autonomy import router as autonomy_router
@@ -436,14 +442,24 @@ app.include_router(metrics_router, prefix=f"{API_V1}", tags=["metrics"])
 app.include_router(oauth_social_router, prefix=f"{API_V1}", tags=["oauth-social"])
 app.include_router(ads_launch_router, prefix=f"{API_V1}", tags=["ads-launch"])
 app.include_router(growth_dashboard_router, prefix=f"{API_V1}", tags=["growth-dashboard"])
+# Phase 2 calling compat — must be registered BEFORE legacy calls_router so
+# literal /contacts and /leads win against the legacy /{call_id} matcher.
+app.include_router(calling_compat_router)
 app.include_router(calls_router)
 app.include_router(organic_router, prefix=f"{API_V1}/organic", tags=["organic-growth"])
+# Phase 2 email-bridge compat — registered BEFORE legacy email_router for
+# the /sync-lead/{lead_id} aliases.
+app.include_router(email_bridge_compat_router)
 app.include_router(email_router)
 app.include_router(growth_intelligence_router)
 app.include_router(workflow_router)
 app.include_router(crm_router)
 app.include_router(twitter_engine_router)
 app.include_router(ad_analytics_router)
+app.include_router(calling_router)
+app.include_router(finance_router)
+app.include_router(email_bridge_router)
+app.include_router(ai_learning_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

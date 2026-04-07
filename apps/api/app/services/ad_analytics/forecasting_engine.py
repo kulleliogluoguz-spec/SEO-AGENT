@@ -202,3 +202,76 @@ class ForecastingEngine:
         except Exception as e:
             logger.error("[forecast] anomaly detection failed: %s", e)
             return []
+
+    # ── Enhanced anomaly detection (richer payload) ──────────────────────────
+
+    def detect_anomalies_enhanced(
+        self,
+        time_series: list[dict],
+        metric: str = "roas",
+        sensitivity: float = 1.5,
+    ) -> dict:
+        """
+        Returns a richer payload with z-scores, expected value, deviation %,
+        direction (spike/drop), and per-anomaly severity. Falls back to z-score
+        thresholds if scikit-learn is unavailable.
+        """
+        if len(time_series) < 7:
+            return {"anomalies": [], "status": "insufficient_data"}
+        try:
+            df = pd.DataFrame(time_series)
+        except Exception as e:
+            logger.error("[forecast] enhanced anomaly df build failed: %s", e)
+            return {"anomalies": [], "status": "error"}
+
+        if metric not in df.columns:
+            return {"anomalies": [], "status": f"metric {metric} not found"}
+
+        values = df[metric].fillna(0).astype(float).values
+        mean = float(np.mean(values)) if len(values) else 0.0
+        std = float(np.std(values)) if len(values) else 0.0
+        z_scores = (
+            np.abs((values - mean) / std) if std > 0 else np.zeros(len(values))
+        )
+
+        try:
+            from sklearn.ensemble import IsolationForest
+
+            labels = IsolationForest(
+                contamination=0.1, random_state=42
+            ).fit_predict(values.reshape(-1, 1))
+        except Exception:
+            labels = np.where(z_scores > sensitivity * 2, -1, 1)
+
+        anomalies: list[dict] = []
+        for i, (z, label) in enumerate(zip(z_scores, labels, strict=False)):
+            if label == -1 or z > sensitivity * 2:
+                row = df.iloc[i]
+                v = float(row[metric])
+                direction = "spike" if v > mean else "drop"
+                if z > sensitivity * 3:
+                    severity = "critical"
+                elif z > sensitivity * 2:
+                    severity = "high"
+                else:
+                    severity = "medium"
+                anomalies.append(
+                    {
+                        "date": str(row.get("date", i)),
+                        "metric": metric,
+                        "value": v,
+                        "expected": round(mean, 3),
+                        "deviation_pct": (
+                            round((v - mean) / mean * 100, 1) if mean else 0
+                        ),
+                        "direction": direction,
+                        "severity": severity,
+                        "description": f"{metric.upper()} {direction}: {v:.2f} vs expected {mean:.2f}",
+                    }
+                )
+        return {
+            "anomalies": anomalies,
+            "metric": metric,
+            "mean": round(mean, 3),
+            "total": len(anomalies),
+        }

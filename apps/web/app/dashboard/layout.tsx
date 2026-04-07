@@ -9,10 +9,10 @@ import {
   Plug, Settings, Activity, LogOut, TrendingUp,
   ChevronDown, Bell, ShieldCheck, Sparkles, Radio,
   Megaphone, Twitter, Instagram, Brain, ListOrdered,
-  LineChart, Zap, Shield, Receipt, PieChart,
-  Phone, PhoneCall, Upload, BarChart3,
+  LineChart, Zap, Shield, PieChart,
+  Phone, BarChart3,
   Sprout, Search, Share2, Users, Flame, Mail,
-  Layers, Map, CheckCircle2, Send, DollarSign, Lightbulb, Target,
+  Layers, Map, CheckCircle2, DollarSign, Lightbulb, Target,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -68,14 +68,6 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Calls',
-    items: [
-      { href: '/dashboard/calls',         label: 'All Calls',      icon: Phone, exact: true },
-      { href: '/dashboard/calls/upload',  label: 'Log Call',       icon: Upload },
-      { href: '/dashboard/calls/reports', label: 'Weekly Report',  icon: BarChart3 },
-    ],
-  },
-  {
     label: 'Organic Growth',
     items: [
       { href: '/dashboard/organic',          label: 'Growth Hub',      icon: Sprout, exact: true },
@@ -96,10 +88,22 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    label: 'Calling Engine',
+    items: [
+      { href: '/dashboard/calls',              label: 'Call Hub',    icon: Phone, exact: true },
+      { href: '/dashboard/calls?tab=leads',    label: 'Lead Inbox',  icon: Users },
+    ],
+  },
+  {
     label: 'Finance',
     items: [
-      { href: '/dashboard/finance/invoices', label: 'Invoices',    icon: Receipt },
-      { href: '/dashboard/finance/reports',  label: 'Tax Reports', icon: PieChart },
+      { href: '/dashboard/finance',            label: 'Finance Intelligence', icon: BarChart3, exact: true },
+    ],
+  },
+  {
+    label: 'AI System',
+    items: [
+      { href: '/dashboard/ai-learning',        label: 'AI Learning', icon: Brain },
     ],
   },
   {

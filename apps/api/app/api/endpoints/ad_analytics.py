@@ -1083,7 +1083,40 @@ async def weekly_report(
         "summary": summary,
         "campaigns_count": campaigns["count"],
         "report_text": report_text,
+        "data": {
+            "total_spend_7d": summary["total_spend"],
+            "total_revenue_7d": summary["total_revenue"],
+            "overall_roas_7d": summary["overall_roas"],
+            "total_conversions_7d": summary["total_conversions"],
+        },
+        "report": report_text,
     }
+
+
+@router.get("/reports/weekly-pdf")
+async def download_weekly_pdf(
+    account_id: str | None = None,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate the weekly report as a downloadable PDF."""
+    from datetime import date as _date
+
+    from fastapi.responses import FileResponse
+
+    from app.services.ad_analytics.report_generator import ReportGenerator
+
+    report_data = await weekly_report(
+        account_id=account_id, current_user=current_user, db=db
+    )
+    pdf_path = ReportGenerator().generate_weekly_pdf(report_data, "Acme Growth")
+    if not pdf_path:
+        raise HTTPException(500, "PDF generation failed — pip install reportlab")
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"weekly_report_{_date.today()}.pdf",
+    )
 
 
 @router.get("/reports/anomalies")

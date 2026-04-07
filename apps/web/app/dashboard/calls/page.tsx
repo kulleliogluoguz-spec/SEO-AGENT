@@ -1,281 +1,303 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
-import { Phone, Upload, Flame, Zap, Snowflake, XCircle, RefreshCw, Trash2, Clock } from 'lucide-react'
+import { Phone, Upload, Flame, Snowflake, UserPlus, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
+import { apiFetch } from '@/lib/apiFetch'
 
-const API = 'http://localhost:8000'
-
-interface CallAnalysis {
-  customer_name?: string
-  customer_phone?: string
-  company_name?: string
-  call_summary?: string
-  sales_potential?: 'hot' | 'warm' | 'cold' | 'not_interested'
-  sales_score?: number
-}
-
-interface Call {
+type Lead = {
   id: string
-  type: 'inbound' | 'outbound'
-  phone_number?: string
-  rep_name?: string
-  filename?: string
-  status: 'queued' | 'transcribing' | 'analyzing' | 'completed' | 'failed'
-  created_at: string
-  duration?: number
-  analysis?: CallAnalysis
-  error?: string
+  full_name?: string | null
+  company_name?: string | null
+  email?: string | null
+  phone?: string | null
+  qualification_score?: number | null
+  category?: string | null
+  ai_next_action?: string | null
+  status?: string | null
+  total_calls?: number | null
 }
 
-interface Stats {
-  total_calls: number
-  completed: number
-  this_week: number
-  sales_breakdown: { hot: number; warm: number; cold: number; not_interested: number }
-  avg_sales_score: number
+type Call = {
+  id: string
+  full_name?: string | null
+  company_name?: string | null
+  status?: string | null
+  started_at?: string | null
+  duration_seconds?: number | null
+  qualification_score?: number | null
+  qualification_category?: string | null
+  transcription_status?: string | null
+  intent?: string | null
 }
 
-const POTENTIAL_CONFIG = {
-  hot:           { label: '🔥 Hot',           cls: 'bg-red-100 text-red-700' },
-  warm:          { label: '⚡ Warm',          cls: 'bg-amber-100 text-amber-700' },
-  cold:          { label: '❄️ Cold',           cls: 'bg-blue-100 text-blue-700' },
-  not_interested:{ label: '✗ Not Interested', cls: 'bg-gray-100 text-gray-600' },
+const CATEGORY_STYLE: Record<string, string> = {
+  hot: 'bg-red-100 text-red-700 border border-red-200',
+  warm: 'bg-orange-100 text-orange-700 border border-orange-200',
+  cold: 'bg-blue-100 text-blue-700 border border-blue-200',
+  nurture: 'bg-gray-100 text-gray-600 border border-gray-200',
+  disqualified: 'bg-slate-100 text-slate-500 border border-slate-200',
 }
 
-const STATUS_CONFIG = {
-  queued:       { label: 'Queued',        cls: 'bg-gray-100 text-gray-500',   spin: false },
-  transcribing: { label: 'Transcribing…', cls: 'bg-blue-100 text-blue-600',  spin: true  },
-  analyzing:    { label: 'Analyzing…',    cls: 'bg-purple-100 text-purple-600', spin: true },
-  completed:    { label: 'Done',          cls: 'bg-green-100 text-green-700', spin: false },
-  failed:       { label: 'Failed',        cls: 'bg-red-100 text-red-700',     spin: false },
+function formatDuration(s?: number | null) {
+  if (!s) return '—'
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${r.toString().padStart(2, '0')}`
 }
 
-function StatusBadge({ status }: { status: Call['status'] }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.queued
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.cls}`}>
-      {cfg.spin && <RefreshCw size={10} className="animate-spin" />}
-      {cfg.label}
-    </span>
-  )
-}
-
-function PotentialBadge({ potential }: { potential?: string }) {
-  if (!potential) return <span className="text-gray-300 text-xs">—</span>
-  const cfg = POTENTIAL_CONFIG[potential as keyof typeof POTENTIAL_CONFIG]
-  if (!cfg) return null
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.cls}`}>{cfg.label}</span>
-}
-
-function ScoreBar({ score }: { score?: number }) {
-  if (score == null) return <span className="text-gray-300 text-xs">—</span>
-  const color = score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-400'
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${score}%` }} />
-      </div>
-      <span className="text-xs font-medium text-gray-700">{score}</span>
-    </div>
-  )
-}
-
-export default function CallsPage() {
+export default function CallingHubPage() {
+  const [leads, setLeads] = useState<Lead[]>([])
   const [calls, setCalls] = useState<Call[]>([])
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [tab, setTab] = useState<'leads' | 'calls'>('leads')
   const [loading, setLoading] = useState(true)
-  const [apiError, setApiError] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const hasInProgress = calls.some(c => ['queued', 'transcribing', 'analyzing'].includes(c.status))
-
-  const fetchData = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true)
     try {
-      const [callsRes, statsRes] = await Promise.all([
-        fetch(`${API}/api/v1/calls`),
-        fetch(`${API}/api/v1/calls/stats`),
+      const [l, c] = await Promise.all([
+        apiFetch<{ leads: Lead[] }>('/api/v1/calling/leads'),
+        apiFetch<{ calls: Call[] }>('/api/v1/calling'),
       ])
-      if (callsRes.ok) {
-        const data = await callsRes.json()
-        setCalls(data.calls)
-      }
-      if (statsRes.ok) setStats(await statsRes.json())
-      setApiError(false)
-    } catch {
-      setApiError(true)
+      setLeads(l.leads ?? [])
+      setCalls(c.calls ?? [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    load()
+  }, [load])
 
-  // Auto-refresh while calls are in progress
-  useEffect(() => {
-    if (!hasInProgress) return
-    const id = setInterval(fetchData, 5000)
-    return () => clearInterval(id)
-  }, [hasInProgress, fetchData])
-
-  async function deleteCall(id: string) {
-    await fetch(`${API}/api/v1/calls/${id}`, { method: 'DELETE' })
-    fetchData()
+  async function handleUpload(file: File) {
+    setUploading(true)
+    setUploadMsg('Uploading recording…')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/calling/upload`,
+        {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        },
+      )
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+      setUploadMsg('AI analyzing…')
+      setTimeout(() => {
+        load()
+        setUploading(false)
+        setUploadMsg(null)
+      }, 3000)
+    } catch (e) {
+      console.error(e)
+      setUploadMsg('Upload failed')
+      setUploading(false)
+    }
   }
 
-  function fmt(iso: string) {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  }
-
-  function fmtDuration(s?: number) {
-    if (!s) return '—'
-    const m = Math.floor(s / 60), sec = s % 60
-    return `${m}:${String(sec).padStart(2, '0')}`
+  const stats = {
+    totalLeads: leads.length,
+    hotLeads: leads.filter((l) => l.category === 'hot').length,
+    totalCalls: calls.length,
+    avgScore:
+      leads.length > 0
+        ? Math.round(
+            leads.reduce((s, l) => s + (l.qualification_score ?? 0), 0) / leads.length,
+          )
+        : 0,
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Call Intelligence</h1>
-          <p className="text-sm text-gray-500 mt-0.5">AI-powered sales call analysis</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Call Hub</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Phase 2 calling engine — upload recordings to auto-transcribe and qualify leads.
+          </p>
         </div>
-        <Link
-          href="/dashboard/calls/upload"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Upload size={14} />
-          Log Inbound Call
-        </Link>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".wav,.mp3,.m4a,.ogg,.webm"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handleUpload(f)
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          >
+            <Upload size={14} /> Upload Recording
+          </button>
+          <Link
+            href="/dashboard/calling/new-contact"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-sm font-medium rounded-lg hover:bg-slate-50"
+          >
+            <UserPlus size={14} /> Add Contact
+          </Link>
+        </div>
       </div>
 
-      {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Phone size={14} className="text-gray-400" />
-              <span className="text-xs text-gray-500 font-medium">This Week</span>
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{stats.this_week}</div>
-            <div className="text-xs text-gray-400">{stats.total_calls} total</div>
-          </div>
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Flame size={14} className="text-red-400" />
-              <span className="text-xs text-gray-500 font-medium">Hot Leads</span>
-            </div>
-            <div className="text-2xl font-bold text-red-600">{stats.sales_breakdown.hot}</div>
-            <div className="text-xs text-gray-400">strong buying intent</div>
-          </div>
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap size={14} className="text-amber-400" />
-              <span className="text-xs text-gray-500 font-medium">Warm Leads</span>
-            </div>
-            <div className="text-2xl font-bold text-amber-600">{stats.sales_breakdown.warm}</div>
-            <div className="text-xs text-gray-400">needs follow-up</div>
-          </div>
-          <div className="bg-white rounded-xl border p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Snowflake size={14} className="text-blue-400" />
-              <span className="text-xs text-gray-500 font-medium">Cold / No Interest</span>
-            </div>
-            <div className="text-2xl font-bold text-blue-600">
-              {stats.sales_breakdown.cold + stats.sales_breakdown.not_interested}
-            </div>
-            <div className="text-xs text-gray-400">avg score {Math.round(stats.avg_sales_score)}</div>
-          </div>
+      {uploadMsg && (
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          {uploadMsg}
         </div>
       )}
 
-      {/* Calls Table */}
-      <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-800">Call Log</span>
-          {hasInProgress && (
-            <span className="text-xs text-blue-500 flex items-center gap-1">
-              <RefreshCw size={10} className="animate-spin" /> Processing — auto-refreshing
-            </span>
-          )}
-        </div>
-
-        {apiError ? (
-          <div className="p-8 text-center">
-            <p className="text-red-500 font-medium text-sm">Cannot reach API</p>
-            <p className="text-gray-400 text-xs mt-1">Make sure the backend is running on port 8000</p>
-            <button onClick={fetchData} className="mt-3 text-xs text-blue-500 hover:underline">Retry</button>
-          </div>
-        ) : loading ? (
-          <div className="p-8 text-center text-gray-400 text-sm">Loading…</div>
-        ) : calls.length === 0 ? (
-          <div className="p-12 text-center">
-            <Phone size={32} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No calls yet</p>
-            <p className="text-gray-400 text-sm mt-1">Upload a call recording to get started</p>
-            <Link href="/dashboard/calls/upload" className="mt-4 inline-block text-blue-600 text-sm font-medium hover:underline">
-              Log your first call →
-            </Link>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['Date', 'Phone', 'Customer', 'Company', 'Type', 'Duration', 'Potential', 'Score', 'Status', ''].map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {calls.map(call => {
-                  const a = call.analysis
-                  return (
-                    <tr key={call.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmt(call.created_at)}</td>
-                      <td className="px-4 py-3 text-gray-700 font-mono text-xs">{call.phone_number || '—'}</td>
-                      <td className="px-4 py-3 text-gray-800 font-medium">{a?.customer_name || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600">{a?.company_name || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          call.type === 'outbound' ? 'bg-indigo-50 text-indigo-600' : 'bg-teal-50 text-teal-600'
-                        }`}>
-                          {call.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        <span className="flex items-center gap-1">
-                          <Clock size={10} />
-                          {fmtDuration(call.duration)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3"><PotentialBadge potential={a?.sales_potential} /></td>
-                      <td className="px-4 py-3"><ScoreBar score={a?.sales_score} /></td>
-                      <td className="px-4 py-3"><StatusBadge status={call.status} /></td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {call.status === 'completed' && (
-                            <Link href={`/dashboard/calls/${call.id}`} className="text-blue-500 hover:text-blue-700 text-xs font-medium">
-                              View
-                            </Link>
-                          )}
-                          <button
-                            onClick={() => deleteCall(call.id)}
-                            className="text-gray-300 hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* Stat cards */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Total Leads', value: stats.totalLeads, icon: Phone, color: 'text-slate-600' },
+          { label: 'Hot Leads', value: stats.hotLeads, icon: Flame, color: 'text-red-500' },
+          { label: 'Total Calls', value: stats.totalCalls, icon: Phone, color: 'text-blue-500' },
+          { label: 'Avg Score', value: stats.avgScore, icon: CheckCircle2, color: 'text-emerald-500' },
+        ].map((s) => {
+          const Icon = s.icon
+          return (
+            <div
+              key={s.label}
+              className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between"
+            >
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">{s.label}</div>
+                <div className="text-2xl font-semibold text-slate-900 mt-1">{s.value}</div>
+              </div>
+              <Icon className={s.color} size={22} />
+            </div>
+          )
+        })}
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-2 border-b border-slate-200">
+        {(['leads', 'calls'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {t === 'leads' ? 'Lead Inbox' : 'Call History'}
+          </button>
+        ))}
+        <button
+          onClick={load}
+          className="ml-auto px-3 py-2 text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1"
+        >
+          <RefreshCw size={12} /> Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-slate-500">Loading…</div>
+      ) : tab === 'leads' ? (
+        <div className="space-y-2">
+          {leads.length === 0 && (
+            <div className="text-sm text-slate-500 italic px-4 py-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+              No leads yet. Upload a call recording or add a contact to get started.
+            </div>
+          )}
+          {leads.map((l) => {
+            const cat = (l.category ?? 'nurture').toLowerCase()
+            return (
+              <Link
+                key={l.id}
+                href={`/dashboard/calling/leads/${l.id}`}
+                className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl hover:border-brand-300 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-semibold">
+                  {(l.full_name ?? '?').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">
+                    {l.full_name ?? 'Unnamed'}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {l.company_name ?? '—'} · {l.email ?? l.phone ?? '—'}
+                  </div>
+                  {l.ai_next_action && (
+                    <div className="text-[11px] text-slate-600 mt-1 truncate">
+                      Next: {l.ai_next_action}
+                    </div>
+                  )}
+                </div>
+                <span
+                  className={`px-2 py-0.5 text-[11px] font-semibold rounded ${
+                    CATEGORY_STYLE[cat] ?? CATEGORY_STYLE.nurture
+                  }`}
+                >
+                  {cat}
+                </span>
+                <div className="text-right">
+                  <div className="text-lg font-semibold text-slate-900">
+                    {l.qualification_score ?? 0}
+                  </div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wide">score</div>
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {calls.length === 0 && (
+            <div className="text-sm text-slate-500 italic px-4 py-6 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+              No calls yet.
+            </div>
+          )}
+          {calls.map((c) => {
+            const ok = c.status === 'completed'
+            return (
+              <Link
+                key={c.id}
+                href={`/dashboard/calling/${c.id}`}
+                className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl hover:border-brand-300"
+              >
+                {ok ? (
+                  <CheckCircle2 size={18} className="text-emerald-500" />
+                ) : (
+                  <XCircle size={18} className="text-slate-400" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">
+                    {c.full_name ?? 'Unknown caller'} · {c.company_name ?? ''}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {c.started_at ? new Date(c.started_at).toLocaleString() : '—'} ·{' '}
+                    {formatDuration(c.duration_seconds)}
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-500 px-2 py-0.5 rounded bg-slate-100">
+                  {c.transcription_status ?? 'pending'}
+                </span>
+                <div className="w-12 text-right">
+                  <div className="text-base font-semibold text-slate-900">
+                    {c.qualification_score ?? '—'}
+                  </div>
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

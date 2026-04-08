@@ -214,7 +214,7 @@ End with: "Please verify with your accountant before filing." """
                     :vendor, :vtax, :cust, :ctax,
                     :curr, :sub, :tax_amt, :total,
                     :dir, :cat, :vrate, :vamt, :deduct,
-                    :taximp, :notes, :items::jsonb, :conf,
+                    :taximp, :notes, CAST(:items AS jsonb), :conf,
                     'completed'
                 )
                 """

@@ -1,16 +1,17 @@
 """
 Phase 2 Calling — `/api/v1/calls` compatibility router.
 
-Adds the literal `/contacts` and `/leads` sub-routes to the `/api/v1/calls`
-prefix so that frontends and verification scripts following the original
-Phase 2 spec see them at the expected paths. Must be registered BEFORE the
-legacy `calls_router` so that literal `/contacts` and `/leads` win against
-its `/{call_id}` parameterized matcher.
+Adds the literal `/contacts`, `/leads`, and `/livekit/token` sub-routes to
+the `/api/v1/calls` prefix so that frontends and verification scripts
+following the original Phase 2 spec see them at the expected paths. Must be
+registered BEFORE the legacy `calls_router` so literal paths win against its
+`/{call_id}` parameterized matcher.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -173,3 +174,69 @@ async def update_lead(
         lead_id, "manual_update", "Lead manually updated", metadata=data
     )
     return {"success": True}
+
+
+# ─── LIVEKIT ───────────────────────────────────────────────────────────────
+@router.get("/livekit/token")
+@router.post("/livekit/token")
+async def get_livekit_token(
+    data: dict | None = None,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a LiveKit room token for browser-based calling.
+
+    Both GET and POST are accepted:
+    - GET returns a token for a freshly-minted call_id (useful for quick
+      verification from curl / health checks).
+    - POST accepts `{call_id?, contact_id?, identity?}` for a real call.
+    """
+    from app.services.calling.livekit_engine import LiveKitEngine
+
+    data = data or {}
+    call_id = data.get("call_id") or str(uuid.uuid4())
+    contact_id = data.get("contact_id")
+    identity = data.get("identity") or f"user_{getattr(current_user, 'id', 'demo')}"
+
+    engine = LiveKitEngine()
+    room_name = engine.create_room_name(call_id)
+    token = engine.generate_token(room_name, identity)
+
+    if not token:
+        # Graceful degradation: return 200 with a message so the verification
+        # script can tell "not configured" from "broken". A missing SDK or
+        # missing credentials is expected in the dev/CI environment.
+        return {
+            "call_id": call_id,
+            "room_name": room_name,
+            "token": None,
+            "livekit_url": os.getenv("LIVEKIT_URL", "ws://localhost:7880"),
+            "configured": False,
+            "message": (
+                "LiveKit not configured. Install livekit-api and set "
+                "LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET in .env."
+            ),
+        }
+
+    await db.execute(
+        text(
+            """
+            INSERT INTO calls(
+                id, workspace_id, contact_id, direction, status, provider, consent_given
+            )
+            VALUES(:id, :wid, :cid, 'outbound', 'active', 'livekit', true)
+            ON CONFLICT(id) DO NOTHING
+            """
+        ),
+        {"id": call_id, "wid": _wid(current_user), "cid": contact_id},
+    )
+    await db.commit()
+
+    return {
+        "call_id": call_id,
+        "room_name": room_name,
+        "token": token,
+        "livekit_url": os.getenv("LIVEKIT_URL", "ws://localhost:7880"),
+        "configured": True,
+    }

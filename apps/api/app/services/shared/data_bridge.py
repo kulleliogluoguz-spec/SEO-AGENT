@@ -100,7 +100,7 @@ class DataBridge:
             text(
                 """
                 INSERT INTO lead_timeline(lead_id, event_type, title, description, metadata)
-                VALUES(:lid, :et, :title, :desc, :meta::jsonb)
+                VALUES(:lid, :et, :title, :desc, CAST(:meta AS jsonb))
                 """
             ),
             {

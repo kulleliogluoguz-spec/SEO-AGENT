@@ -205,6 +205,63 @@ async def initiate_call(
     )
 
 
+@router.post("/livekit/token")
+async def get_livekit_token(
+    data: dict | None = None,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a LiveKit room token for browser-based calling.
+
+    Creates a call record in 'active' state and returns the JWT token plus
+    LiveKit connection details so the browser client can join the WebRTC room.
+    """
+    from app.services.calling.livekit_engine import LiveKitEngine
+
+    data = data or {}
+    call_id = data.get("call_id") or str(uuid.uuid4())
+    contact_id = data.get("contact_id")
+    identity = data.get("identity") or f"user_{getattr(current_user, 'id', 'demo')}"
+
+    engine = LiveKitEngine()
+    room_name = engine.create_room_name(call_id)
+    token = engine.generate_token(room_name, identity)
+
+    if not token:
+        raise HTTPException(
+            500,
+            "LiveKit not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, "
+            "LIVEKIT_API_SECRET in .env",
+        )
+
+    # Create / upsert call record
+    await db.execute(
+        text(
+            """
+            INSERT INTO calls(
+                id, workspace_id, contact_id, direction, status, provider, consent_given
+            )
+            VALUES(:id, :wid, :cid, 'outbound', 'active', 'livekit', true)
+            ON CONFLICT(id) DO NOTHING
+            """
+        ),
+        {
+            "id": call_id,
+            "wid": _wid(current_user),
+            "cid": contact_id,
+        },
+    )
+    await db.commit()
+
+    return {
+        "call_id": call_id,
+        "room_name": room_name,
+        "token": token,
+        "livekit_url": os.getenv("LIVEKIT_URL", "ws://localhost:7880"),
+    }
+
+
 @router.post("/upload")
 async def upload_call(
     file: UploadFile = File(...),

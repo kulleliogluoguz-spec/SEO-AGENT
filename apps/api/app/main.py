@@ -38,6 +38,7 @@ from app.api.endpoints.calls import router as calls_router
 from app.api.endpoints.campaigns import router as campaigns_router
 from app.api.endpoints.content_queue import router as content_queue_router
 from app.api.endpoints.crm import router as crm_router
+from app.api.endpoints.discovery import router as discovery_router
 from app.api.endpoints.email_automation import router as email_router
 from app.api.endpoints.email_bridge import router as email_bridge_router
 from app.api.endpoints.email_bridge_compat import router as email_bridge_compat_router
@@ -53,6 +54,7 @@ from app.api.endpoints.oauth_social import router as oauth_social_router
 from app.api.endpoints.optimization import router as optimization_router
 from app.api.endpoints.organic_growth import router as organic_router
 from app.api.endpoints.publishing import router as publishing_router
+from app.api.endpoints.system import router as system_router
 from app.api.endpoints.trends import router as trends_router
 from app.api.endpoints.twitter_engine import router as twitter_engine_router
 from app.api.endpoints.workflow_automation import router as workflow_router
@@ -460,6 +462,8 @@ app.include_router(calling_router)
 app.include_router(finance_router)
 app.include_router(email_bridge_router)
 app.include_router(ai_learning_router)
+app.include_router(system_router)
+app.include_router(discovery_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

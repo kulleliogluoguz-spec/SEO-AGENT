@@ -525,6 +525,25 @@ async def analyze_campaign(
         rec_dicts,
     )
 
+    # Publish platform event when ROAS drops below 1.0 (losing money)
+    if signal.roas_7d < 1.0 and signal.spend_7d > 0:
+        try:
+            from app.services.automation.event_bus import EventBus
+
+            bus = EventBus(db, workspace_id)
+            await bus.publish(
+                "roas_critical",
+                "ad_analytics",
+                {
+                    "campaign_id": campaign_id,
+                    "campaign_name": signal.campaign_name,
+                    "roas": round(signal.roas_7d, 3),
+                    "spend_7d": round(signal.spend_7d, 2),
+                },
+            )
+        except Exception as e:
+            logger.warning("roas_critical event publish failed: %s", e)
+
     return {
         "campaign_id": campaign_id,
         "name": signal.campaign_name,
@@ -1175,3 +1194,203 @@ async def get_anomalies(
             all_anomalies.append(a)
 
     return {"anomalies": all_anomalies, "count": len(all_anomalies)}
+
+
+# ─── TRUE PROFITABILITY (Phase 2 Module C) ──────────────────────────────────
+@router.get("/profitability/settings")
+async def get_profitability_settings(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get product cost settings for true ROAS calculation."""
+    workspace_id = _workspace_id_for(current_user)
+    r = await db.execute(
+        text("SELECT * FROM product_costs WHERE workspace_id=:wid AND is_default=true LIMIT 1"),
+        {"wid": workspace_id},
+    )
+    row = r.fetchone()
+    if row:
+        return {"settings": _row_to_dict(row)}
+    return {
+        "settings": {
+            "cogs": 0,
+            "shipping_cost": 0,
+            "return_rate": 0.05,
+            "avg_order_value": 0,
+            "currency": "USD",
+        }
+    }
+
+
+@router.post("/profitability/settings")
+async def save_profitability_settings(
+    data: dict,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save product cost settings for true ROAS calculation."""
+    workspace_id = _workspace_id_for(current_user)
+    await db.execute(
+        text("UPDATE product_costs SET is_default=false WHERE workspace_id=:wid"),
+        {"wid": workspace_id},
+    )
+    await db.execute(
+        text(
+            """
+            INSERT INTO product_costs
+                (workspace_id, cogs, shipping_cost, return_rate, is_default, currency)
+            VALUES (:wid, :cogs, :ship, :ret, true, :curr)
+            """
+        ),
+        {
+            "wid": workspace_id,
+            "cogs": data.get("cogs", 0),
+            "ship": data.get("shipping_cost", 0),
+            "ret": data.get("return_rate", 0.05),
+            "curr": data.get("currency", "USD"),
+        },
+    )
+    await db.commit()
+    return {"success": True}
+
+
+@router.get("/profitability/analysis")
+async def get_profitability_analysis(
+    account_id: str | None = None,
+    avg_order_value: float = 50.0,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run true profitability analysis on all active campaigns.
+
+    Returns kill / scale signals along with contribution margin data.
+    """
+    from app.services.ad_analytics.profitability_engine import (
+        ProductCost,
+        ProfitabilityEngine,
+    )
+
+    workspace_id = _workspace_id_for(current_user)
+
+    # Current product cost settings
+    cost_r = await db.execute(
+        text("SELECT * FROM product_costs WHERE workspace_id=:wid AND is_default=true LIMIT 1"),
+        {"wid": workspace_id},
+    )
+    cost_row = cost_r.fetchone()
+    if cost_row:
+        cost_dict = _row_to_dict(cost_row)
+        product_cost = ProductCost(
+            cogs=float(cost_dict.get("cogs", 0) or 0),
+            shipping_cost=float(cost_dict.get("shipping_cost", 0) or 0),
+            return_rate=float(cost_dict.get("return_rate", 0.05) or 0.05),
+        )
+        product_cost_configured = True
+    else:
+        product_cost = ProductCost()
+        product_cost_configured = False
+
+    # Pull 7-day aggregates for each campaign
+    sql = """
+        SELECT
+            c.id,
+            c.name,
+            a.platform,
+            AVG(p.roas) AS roas,
+            AVG(p.cpa) AS cpa,
+            SUM(p.spend) AS spend,
+            SUM(p.revenue) AS revenue,
+            SUM(p.conversions) AS conversions,
+            AVG(p.frequency) AS frequency,
+            COUNT(p.date) AS days_active
+        FROM analytics_ad_campaigns c
+        JOIN ad_performance_daily p ON p.campaign_id = c.id
+        JOIN ad_accounts a ON a.id = c.ad_account_id
+        WHERE a.workspace_id = :wid
+          AND p.date >= CURRENT_DATE - INTERVAL '7 days'
+    """
+    params: dict[str, Any] = {"wid": workspace_id}
+    if account_id:
+        sql += " AND a.id = :acc"
+        params["acc"] = account_id
+    sql += """
+        GROUP BY c.id, c.name, a.platform
+        HAVING SUM(p.spend) > 0
+    """
+
+    camp_r = await db.execute(text(sql), params)
+    campaigns = [dict(row._mapping) for row in camp_r.fetchall()]
+
+    if not campaigns:
+        return {
+            "message": "No campaign data available",
+            "analyses": [],
+            "summary": {
+                "kill_campaigns": 0,
+                "scale_campaigns": 0,
+                "estimated_weekly_waste": 0,
+                "product_cost_configured": product_cost_configured,
+            },
+        }
+
+    engine = ProfitabilityEngine()
+    results = []
+
+    for camp in campaigns:
+        analysis = engine.analyze_campaign(
+            campaign_id=str(camp["id"]),
+            campaign_name=camp["name"] or "",
+            metrics_7d={
+                "roas": float(camp["roas"] or 0),
+                "spend": float(camp["spend"] or 0),
+                "revenue": float(camp["revenue"] or 0),
+                "conversions": float(camp["conversions"] or 0),
+                "frequency": float(camp["frequency"] or 0),
+                "budget_utilization": 0.8,
+            },
+            metrics_prev_7d={},
+            product_cost=product_cost,
+            avg_order_value=avg_order_value,
+            is_retargeting="retarget" in (camp["name"] or "").lower(),
+            days_active=int(camp["days_active"] or 0),
+        )
+
+        results.append(
+            {
+                "campaign_id": str(camp["id"]),
+                "campaign_name": camp["name"],
+                "platform": camp["platform"],
+                "reported_roas": analysis.reported_roas,
+                "true_roas": analysis.estimated_true_roas,
+                "break_even_roas": analysis.break_even_roas,
+                "contribution_margin_pct": round(analysis.contribution_margin * 100, 1),
+                "gross_profit": analysis.gross_profit,
+                "kill_signal": analysis.kill_signal,
+                "scale_signal": analysis.scale_signal,
+                "signal_reason": analysis.signal_reason,
+                "confidence": analysis.confidence,
+            }
+        )
+
+    kills = [r for r in results if r["kill_signal"]]
+    scales = [r for r in results if r["scale_signal"]]
+    total_waste = sum(
+        float(c["spend"] or 0)
+        for c in campaigns
+        if any(r["campaign_id"] == str(c["id"]) and r["kill_signal"] for r in results)
+    )
+
+    return {
+        "analyses": results,
+        "summary": {
+            "kill_campaigns": len(kills),
+            "scale_campaigns": len(scales),
+            "estimated_weekly_waste": round(total_waste, 2),
+            "product_cost_configured": product_cost_configured,
+        },
+        "note": (
+            "True ROAS estimates apply contribution margin and retargeting "
+            "discount. Configure product costs for accuracy."
+        ),
+    }

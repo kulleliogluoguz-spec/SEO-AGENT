@@ -70,10 +70,28 @@ async def upload_invoice(
 
 
 async def _process_bg(fp: str, fn: str, wid: str) -> None:
-    """Run invoice extraction in its own DB session."""
+    """Run invoice extraction in its own DB session and publish an event."""
+    from app.services.automation.event_bus import EventBus
+
     try:
         async with AsyncSessionLocal() as db:
-            await InvoiceIntelligence().process_file(fp, fn, db, wid)
+            result = await InvoiceIntelligence().process_file(fp, fn, db, wid)
+            if isinstance(result, dict) and result.get("invoice_id"):
+                try:
+                    bus = EventBus(db, wid)
+                    invoice_data = result.get("invoice_data") or {}
+                    await bus.publish(
+                        "invoice_processed",
+                        "finance",
+                        {
+                            "invoice_id": result["invoice_id"],
+                            "vendor_name": invoice_data.get("vendor_name"),
+                            "total_amount": invoice_data.get("total_amount"),
+                            "direction": invoice_data.get("direction"),
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("invoice event publish failed (non-critical): %s", e)
     except Exception as e:
         logger.error("invoice background processing failed: %s", e)
 

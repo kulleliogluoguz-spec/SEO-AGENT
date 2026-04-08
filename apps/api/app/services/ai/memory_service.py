@@ -64,7 +64,7 @@ class AIMemoryService:
                     workspace_id, module, feedback_type,
                     original_recommendation, user_action
                 )
-                VALUES(:wid, :mod, :ft, :orig::jsonb, :act::jsonb)
+                VALUES(:wid, :mod, :ft, CAST(:orig AS jsonb), CAST(:act AS jsonb))
                 """
             ),
             {
@@ -101,7 +101,7 @@ class AIMemoryService:
                 text(
                     """
                     UPDATE ai_memory
-                       SET value = :v::jsonb,
+                       SET value = CAST(:v AS jsonb),
                            observation_count = :cnt,
                            confidence = :conf,
                            last_updated = NOW()
@@ -124,7 +124,7 @@ class AIMemoryService:
                     INSERT INTO ai_memory(
                         workspace_id, module, memory_type, key, value, confidence
                     )
-                    VALUES(:wid, :mod, 'preference', :key, :v::jsonb, 0.5)
+                    VALUES(:wid, :mod, 'preference', :key, CAST(:v AS jsonb), 0.5)
                     ON CONFLICT(workspace_id, module, key) DO NOTHING
                     """
                 ),

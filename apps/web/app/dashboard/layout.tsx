@@ -13,6 +13,7 @@ import {
   Phone, BarChart3,
   Sprout, Search, Share2, Users, Flame, Mail,
   Layers, Map, CheckCircle2, DollarSign, Lightbulb, Target,
+  Building2,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -48,6 +49,7 @@ const NAV_SECTIONS = [
       { href: '/dashboard/ads/recommendations', label: 'AI Recommendations', icon: Lightbulb },
       { href: '/dashboard/ads/mmm',             label: 'Attribution (MMM)', icon: PieChart },
       { href: '/dashboard/ads/forecasting',     label: 'Forecasting',       icon: TrendingUp },
+      { href: '/dashboard/ads/profitability',   label: 'True Profitability', icon: DollarSign },
       { href: '/dashboard/ads/reports',         label: 'Weekly Report',     icon: FileText },
     ],
   },
@@ -62,6 +64,7 @@ const NAV_SECTIONS = [
   {
     label: 'Insights',
     items: [
+      { href: '/dashboard/company-intelligence', label: 'Company Intelligence', icon: Building2 },
       { href: '/dashboard/trends',   label: 'Trend Feed',     icon: TrendingUp },
       { href: '/dashboard/learning', label: 'Learning',       icon: Brain },
       { href: '/dashboard/reports',  label: 'Growth Metrics', icon: LineChart },
@@ -103,7 +106,8 @@ const NAV_SECTIONS = [
   {
     label: 'AI System',
     items: [
-      { href: '/dashboard/ai-learning',        label: 'AI Learning', icon: Brain },
+      { href: '/dashboard/ai-learning', label: 'AI Learning',   icon: Brain },
+      { href: '/dashboard/system',      label: 'System Health', icon: Activity },
     ],
   },
   {

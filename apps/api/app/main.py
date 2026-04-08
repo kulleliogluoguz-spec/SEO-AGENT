@@ -47,6 +47,7 @@ from app.api.endpoints.geo import router as geo_router
 from app.api.endpoints.growth_dashboard import router as growth_dashboard_router
 from app.api.endpoints.growth_experiments import router as growth_experiments_router
 from app.api.endpoints.growth_intelligence import router as growth_intelligence_router
+from app.api.endpoints.integrations import router as integrations_router
 from app.api.endpoints.learning import router as learning_router
 from app.api.endpoints.marketing.routes import router as marketing_router
 from app.api.endpoints.metrics import router as metrics_router
@@ -58,8 +59,13 @@ from app.api.endpoints.system import router as system_router
 from app.api.endpoints.trends import router as trends_router
 from app.api.endpoints.twitter_engine import router as twitter_engine_router
 from app.api.endpoints.workflow_automation import router as workflow_router
+from app.api.endpoints.workspace import router as workspace_router
 from app.core.config.settings import get_settings
 from app.core.db.database import check_db_connection
+from app.core.logging_config import setup_logging
+
+# Initialize loguru + Sentry (no-op if SENTRY_DSN unset).
+setup_logging()
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -464,6 +470,8 @@ app.include_router(email_bridge_router)
 app.include_router(ai_learning_router)
 app.include_router(system_router)
 app.include_router(discovery_router)
+app.include_router(integrations_router)
+app.include_router(workspace_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────

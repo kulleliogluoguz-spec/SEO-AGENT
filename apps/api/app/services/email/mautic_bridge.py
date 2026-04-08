@@ -1,6 +1,13 @@
 """
 Mautic Integration Bridge — lead sync and AI-assisted outreach.
-All email sends require human approval. Never auto-send.
+
+Supports two backends:
+  - Mautic (primary)  — http://localhost:8181 by default
+  - Listmonk (fallback) — http://localhost:9000 by default
+
+Detection happens lazily via `email_backend()` so the platform never
+fails to import when neither service is up. All email sends require
+human approval — this module never auto-sends.
 """
 
 from __future__ import annotations
@@ -16,6 +23,27 @@ logger = logging.getLogger(__name__)
 MAUTIC_URL = os.getenv("MAUTIC_URL", "http://localhost:8181")
 MAUTIC_USER = os.getenv("MAUTIC_USER", "admin")
 MAUTIC_PASS = os.getenv("MAUTIC_PASS", "")
+LISTMONK_URL = os.getenv("LISTMONK_URL", "http://localhost:9000")
+
+
+def email_backend() -> str:
+    """
+    Detect which email backend is reachable right now.
+    Returns one of: "mautic", "listmonk", "none".
+    """
+    try:
+        r = requests.get(f"{MAUTIC_URL}/s/health", timeout=3)
+        if r.ok:
+            return "mautic"
+    except Exception:
+        pass
+    try:
+        r = requests.get(f"{LISTMONK_URL}/health", timeout=3)
+        if r.ok:
+            return "listmonk"
+    except Exception:
+        pass
+    return "none"
 
 
 class MauticBridge:

@@ -1,0 +1,1 @@
+"""Security utilities — credential encryption."""

@@ -13,7 +13,7 @@ import {
   Phone, BarChart3,
   Sprout, Search, Share2, Users, Flame, Mail,
   Layers, Map, CheckCircle2, DollarSign, Lightbulb, Target,
-  Building2,
+  Building2, Link2,
 } from 'lucide-react'
 
 const NAV_SECTIONS = [
@@ -113,10 +113,12 @@ const NAV_SECTIONS = [
   {
     label: 'Workspace',
     items: [
-      { href: '/dashboard/connectors', label: 'Connections', icon: Plug },
-      { href: '/dashboard/setup',      label: 'Brand Setup',  icon: Sparkles },
-      { href: '/dashboard/settings',   label: 'Autonomy',     icon: Shield },
-      { href: '/dashboard/activity',   label: 'Activity',     icon: Activity },
+      { href: '/dashboard/integrations', label: 'Ad Integrations', icon: Link2 },
+      { href: '/dashboard/onboarding',   label: 'Onboarding',      icon: Sparkles },
+      { href: '/dashboard/connectors',   label: 'Connections',     icon: Plug },
+      { href: '/dashboard/setup',        label: 'Brand Setup',     icon: Sparkles },
+      { href: '/dashboard/settings',     label: 'Autonomy',        icon: Shield },
+      { href: '/dashboard/activity',     label: 'Activity',        icon: Activity },
     ],
   },
 ]

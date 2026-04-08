@@ -20,6 +20,11 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from app.services.ai.model_config import (
+    OLLAMA_BASE,
+    ModelSelector,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/twitter", tags=["twitter-engine"])
@@ -236,18 +241,36 @@ async def _post_to_x(text: str, account: dict, reply_to_id: str | None = None) -
 
 
 # ─── LLM (Local Ollama) ───────────────────────────────────────────────────────
+#
+# Model selection is delegated to app.services.ai.model_config so the entire
+# platform shares one MODEL_QUALITY_RANKING. The legacy OLLAMA_URL env var
+# is kept as a backwards-compatible override for the host:port; the legacy
+# OLLAMA_MODEL pin is intentionally ignored — model_config is the single
+# source of truth for which model to use.
+OLLAMA_URL = os.getenv("OLLAMA_URL", OLLAMA_BASE)
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
+async def _ask_llm(prompt: str, *, timeout: float = 240.0) -> str:
+    """
+    Generate text using local Ollama.
 
-async def _ask_llm(prompt: str) -> str:
-    """Generate text using local Ollama. No external APIs."""
+    Picks the best installed model from model_config on every call
+    (currently qwen3:14b → qwen3:8b) so freshly-pulled models are picked
+    up without a restart. The 240s timeout gives the larger model enough
+    headroom for cold-start loads.
+    """
+    model = ModelSelector.get_best_model()
+
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 f"{OLLAMA_URL}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"num_predict": 800, "temperature": 0.7},
+                },
             )
             if resp.status_code == 200:
                 text = resp.json().get("response", "").strip()
@@ -261,7 +284,11 @@ async def _ask_llm(prompt: str) -> str:
     except httpx.ConnectError:
         logger.error("Ollama not reachable at %s — run: ollama serve", OLLAMA_URL)
     except httpx.ReadTimeout:
-        logger.error("Ollama timed out (120s) — model may be loading. Try again.")
+        logger.error(
+            "Ollama timed out (%.0fs) using %s — model may be loading. Try again.",
+            timeout,
+            model,
+        )
     except Exception as e:
         logger.error("Ollama error: %s", e)
     return ""

@@ -2,8 +2,9 @@
 AI Model Configuration — Local Model Stack
 All inference local via Ollama. Zero external API calls.
 
-Selects the best available model for a task and falls back to whatever
-exists locally (typically qwen3:8b on this workstation).
+Selects the best available model from a single quality-ordered ranking
+and falls back to the next one if the top choice isn't installed locally.
+This avoids wasting connection timeouts on models that aren't present.
 """
 
 from __future__ import annotations
@@ -19,6 +20,17 @@ logger = logging.getLogger(__name__)
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
+# Single source of truth for model preference order. The selector walks this
+# list and returns the first one that is actually installed locally.
+#
+# Update this list when new models are pulled. Keep it short — every entry
+# is a candidate the selector has to verify against `ollama list`.
+MODEL_QUALITY_RANKING = [
+    "qwen3:14b",
+    "qwen3:8b",
+]
+
+
 class TaskType(str, Enum):
     FAST = "fast"
     STANDARD = "standard"
@@ -28,15 +40,8 @@ class TaskType(str, Enum):
 
 
 class ModelSelector:
-    """Pick the best installed Ollama model for the requested task."""
+    """Pick the best installed Ollama model from `MODEL_QUALITY_RANKING`."""
 
-    TASK_MODELS = {
-        TaskType.FAST: ["qwen3:8b", "gemma4:2b", "gemma3n:e4b", "llama3.2"],
-        TaskType.STANDARD: ["gemma4:27b", "qwen3:14b", "qwen3:8b", "gemma3n:e4b"],
-        TaskType.REASONING: ["deepseek-r1:8b", "gemma4:27b", "qwen3:8b"],
-        TaskType.MULTILINGUAL: ["qwen3:14b", "qwen3:8b", "gemma4:27b", "gemma3n:e4b"],
-        TaskType.CREATIVE: ["gemma4:27b", "qwen3:14b", "qwen3:8b"],
-    }
     _available: list[str] | None = None
 
     @classmethod
@@ -50,18 +55,46 @@ class ModelSelector:
         return cls._available
 
     @classmethod
-    def reset_cache(cls) -> None:
+    def invalidate_cache(cls) -> None:
+        """Force the next call to re-query Ollama for the installed models."""
         cls._available = None
+
+    # Back-compat alias — older callers used reset_cache().
+    reset_cache = invalidate_cache
+
+    @classmethod
+    def get_best_model(cls) -> str:
+        """
+        Walk MODEL_QUALITY_RANKING in order and return the first installed
+        match. Match is exact (`name:tag`) or by base name (`name` matches
+        any tag of that name) so the ranking entries can be specific or
+        generic. Falls back to the first locally-available model, then to
+        `qwen3:8b` as a last resort.
+        """
+        avail = cls.get_available()
+        for candidate in MODEL_QUALITY_RANKING:
+            # Exact match first
+            if candidate in avail:
+                return candidate
+            # Then base-name match (e.g. "qwen3:14b" -> any "qwen3:*")
+            base = candidate.split(":")[0]
+            for a in avail:
+                if a.split(":")[0] == base:
+                    return a
+        return avail[0] if avail else "qwen3:8b"
 
     @classmethod
     def select(cls, task: TaskType) -> str:
-        avail = cls.get_available()
-        for candidate in cls.TASK_MODELS.get(task, ["qwen3:8b"]):
-            base = candidate.split(":")[0]
-            for a in avail:
-                if base in a:
-                    return a
-        return avail[0] if avail else "qwen3:8b"
+        """
+        Pick a model for the given task type.
+
+        Currently every task uses the same single quality ranking — qwen3:14b
+        is the primary, qwen3:8b is the only fallback. The `task` parameter
+        is kept for API compatibility with existing callers (lead_qualifier,
+        discovery_engine, finance, email_bridge) so we can re-introduce
+        per-task differentiation later without touching them.
+        """
+        return cls.get_best_model()
 
 
 def call_ollama(

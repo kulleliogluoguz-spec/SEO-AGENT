@@ -48,6 +48,27 @@ class DiscoveryEngine:
             return FIRST_QUESTIONS_BY_CONTEXT[business_type]
         return FIRST_QUESTIONS_BY_CONTEXT["default"]
 
+    # Hard minimum number of questions before the model is allowed to
+    # complete. Smaller models love to short-circuit a discovery interview
+    # after 2-3 questions; this guard refuses to honor a [COMPLETE] until we
+    # have at least this many turns of real conversation.
+    MIN_QUESTIONS = 10
+
+    # Fallbacks used when the model tries to complete too early. Cycled by
+    # `q_count % len(...)` so we don't repeat ourselves.
+    _FALLBACK_QUESTIONS = [
+        "What is your average order value and customer lifetime value?",
+        "Who are your main competitors and how do you differentiate?",
+        "What is your current biggest marketing challenge?",
+        "How do you currently acquire new customers?",
+        "What does success look like for you in the next 12 months?",
+        "What is your gross margin on products?",
+        "Which sales channels generate the most revenue?",
+        "How large is your team and what stage is the business?",
+        "What marketing tools or platforms are you currently using?",
+        "What has worked well in your marketing so far?",
+    ]
+
     def generate_next_question(self, transcript: list[dict], company_knowledge: dict) -> str:
         """Generate the next question (or [COMPLETE]) from conversation history."""
         q_count = len([t for t in transcript if t.get("role") == "assistant"])
@@ -57,38 +78,56 @@ class DiscoveryEngine:
         conv_text = "\n".join(
             f"{t['role'].upper()}: {t.get('content', '')}" for t in transcript[-10:]
         )
-        known = json.dumps(company_knowledge, indent=2, default=str)
 
-        prompt = f"""You are conducting a company discovery interview.
+        # Build the completion instruction based on whether we've hit the
+        # hard minimum yet. Below the minimum we forbid completion entirely.
+        if q_count < self.MIN_QUESTIONS:
+            completion_instruction = (
+                f"IMPORTANT: You have only asked {q_count} questions. "
+                "You MUST ask more. DO NOT output [COMPLETE] under any circumstances."
+            )
+        else:
+            completion_instruction = (
+                "You may output [COMPLETE] if you have comprehensive answers about: "
+                "industry, business model, target customer, monthly ad spend, "
+                "biggest challenge, and primary goal."
+            )
 
-CONVERSATION SO FAR (last 10 exchanges):
+        prompt = f"""You are conducting a company discovery interview. Your only job right now is to ask the next question.
+
+CONVERSATION SO FAR:
 {conv_text}
 
-WHAT WE KNOW SO FAR:
-{known}
+QUESTIONS ASKED SO FAR: {q_count}
+MINIMUM REQUIRED: {self.MIN_QUESTIONS}
 
-QUESTION COUNT: {q_count} of maximum 20
+{completion_instruction}
 
-Based on the conversation, what is the single most important question to ask next?
+RULES:
+1. Output ONLY the next question as plain text. Nothing else. No preamble.
+2. Do NOT output [COMPLETE] unless q_count >= {self.MIN_QUESTIONS} AND profile is comprehensive
+3. Ask about something NEW not yet covered
+4. Be conversational and specific to what you learned
 
-Rules:
-- If we have enough for a comprehensive business profile (after 12+ questions), respond with exactly: [COMPLETE]
-- Otherwise, ask ONE specific question that will reveal important new information
-- Do NOT ask about anything already clearly answered above
-- Make it feel natural and conversational
-- If the previous answer was vague, ask for clarification on that specific point first
-
-Respond with ONLY the question (or [COMPLETE]). Nothing else."""
+Next question:"""
 
         response = call_ollama(
             prompt=prompt,
             task=TaskType.MULTILINGUAL,
-            max_tokens=150,
+            max_tokens=100,
             temperature=0.4,
             system=DISCOVERY_SYSTEM,
-            timeout=90,
+            timeout=60,
         )
-        return (response or "").strip() or "[COMPLETE]"
+        result = (response or "").strip()
+
+        # Hard guard: never complete early regardless of model output.
+        if q_count < self.MIN_QUESTIONS and ("[COMPLETE]" in result or not result):
+            # Model tried to complete too early (or returned an empty
+            # response) — fall back to a deterministic question.
+            return self._FALLBACK_QUESTIONS[q_count % len(self._FALLBACK_QUESTIONS)]
+
+        return result or "[COMPLETE]"
 
     def extract_company_knowledge(self, transcript: list[dict]) -> dict:
         """Extract a structured company profile from conversation."""

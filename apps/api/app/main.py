@@ -56,6 +56,7 @@ from app.api.endpoints.optimization import router as optimization_router
 from app.api.endpoints.organic_growth import router as organic_router
 from app.api.endpoints.publishing import router as publishing_router
 from app.api.endpoints.system import router as system_router
+from app.api.endpoints.tax_intelligence import router as tax_router
 from app.api.endpoints.trends import router as trends_router
 from app.api.endpoints.twitter_engine import router as twitter_engine_router
 from app.api.endpoints.workflow_automation import router as workflow_router
@@ -472,6 +473,7 @@ app.include_router(system_router)
 app.include_router(discovery_router)
 app.include_router(integrations_router)
 app.include_router(workspace_router)
+app.include_router(tax_router)
 
 
 # ─── System Endpoints ─────────────────────────────────────────────────────────
